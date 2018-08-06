@@ -21,7 +21,8 @@ CPU_FILE="${Script_dir}/files/CPU.txt"
 PShedPy="${Script_dir}/files/power_shed.py"
 rss="${Script_dir}/files/genRSS.php"
 srs="${Script_dir}/files/SRS.php"
-available_packages="${Script_dir}/files/available_packages.php"
+available_packages="${Script_dir}/files/available_packages.txt"
+package_versions="${Script_dir}/files/package_versions.txt"
 mkdir -p "${Script_dir}/comp"
 ProductList="${Script_dir}/comp/ProductList.txt"
 
@@ -38,6 +39,7 @@ while getopts ":uh" opt; do
         curl "https://www.synology.com/de-de/solution/SRS" -# --output "$srs"
         echo $(stat --printf="Size: %s" "$srs")
         awk '/<div class="selected_country">Deutschland<\/div>/{f=1;next} /<div class="selected_country">Griechenland<\/div>/{f=0} f' "$srs" > "${Script_dir}/files/SRS-de.php"
+        CommentedOutBlock() {
         echo -e "\nGetting available Models:"
         curl "https://www.synology.com/cgi/misc/?action=getProductList_withOEM" -# | grep -oP '(?<=\[).*(?=\])' > "$ProductList" #get all Models listed in Synolgoy API
         echo $(stat --printf="Size: %s" "$ProductList")
@@ -66,11 +68,33 @@ while getopts ":uh" opt; do
             echo "bye" >> "${Script_dir}/comp/lftp.cfg"
             lftp -f "${Script_dir}/comp/lftp.cfg"
             echo "done."
-
+        }
         echo "Updating latest package Versions:"
-        curl "https://archive.synology.com/download/Package/spk/" -# -o "$available_packages"
-        echo "Number of available Packages: $(cat "$available_packages" | xmllint --html --xpath 'count(/html/body/table/tr/td/a/@href)' -)"
-        echo "Package Links: $(xmllint "$available_packages" --html --xpath '/html/body/table/tr/td/a/@href')"
+        lftp -c "open https://archive.synology.com/download/Package/spk/; cls" > "${available_packages}"; #download package list
+        echo "Number of available Packages: $(cat "${available_packages}" | wc -w)"
+        	echo "set net:connection-limit 10" > "${Script_dir}/comp/lftp2.cfg"
+        	echo "set xfer:clobber yes" >> "${Script_dir}/comp/lftp2.cfg"
+        	IFS=" "
+        	declare -a PackageArray
+        	counter="0"
+        	for v in $(cat "${available_packages}")
+        	do
+        		PackageArray["${counter}"]="${v}"
+            	counter=$((counter + 1))
+        	done
+        	IFS=$OLDIFS
+        	#echo -e "\nFound Packages: ${PackageArray[@]}"
+        	echo "" > "${package_versions}"
+        	for v in "${PackageArray[@]}"
+        	do
+        		echo 'echo -n '"${v//\/} "'' >> "${Script_dir}/comp/lftp2.cfg"
+        		echo 'open "https://archive.synology.com/download/Package/spk/'"${v}"'"; dir | tail -n1 | awk "{print $5}" -o '"${package_versions}" >> "${Script_dir}/comp/lftp2.cfg"
+        		#echo -n "${v//\/} " >> "${package_versions}"
+        		#lftp -c "open https://archive.synology.com/download/Package/spk/'${v}'; dir | tail -n1" | awk '{print $5}' >> "${package_versions}"
+        	done
+        	echo "bye" >> "${Script_dir}/comp/lftp2.cfg"
+            lftp -f "${Script_dir}/comp/lftp2.cfg"
+        	cat "${package_versions}"
       ;;
     h)
         echo -e "\navailable commandline-arguments are:\n"

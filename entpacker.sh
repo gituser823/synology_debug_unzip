@@ -67,33 +67,26 @@ while getopts ":uh" opt; do
                 done
             echo "bye" >> "${Script_dir}/comp/lftp.cfg"
             lftp -f "${Script_dir}/comp/lftp.cfg"
-            echo "done."
+            echo "done.";
         }
         echo "Updating latest package Versions:"
         lftp -c "open https://archive.synology.com/download/Package/spk/; cls" > "${available_packages}"; #download package list
         echo "Number of available Packages: $(cat "${available_packages}" | wc -w)"
         	echo "set net:connection-limit 10" > "${Script_dir}/comp/lftp2.cfg"
         	echo "set xfer:clobber yes" >> "${Script_dir}/comp/lftp2.cfg"
-        	IFS=" "
-        	declare -a PackageArray
-        	counter="0"
-        	for v in $(cat "${available_packages}")
-        	do
-        		PackageArray["${counter}"]="${v}"
-            	counter=$((counter + 1))
-        	done
-        	IFS=$OLDIFS
+        	readarray "PackageArray" < "$available_packages"
         	#echo -e "\nFound Packages: ${PackageArray[@]}"
         	echo "" > "${package_versions}"
+            #echo "Array: ${PackageArray[@]}"
         	for v in "${PackageArray[@]}"
         	do
-        		echo 'echo -n '"${v//\/} "'' >> "${Script_dir}/comp/lftp2.cfg"
-        		echo 'open "https://archive.synology.com/download/Package/spk/'"${v}"'"; dir | tail -n1 | awk "{print $5}" -o '"${package_versions}" >> "${Script_dir}/comp/lftp2.cfg"
-        		#echo -n "${v//\/} " >> "${package_versions}"
+        		echo 'echo '"${v//\/}"' Version: '  >> "${Script_dir}/comp/lftp2.cfg"
+        		echo 'open "https://archive.synology.com/download/Package/spk/'"${v//\n}"' test; dir | tail -n1 | awk "{print $5}" -o "${package_versions}"' >> "${Script_dir}/comp/lftp2.cfg"
+        		echo -n "${v//\/} " >> "${package_versions}"
         		#lftp -c "open https://archive.synology.com/download/Package/spk/'${v}'; dir | tail -n1" | awk '{print $5}' >> "${package_versions}"
         	done
         	echo "bye" >> "${Script_dir}/comp/lftp2.cfg"
-            lftp -f "${Script_dir}/comp/lftp2.cfg"
+            #lftp -f "${Script_dir}/comp/lftp2.cfg"
         	cat "${package_versions}"
       ;;
     h)
@@ -185,6 +178,7 @@ do
                 Synoinfo=$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/synoinfo.conf
                 if [[ -f $DOWNLOAD_DIR/debug_$DATE/$DSM/packages.list ]]
                 then    PACK=$DOWNLOAD_DIR/debug_$DATE/$DSM/packages.list
+                        #InstalledPackageArray=$(cat "${PACK}" | awk '{for(i=NF;i>1;i=i-1) printf "%s ", $i; printf "%s\n", $1}' | cut -d " " -f1)
                         grep -i "CloudSync\|MailServer\|SurveillanceStation" "$PACK" >> "$hb_debug"
                         #to add: AD Server, AudioStation protokollierung, CloudStation Server, CloudStation Sharesync, Directory server
                         #DownloadStation: emule, Docker-Discourse, Docker-GitLab, Docker-LXQt, Docker-Redmine, Docker-Spree, Document Viewer
@@ -331,9 +325,9 @@ do
                 SMART_neu=( "${DOWNLOAD_DIR}/debug_${DATE}/${DSM}/var/log/smart_result/"*.txz )
 
 
-                if [ "${#SMART_FILES[@]}" -ne "0" ]; then
-                echo "altsmart#: ${#SMART_FILES[@]}"
-                elif [ "${#SMART_neu[@]}" -ne "0" ]; then
+                #if [ "${#SMART_FILES[@]}" -ne "0" ]; then
+                #echo "altsmart#: ${#SMART_FILES[@]}"
+                if [ "${#SMART_neu[@]}" -ne "0" ]; then
                         tar xf "${SMART_neu[-1]}" -C "$DOWNLOAD_DIR/debug_""$DATE""/""$DSM""/result/"
                         smarttar=$(ls "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/result/var/log/smart_result/ )
                         for file in $(ls $DOWNLOAD_DIR/debug_"$DATE"/"$DSM"/result/var/log/smart_result/"$smarttar"/* )
@@ -344,7 +338,7 @@ do
                         done
                         declare -a SMART_neu_extracted
                         SMART_neu_extracted=( "${DOWNLOAD_DIR}/debug_${DATE}/${DSM}/result/smart"*.result )
-                        echo "neusmart#: ${#SMART_neu_extracted[@]}"
+                        #echo "neusmart#: ${#SMART_neu_extracted[@]}"
                 else
                     echo "No Smart-files found."
                 fi
@@ -379,16 +373,20 @@ do
                 do
                     #[[ -e $f ]] || break #no smart-files
                     hddname=$(basename -- "$file")
-                    hddname2=$(grep -i "Model Family\|Device Model" "$file" | cut -d " " -f7-20 | xargs )
+                    hddname2=$(grep -i "Model Family\|Device Model" "$file" | cut -d " " -f7-20 | sed -r 's/\"/Inch/' | xargs )
                     echo -n "$hddname: $hddname2: PowerOnHours: " >> "$sm"
                     PoH=$(grep -E "Power(_|-)(O|o)n_Hours" "$file" | sed -e "s/ ([^()]*)//g" | rev | cut -d " " -f1 | rev | sed 's/h.*//' )
                     echo -n "${PoH}"", Last Extended SMART-Test: " >> "$sm"
                     LastSmartTest=$(grep -i -m1 "Extended Offline" "$file" | sed -n '/Extended offline/s/ \+/ /gp' | cut -d " " -f9 )
+                    re='^[0-9]+$'
+                    if ! [[ ${LastSmartTest} =~ $re ]] ; then
+                    LastSmartTest=$(grep -i -m1 "Extended Offline" "$file" | sed -n '/Extended offline/s/ \+/ /gp' | cut -d " " -f8 )
+                    fi
                     if [[ -z ${LastSmartTest} ]]; then
                     echo "never, " >> "$sm"
-                else
-                    LastSmartExpr=$(expr "${PoH}" - "${LastSmartTest}" )
-                    echo "$LastSmartExpr" "hours ago, " >> "$sm"
+                        else
+                        LastSmartExpr=$(expr "${PoH}" - "${LastSmartTest}" )
+                        echo "$LastSmartExpr" "hours ago, " >> "$sm"
                     fi
                 done
                 #mehr smart-kram

@@ -21,6 +21,7 @@ CPU_FILE="${Script_dir}/files/CPU.txt"
 PShedPy="${Script_dir}/files/power_shed.py"
 rss="${Script_dir}/files/genRSS.php"
 srs="${Script_dir}/files/SRS.php"
+available_packages_pre="${Script_dir}/files/available_packages_pre.txt"
 available_packages="${Script_dir}/files/available_packages.txt"
 package_versions="${Script_dir}/files/package_versions.txt"
 mkdir -p "${Script_dir}/comp"
@@ -39,7 +40,7 @@ while getopts ":uh" opt; do
         curl "https://www.synology.com/de-de/solution/SRS" -# --output "$srs"
         echo $(stat --printf="Size: %s" "$srs")
         awk '/<div class="selected_country">Deutschland<\/div>/{f=1;next} /<div class="selected_country">Griechenland<\/div>/{f=0} f' "$srs" > "${Script_dir}/files/SRS-de.php"
-        CommentedOutBlock() {
+        CommenttedOut() {
         echo -e "\nGetting available Models:"
         curl "https://www.synology.com/cgi/misc/?action=getProductList_withOEM" -# | grep -oP '(?<=\[).*(?=\])' > "$ProductList" #get all Models listed in Synolgoy API
         echo $(stat --printf="Size: %s" "$ProductList")
@@ -54,7 +55,7 @@ while getopts ":uh" opt; do
         IFS=$OLDIFS
         echo -e "\nModels: ${Models[@]}"
         echo "Downloading In-/Compatibility-lists:"
-            echo "set net:connection-limit 10" > "${Script_dir}/comp/lftp.cfg"
+            echo "set net:connection-limit 20" > "${Script_dir}/comp/lftp.cfg"
             echo "set xfer:clobber yes" >> "${Script_dir}/comp/lftp.cfg"
             for m in "${Models[@]}"
                 do
@@ -70,23 +71,21 @@ while getopts ":uh" opt; do
             echo "done.";
         }
         echo "Updating latest package Versions:"
-        lftp -c "open https://archive.synology.com/download/Package/spk/; cls" > "${available_packages}"; #download package list
-        echo "Number of available Packages: $(cat "${available_packages}" | wc -w)"
-        	echo "set net:connection-limit 10" > "${Script_dir}/comp/lftp2.cfg"
+        lftp -c "open https://archive.synology.com/download/Package/spk/; cls" > "${available_packages_pre}"; #download package list
+        echo "Number of available Packages: $(cat "${available_packages_pre}" | wc -w)"
+        	echo "set net:connection-limit 20" > "${Script_dir}/comp/lftp2.cfg"
         	echo "set xfer:clobber yes" >> "${Script_dir}/comp/lftp2.cfg"
-        	readarray "PackageArray" < "$available_packages"
-        	#echo -e "\nFound Packages: ${PackageArray[@]}"
+            cat "${available_packages_pre}" | awk -v OFS="\\\ " '$1=$1' > "${available_packages}"
+        	readarray -t "PackageArray" < "${available_packages}"
+            #echo "Array: ${PackageArray[@]}" #package array, i.e. Java7/
         	echo "" > "${package_versions}"
-            #echo "Array: ${PackageArray[@]}"
+            echo "open https://archive.synology.com/download/Package/spk/" >> "${Script_dir}/comp/lftp2.cfg"
         	for v in "${PackageArray[@]}"
         	do
-        		echo 'echo '"${v//\/}"' Version: '  >> "${Script_dir}/comp/lftp2.cfg"
-        		echo 'open "https://archive.synology.com/download/Package/spk/'"${v//\n}"' test; dir | tail -n1 | awk "{print $5}" -o "${package_versions}"' >> "${Script_dir}/comp/lftp2.cfg"
-        		echo -n "${v//\/} " >> "${package_versions}"
-        		#lftp -c "open https://archive.synology.com/download/Package/spk/'${v}'; dir | tail -n1" | awk '{print $5}' >> "${package_versions}"
+                echo "echo -n "\""${v//\/}" \""; cd ${v}; dir | tail -n1 | cut -d \' \'  -f18; cd .." >> "${Script_dir}/comp/lftp2.cfg"
         	done
         	echo "bye" >> "${Script_dir}/comp/lftp2.cfg"
-            #lftp -f "${Script_dir}/comp/lftp2.cfg"
+            lftp -f "${Script_dir}/comp/lftp2.cfg" | tee "${package_versions}"
         	cat "${package_versions}"
       ;;
     h)
@@ -114,7 +113,7 @@ if [[ $(find "${Script_dir}"/files/ -name SRS.php -mtime +7) ]] || [[ -z $(find 
         awk '/<div class="selected_country">Deutschland<\/div>/{f=1;next} /<div class="selected_country">Griechenland<\/div>/{f=0} f' "$srs" > "${Script_dir}"/files/SRS-de.php
 fi
 
-echo "Waiting for debug-files..."
+echo -e "\nWaiting for debug-files..."
 
 if grep -qE "(Microsoft|WSL)" /proc/version &> /dev/null ; then
     subl=/mnt/c/Program\ Files/Sublime\ Text\ 3/subl.exe
@@ -178,7 +177,68 @@ do
                 Synoinfo=$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/synoinfo.conf
                 if [[ -f $DOWNLOAD_DIR/debug_$DATE/$DSM/packages.list ]]
                 then    PACK=$DOWNLOAD_DIR/debug_$DATE/$DSM/packages.list
-                        #InstalledPackageArray=$(cat "${PACK}" | awk '{for(i=NF;i>1;i=i-1) printf "%s ", $i; printf "%s\n", $1}' | cut -d " " -f1)
+                        declare -a InstalledPackageArray
+                        cat "${PACK}" | sed '1d' | awk '{for(i=NF;i>1;i=i-1) printf "%s ", $i; printf "%s\n", $1}' | cut -d " " -f1 > "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/packages_ver.list
+                        readarray -t "InstalledPackageArray" < "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/packages_ver.list
+                        counter=0
+                        for i in "${InstalledPackageArray[@]}"
+                        do
+                            aver=$(grep "$i " "$package_versions")
+                            PureVerAvailable=$(echo "${aver}" | rev | cut -d " " -f1 | rev | sed 's/\-/./g')
+                            PureVerInstalled=$(grep "$i " "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/var/log/synopkg.log | tail -n1 | grep -oP '(?<='$i' )\S*' | sed 's/\-/./g')
+                            echo "${InstalledPackageArray[$counter]}: Installed: $PureVerInstalled vs. available: $PureVerAvailable"
+    version_cmp() {
+    if (( $# != 3 )) ||
+       [[ $1 != +([0-9])*(.+([0-9])) ||
+          $2 != @(==|!=|>|>=|<|<=)   ||
+          $3 != +([0-9])*(.+([0-9])) ]]; then
+        printf 'Usage: version_cmp VERSION { == | != | > | >= | < | <= } VERSION\n' >&2
+        return 127
+    fi
+
+    local op=$2
+
+    local -a x y
+    IFS=. read -r -a x <<<"$1" || return $?
+    IFS=. read -r -a y <<<"$3" || return $?
+
+    while (( ${#x[@]} && ${#y[@]} && x[0] == y[0] )); do
+        x=( "${x[@]:1}" )
+        y=( "${y[@]:1}" )
+    done
+
+    # shellcheck disable=SC2086,SC1105,SC2211
+    if (( ${#x[@]} && ${#y[@]} )); then
+        (( x[0] $op y[0] ))
+    else
+        (( ${#x[@]} $op ${#y[@]} ))
+    fi
+}
+if version_cmp "${PureVerInstalled}" '==' "${PureVerAvailable}"; then
+    echo -e "\e[32msame Version!\e[0m"
+elif version_cmp "${PureVerInstalled}" '<' "${PureVerAvailable}"; then
+    echo -e "\e[31mnew Version is available\e[0m"
+elif version_cmp "${PureVerInstalled}" '>' "${PureVerAvailable}"; then
+    echo -e "\e[93minstalled Version later than available?!\e[0m"
+else
+    echo -ne "\e[101msome error occured: "
+    echo -e "${InstalledPackageArray[$counter]}: Installed: $PureVerInstalled vs. available: $PureVerAvailable\e[0m"
+fi
+                            #if [[ $(echo "$PureVerAvailable > $PureVerInstalled" | bc) ]]
+                            #then
+                            #    echo "Update for ${InstalledPackageArray[$counter]} to $PureVerAvailable available!"
+                            #elif [[ $PureVerAvailable -le $PureVerInstalled ]]
+                            #then
+                            #    echo "Up to Date!"
+                            #else
+                            #    echo "Error occured."
+                            #fi
+                            #echo "counter: $counter"
+                            counter=$((counter + 1))
+                            #sed -i "'${counter}i\'$abc'" "$package_versions" ##geht nicht.
+                        done
+                        #echo -e "\n\n\navailable Versions:"
+                        #cat "${package_versions}"
                         grep -i "CloudSync\|MailServer\|SurveillanceStation" "$PACK" >> "$hb_debug"
                         #to add: AD Server, AudioStation protokollierung, CloudStation Server, CloudStation Sharesync, Directory server
                         #DownloadStation: emule, Docker-Discourse, Docker-GitLab, Docker-LXQt, Docker-Redmine, Docker-Spree, Document Viewer
@@ -535,6 +595,8 @@ do
                     ethresult=$(grep "Speed" -H "$file")
                     echo "${ethresult#$DOWNLOAD_DIR/debug_$DATE/$DSM/result/}" >> "$sm"
                 done
+                echo "DNS Servers:" >> "$sm"
+                cat "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/resolv.conf" >> "$sm"
                 echo -e "\n" >> "$sm"
                 cat "$Route" >> "$IFCONFIG"
                 #echo -e "\n" >> "$sm"
@@ -652,7 +714,7 @@ do
                            python "${PShedPy}" $p >> "$hb_debug";
                         fi
                         done < $DOWNLOAD_DIR/debug_$DATE/$DSM/etc/power_sched.conf
-                    else
+                    els
                      echo "power_sched.conf not found." >> "$hb_debug"
                 fi
                 #LDAP: Wenn Ihr Synology NAS als LDAP-Client fungiert (ab DSM 6.0.1)

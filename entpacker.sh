@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #for handling spaces in filenames
-IFS=$'\n'
+#IFS=$'\n'
 
 # set bash option to avoid
 # unmatched patterns expand as result values
@@ -40,7 +40,7 @@ while getopts ":uh" opt; do
         curl "https://www.synology.com/de-de/solution/SRS" -# --output "$srs"
         echo $(stat --printf="Size: %s" "$srs")
         awk '/<div class="selected_country">Deutschland<\/div>/{f=1;next} /<div class="selected_country">Griechenland<\/div>/{f=0} f' "$srs" > "${Script_dir}/files/SRS-de.php"
-        CommenttedOut() {
+        #CommentedOut() { #uncomment this and line 72 to stop downloading hdd-comp on -u
         echo -e "\nGetting available Models:"
         curl "https://www.synology.com/cgi/misc/?action=getProductList_withOEM" -# | grep -oP '(?<=\[).*(?=\])' > "$ProductList" #get all Models listed in Synolgoy API
         echo $(stat --printf="Size: %s" "$ProductList")
@@ -69,7 +69,7 @@ while getopts ":uh" opt; do
             echo "bye" >> "${Script_dir}/comp/lftp.cfg"
             lftp -f "${Script_dir}/comp/lftp.cfg"
             echo "done.";
-        }
+        #}
         echo "Updating latest package Versions:"
         lftp -c "open https://archive.synology.com/download/Package/spk/; cls" > "${available_packages_pre}"; #download package list
         echo "Number of available Packages: $(cat "${available_packages_pre}" | wc -w)"
@@ -92,8 +92,13 @@ while getopts ":uh" opt; do
         echo -e "\navailable commandline-arguments are:\n"
         echo -e "\t-h : Show this help"
         echo -e "\t-u : Update SRS-List, DSM-Updates, HDD-(in-)compatibility-lists, package updates"
+        echo -e "\t-v : Be Verbose."
         echo -e "\n"
         exit 1
+      ;;
+    v)
+        verbose=1
+        echo "Verbose output enabled."
       ;;
     \?)
       echo "Invalid option: -$OPTARG. List all options with -h" >&2
@@ -101,6 +106,12 @@ while getopts ":uh" opt; do
       ;;
   esac
 done
+
+function log () { #Verbose Logging function, usage: log "Infos"
+    if [[ $verbose -eq 1 ]]; then
+        echo "$@"
+    fi
+}
 
 if [[ $(find "${Script_dir}"/files/ -name genRSS.php -mtime +2) ]] || [[ -z $(find "${Script_dir}"/files/ -name genRSS.php) ]]; then  #update genRSS.php after 2 days or if no file found
         echo "Downloading latest genRSS.php:"
@@ -114,14 +125,6 @@ if [[ $(find "${Script_dir}"/files/ -name SRS.php -mtime +7) ]] || [[ -z $(find 
 fi
 
 echo -e "\nWaiting for debug-files..."
-
-if grep -qE "(Microsoft|WSL)" /proc/version &> /dev/null ; then
-    subl=/mnt/c/Program\ Files/Sublime\ Text\ 3/subl.exe
-    os=win
-else
-    subl=subl
-    os=other
-fi
 
 while true;
 do
@@ -183,7 +186,7 @@ do
                         counter=0
                         for i in "${InstalledPackageArray[@]}"
                         do
-                            aver=$(grep "$i " "$package_versions")
+                            aver=$(grep "^$i " "$package_versions")
                             PureVerAvailable=$(echo "${aver}" | rev | cut -d " " -f1 | rev | sed 's/\-/./g')
                             PureVerInstalled=$(grep "$i " "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/var/log/synopkg.log | tail -n1 | grep -oP '(?<='$i' )\S*' | sed 's/\-/./g')
                             echo "${InstalledPackageArray[$counter]}: Installed: $PureVerInstalled vs. available: $PureVerAvailable"
@@ -193,17 +196,13 @@ do
                                 ! printf "%s\n" "$@" | sort --check --version-sort &> /dev/null
                             }
 
-                            version_compare_lt() {
-                                ! printf "$@\n"  "%s" | sort --check --version-sort &> /dev/null
-                            }
-
                             if version_compare_gt "$PureVerAvailable" "$PureVerInstalled"; then
                                 echo -e "\e[31mUpdate to $PureVerAvailable available!\e[0m"
-                                echo "Update for ${InstalledPackageArray[$counter]} to $PureVerAvailable available!" >> "$sm"
-                            elif version_compare_lt "$PureVerAvailable" "$PureVerInstalled"; then
+                                echo "Update for ${InstalledPackageArray[$counter]} from currently $PureVerInstalled to $PureVerAvailable available!" >> "$sm"
+                            elif version_compare_gt "$PureVerInstalled" "$PureVerAvailable"; then
                                 echo -e "\e[93minstalled Version later than available?!\e[0m"
                             elif [[ "$PureVerInstalled" == "$PureVerAvailable" ]] ; then
-                                echo -e "\e[32msame Version!\e[0m"
+                                echo -e "\e[32msame Version, package is up to date!\e[0m"
                             else
                                 echo -ne "\e[101msome error occured: "
                                 echo -e "${InstalledPackageArray[$counter]}: Installed: $PureVerInstalled vs. available: $PureVerAvailable\e[0m"
@@ -570,7 +569,10 @@ do
                     echo "${ethresult#$DOWNLOAD_DIR/debug_$DATE/$DSM/result/}" >> "$sm"
                 done
                 echo "DNS Servers:" >> "$sm"
-                cat "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/resolv.conf" >> "$sm"
+                if [ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/resolv.conf" ]; then
+                cat "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/resolv.conf" >> "$sm"
+                    else echo "/etc/resolv.conf not found." >> "$sm"
+                fi
                 echo -e "\n" >> "$sm"
                 cat "$Route" >> "$IFCONFIG"
                 #echo -e "\n" >> "$sm"
@@ -701,9 +703,12 @@ do
                 done
 
                 sleep 1
-                $subl "$DEBUG_DIR" "$SMART_GREP" "$PACK" "$Bash_history" "$hb_debug" "$HB" "$DF" "$IFCONFIG" "$SPACE_FILES":10000 "$SYSDBtac":100000 "$sm" "$MESSAGES":1000000 "${PicArray[@]}" #$pics
+                $subl "$OpenFiles"
+                #$subl "$DEBUG_DIR" "$SMART_GREP" "$PACK" "$Bash_history" "$hb_debug" "$HB" "$DF" "$IFCONFIG" "$SPACE_FILES":10000 "$SYSDBtac":100000 "$sm" "$MESSAGES":1000000 "${PicArray[@]}"
+                #"${subl}" "$DEBUG_DIR" "$SMART_GREP" "$PACK" "$Bash_history" "$hb_debug" "$HB" "$DF" "$IFCONFIG" "$SPACE_FILES":10000 "$SYSDBtac":100000 "$sm" "$MESSAGES":1000000 "${PicArray[@]}" #$pics
                 echo "subl \"$DEBUG_DIR\" \"$SMART_GREP\" \"$PACK\" \"$Bash_history\" \"$hb_debug\" \"$HB\" \"$DF\" \"$IFCONFIG\" \"$SPACE_FILES:10000\" \"$SYSDBtac:100000\" \"$sm\" \"$MESSAGES:1000000\" \"${PicArray[@]}\""
                 echo "subl \"$DEBUG_DIR\" \"$SMART_GREP\" \"$PACK\" \"$Bash_history\" \"$hb_debug\" \"$HB\" \"$DF\" \"$IFCONFIG\" \"$SPACE_FILES:10000\" \"$SYSDBtac:100000\" \"$sm\" \"$MESSAGES:1000000\" \"${PicArray[@]}\"" > ~/last_debug.sh
+                echo "Array: $OpenFiles"
                 # for smart-files: ${SMART_FILES[@]}  $MDSTAT
             else
                 mkdir -p $DOWNLOAD_DIR/kapott
@@ -726,4 +731,4 @@ do
     #Scan_time=$(date +"%H:%M:%S")
     #echo $Scan_time "Rescanning for .dat Files"
 done
-IFS="$OIFS"
+#IFS="$OIFS"

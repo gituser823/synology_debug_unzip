@@ -187,55 +187,29 @@ do
                             PureVerAvailable=$(echo "${aver}" | rev | cut -d " " -f1 | rev | sed 's/\-/./g')
                             PureVerInstalled=$(grep "$i " "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/var/log/synopkg.log | tail -n1 | grep -oP '(?<='$i' )\S*' | sed 's/\-/./g')
                             echo "${InstalledPackageArray[$counter]}: Installed: $PureVerInstalled vs. available: $PureVerAvailable"
-    version_cmp() {
-    if (( $# != 3 )) ||
-       [[ $1 != +([0-9])*(.+([0-9])) ||
-          $2 != @(==|!=|>|>=|<|<=)   ||
-          $3 != +([0-9])*(.+([0-9])) ]]; then
-        printf 'Usage: version_cmp VERSION { == | != | > | >= | < | <= } VERSION\n' >&2
-        return 127
-    fi
 
-    local op=$2
+                            # "gt" means "greater than"
+                            version_compare_gt() {
+                                ! printf "%s\n" "$@" | sort --check --version-sort &> /dev/null
+                            }
 
-    local -a x y
-    IFS=. read -r -a x <<<"$1" || return $?
-    IFS=. read -r -a y <<<"$3" || return $?
+                            version_compare_lt() {
+                                ! printf "$@\n"  "%s" | sort --check --version-sort &> /dev/null
+                            }
 
-    while (( ${#x[@]} && ${#y[@]} && x[0] == y[0] )); do
-        x=( "${x[@]:1}" )
-        y=( "${y[@]:1}" )
-    done
+                            if version_compare_gt "$PureVerAvailable" "$PureVerInstalled"; then
+                                echo -e "\e[31mUpdate to $PureVerAvailable available!\e[0m"
+                                echo "Update for ${InstalledPackageArray[$counter]} to $PureVerAvailable available!" >> "$sm"
+                            elif version_compare_lt "$PureVerAvailable" "$PureVerInstalled"; then
+                                echo -e "\e[93minstalled Version later than available?!\e[0m"
+                            elif [[ "$PureVerInstalled" == "$PureVerAvailable" ]] ; then
+                                echo -e "\e[32msame Version!\e[0m"
+                            else
+                                echo -ne "\e[101msome error occured: "
+                                echo -e "${InstalledPackageArray[$counter]}: Installed: $PureVerInstalled vs. available: $PureVerAvailable\e[0m"
+                            fi
 
-    # shellcheck disable=SC2086,SC1105,SC2211
-    if (( ${#x[@]} && ${#y[@]} )); then
-        (( x[0] $op y[0] ))
-    else
-        (( ${#x[@]} $op ${#y[@]} ))
-    fi
-}
-if version_cmp "${PureVerInstalled}" '==' "${PureVerAvailable}"; then
-    echo -e "\e[32msame Version!\e[0m"
-elif version_cmp "${PureVerInstalled}" '<' "${PureVerAvailable}"; then
-    echo -e "\e[31mnew Version is available\e[0m"
-elif version_cmp "${PureVerInstalled}" '>' "${PureVerAvailable}"; then
-    echo -e "\e[93minstalled Version later than available?!\e[0m"
-else
-    echo -ne "\e[101msome error occured: "
-    echo -e "${InstalledPackageArray[$counter]}: Installed: $PureVerInstalled vs. available: $PureVerAvailable\e[0m"
-fi
-                            #if [[ $(echo "$PureVerAvailable > $PureVerInstalled" | bc) ]]
-                            #then
-                            #    echo "Update for ${InstalledPackageArray[$counter]} to $PureVerAvailable available!"
-                            #elif [[ $PureVerAvailable -le $PureVerInstalled ]]
-                            #then
-                            #    echo "Up to Date!"
-                            #else
-                            #    echo "Error occured."
-                            #fi
-                            #echo "counter: $counter"
                             counter=$((counter + 1))
-                            #sed -i "'${counter}i\'$abc'" "$package_versions" ##geht nicht.
                         done
                         #echo -e "\n\n\navailable Versions:"
                         #cat "${package_versions}"
@@ -714,13 +688,13 @@ fi
                            python "${PShedPy}" $p >> "$hb_debug";
                         fi
                         done < $DOWNLOAD_DIR/debug_$DATE/$DSM/etc/power_sched.conf
-                    els
+                    else
                      echo "power_sched.conf not found." >> "$hb_debug"
                 fi
                 #LDAP: Wenn Ihr Synology NAS als LDAP-Client fungiert (ab DSM 6.0.1)
                 declare -a PicArray
                 counter=0
-                allpics=$(find "$DOWNLOAD_DIR/debug_${DATE}/" -type f \( -name "*.jpg" -o -name "*.png" \))
+                allpics=$(find "$DOWNLOAD_DIR/debug_${DATE}/" -type f \( -name "*.jpg" -o -name "*.png" -o -name "*.PNG"-o -name "*.JPG" \))
                 for pic in $allpics
                 do  PicArray["${counter}"]="${pic}"
                     counter=$((counter + 1))

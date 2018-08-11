@@ -28,8 +28,13 @@ mkdir -p "${Script_dir}/comp"
 ProductList="${Script_dir}/comp/ProductList.txt"
 
 
+function log () { #Verbose Logging function, usage: log "Infos"
+    if [[ $verbose -eq 1 ]]; then
+        echo "$@"
+    fi
+}
 
-while getopts ":uh" opt; do
+while getopts ":uvh" opt; do
   case $opt in
     u)
         echo "updating files:" >&2
@@ -98,7 +103,6 @@ while getopts ":uh" opt; do
       ;;
     v)
         verbose=1
-        echo "Verbose output enabled."
       ;;
     \?)
       echo "Invalid option: -$OPTARG. List all options with -h" >&2
@@ -107,11 +111,6 @@ while getopts ":uh" opt; do
   esac
 done
 
-function log () { #Verbose Logging function, usage: log "Infos"
-    if [[ $verbose -eq 1 ]]; then
-        echo "$@"
-    fi
-}
 
 if [[ $(find "${Script_dir}"/files/ -name genRSS.php -mtime +2) ]] || [[ -z $(find "${Script_dir}"/files/ -name genRSS.php) ]]; then  #update genRSS.php after 2 days or if no file found
         echo "Downloading latest genRSS.php:"
@@ -125,6 +124,8 @@ if [[ $(find "${Script_dir}"/files/ -name SRS.php -mtime +7) ]] || [[ -z $(find 
 fi
 
 echo -e "\nWaiting for debug-files..."
+
+log "Verbose logging enabled."
 
 while true;
 do

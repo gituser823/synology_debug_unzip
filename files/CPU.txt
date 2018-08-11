@@ -1,4 +1,7 @@
 System Modell	CPU-Modell			Kerne		Threads	FPU	Paket-Architektur RAM
+x19-Reihe
+RS1219+     Intel Atom C2538        Quad Core   4   Ja  Avoton  DDR3 2 GB
+x18-Reihe
 FS1018 		Intel Pentium D1508 	Dual Core 	4 	Yes 	Broadwellnk 	DDR4 SO-DIMM 8 GB
 RS3618xs 	Intel Xeon D-1521 		Quad Core 	8 	Yes 	Broadwell 	DDR4 ECC UDIMM 8 GB
 RS2818RP+ 	Intel Atom C3538 		Quad Core 	4 	Yes 	Denverton 	DDR4-2133 Non-ECC UDIMM 4 GB

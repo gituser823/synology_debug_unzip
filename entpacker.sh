@@ -28,10 +28,14 @@ mkdir -p "${Script_dir}/comp"
 ProductList="${Script_dir}/comp/ProductList.txt"
 
 
-function log () { #Verbose Logging function, usage: log "Infos"
-    if [[ $verbose -eq 1 ]]; then
-        echo "$@"
+function log() {
+    [[ "$verbose" != 1 ]] && return
+    if read -t0.01; then
+        { echo "$REPLY"; cat; } | sed 's/^/[verbose] /'
     fi
+    for arg in "$@"; do
+        echo -e "[verbose] $arg"
+    done
 }
 
 while getopts ":uvh" opt; do
@@ -77,6 +81,7 @@ while getopts ":uvh" opt; do
         #}
         echo "Updating latest package Versions:"
         lftp -c "open https://archive.synology.com/download/Package/spk/; cls" > "${available_packages_pre}"; #download package list
+        sed -i '/^enabled$/d' "${available_packages_pre}"
         echo "Number of available Packages: $(cat "${available_packages_pre}" | wc -w)"
         	echo "set net:connection-limit 20" > "${Script_dir}/comp/lftp2.cfg"
         	echo "set xfer:clobber yes" >> "${Script_dir}/comp/lftp2.cfg"
@@ -129,11 +134,11 @@ log "Verbose logging enabled."
 
 while true;
 do
-    for file in "$DOWNLOAD_DIR"/*.dat
+    for file in "${DOWNLOAD_DIR}"/*.dat
     do
-        if [[ -f $file ]]
+        if [[ -f "${file}" ]]
         then
-            while [[ -f $file.part ]] #wait for file to finish downloading (Firefox)
+            while [[ -f "${file}".part ]] #wait for file to finish downloading (Firefox)
             do
                 #echo "Waiting for Download to finish.."
                 sleep $sleep_extract_zip
@@ -179,7 +184,7 @@ do
                 hb_debug=$DOWNLOAD_DIR/debug_$DATE/$DSM/hibernation_debug.log
                 DEBUG_DIR=$DOWNLOAD_DIR/debug_$DATE
                 Synoinfo=$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/synoinfo.conf
-                if [[ -f $DOWNLOAD_DIR/debug_$DATE/$DSM/packages.list ]]
+                if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/packages.list" ]]
                 then    PACK=$DOWNLOAD_DIR/debug_$DATE/$DSM/packages.list
                         declare -a InstalledPackageArray
                         cat "${PACK}" | sed '1d' | awk '{for(i=NF;i>1;i=i-1) printf "%s ", $i; printf "%s\n", $1}' | cut -d " " -f1 > "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/packages_ver.list
@@ -189,7 +194,7 @@ do
                         do
                             aver=$(grep "^$i " "$package_versions")
                             PureVerAvailable=$(echo "${aver}" | rev | cut -d " " -f1 | rev | sed 's/\-/./g')
-                            PureVerInstalled=$(grep "$i " "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/var/log/synopkg.log | tail -n1 | grep -oP '(?<='$i' )\S*' | sed 's/\-/./g')
+                            PureVerInstalled=$(grep -a "$i " "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/var/log/synopkg.log | tail -n1 | grep -aoP '(?<='$i' )\S*' | sed 's/\-/./g')
                             echo "${InstalledPackageArray[$counter]}: Installed: $PureVerInstalled vs. available: $PureVerAvailable"
 
                             # "gt" means "greater than"
@@ -398,12 +403,24 @@ do
                     done
                 done
                 echo -e "\nHDDs: " >> "$sm"
-                echo "Reallocated_Sector_Ct:" $BadSector_sum >> "$sm"
-                echo "Current_Pending_Sector:" $PendingSectors_sum >> "$sm"
-                echo "Offline_Uncorrectable:" $OfflineUncorrectable_sum >> "$sm"
+                if [ -z "${BadSector_sum+x}" ]; then
+                    echo "Reallocated_Sector_Ct: error" >> "$sm"
+                    else
+                    echo "Reallocated_Sector_Ct:" "$BadSector_sum" >> "$sm"
+                fi
+                if [ -z "${PendingSectors_sum+x}" ]; then
+                    echo "Current_Pending_Sector: error" >> "$sm"
+                    else
+                    echo "Current_Pending_Sector:" "$PendingSectors_sum" >> "$sm"
+                fi
+                if [ -z "${OfflineUncorrectable_sum+x}" ]; then
+                    echo "Offline_Uncorrectable: error" >> "$sm"
+                    else
+                    echo "Offline_Uncorrectable:" "$OfflineUncorrectable_sum" >> "$sm"
+                fi
 
                 #declare -a PowerOnHours
-                for file in $(ls $DOWNLOAD_DIR/debug_"$DATE"/"$DSM"/result/smart*.result)
+                for file in $(ls "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/result/smart*.result)
                 do
                     #[[ -e $f ]] || break #no smart-files
                     hddname=$(basename -- "$file")
@@ -416,8 +433,10 @@ do
                     if ! [[ ${LastSmartTest} =~ $re ]] ; then
                     LastSmartTest=$(grep -i -m1 "Extended Offline" "$file" | sed -n '/Extended offline/s/ \+/ /gp' | cut -d " " -f8 )
                     fi
-                    if [[ -z ${LastSmartTest} ]]; then
+                    if [[ -z "${LastSmartTest}" ]]; then
                     echo "never, " >> "$sm"
+                    elif [ -z "${LastSmartTest+x}" ]; then
+                    echo "error";
                         else
                         LastSmartExpr=$(expr "${PoH}" - "${LastSmartTest}" )
                         echo "$LastSmartExpr" "hours ago, " >> "$sm"
@@ -442,40 +461,40 @@ do
                     echo -e " \n \n"  >> "$sg"
                 done
 
-                ls -lh $DOWNLOAD_DIR/debug_"$DATE"/"$DSM"/etc/space/space_history_*.xml >> $DOWNLOAD_DIR/debug_"$DATE"/"$DSM"/space
-                for file in $(ls $DOWNLOAD_DIR/debug_"$DATE"/"$DSM"/etc/space/space_history_*.xml)
+                ls -lh "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/etc/space/space_history_*.xml >> "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/space
+                for file in $(ls "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/etc/space/space_history_*.xml)
                 do
                     #[[ -e $f ]] || break #no space-files
                     {
                     echo "$file"
                     cat "$file"
                     echo -e "\n \n \n \n"
-                    } >> $DOWNLOAD_DIR/debug_"$DATE"/"$DSM"/space
+                    } >> "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/space
                 done
-                SPACE_FILES=$DOWNLOAD_DIR/debug_"$DATE"/"$DSM"/space
+                SPACE_FILES="$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/space
 
-                if [[ -f $DOWNLOAD_DIR/debug_$DATE/$DSM/smartgrep ]]
-                then    SMART_GREP=$DOWNLOAD_DIR/debug_$DATE/$DSM/smartgrep
+                if [[ -f "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/smartgrep ]]
+                then    SMART_GREP="$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/smartgrep
                 fi
-                if [[ -f $DOWNLOAD_DIR/debug_$DATE/$DSM/result/dmidecode.result ]]
+                if [[ -f "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/result/dmidecode.result ]]
                 then
                     BIOS_V_CUT=$( grep -i "BIOS Information" -A5 $DOWNLOAD_DIR/debug_"$DATE"/"$DSM"/result/dmidecode.result | grep -i "Version" | sed "s/.*Version: //" )
                         #DS_MEM=$( grep -A6 "Memory Device Mapped Address" $DOWNLOAD_DIR/debug_$DATE/$DSM/result/dmidecode.result | grep "Range Size" | sed "s/.*Size: //" )
                         #DS_MEM3=$(grep -A6 "Memory Device$" $DOWNLOAD_DIR/debug_$DATE/$DSM/result/dmidecode.result | grep Size)
                 fi
-                if [[ -f $DOWNLOAD_DIR/debug_$DATE/$DSM/result/dmesg.result ]]
+                if [[ -f "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/result/dmesg.result ]]
                 then    Dmesg=$DOWNLOAD_DIR/debug_$DATE/$DSM/result/dmesg.result
                         #DS_MEM2=$( grep -i -m1 "Memory: " $Dmesg | sed "s/.*Memory: //" | cut -d " " -f3 )
                         Syno_bios=$( tac "$Dmesg" | grep "synobios: load" -m1 | sed 's/.*load, //' )
                 fi
-                if [[ -f $DOWNLOAD_DIR/debug_$DATE/$DSM/result/free.result ]]
+                if [[ -f "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/result/free.result ]]
                 then
                         free_mem=$( grep Mem $DOWNLOAD_DIR/debug_"$DATE"/"$DSM"/result/free.result | awk '{ print $2 }' | awk '{ split( "KB MB GB" , v ); s=1; while( $1>1024 ){ $1/=1024; s++ } print int($1) v[s] }' )
                 fi
-                if [[ -f $DOWNLOAD_DIR/debug_$DATE/$DSM/result/route.result ]]
+                if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/route.result" ]]
                 then    Route=$DOWNLOAD_DIR/debug_$DATE/$DSM/result/route.result
                 fi
-                if [[ -f $DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/kern.log ]]
+                if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/kern.log" ]]
                 then    KERN=$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/kern.log
                     DS_HWMODEL=$( grep -ia -m1 'syno_hw_version' "$KERN" | sed 's/.*syno_hw_version=//' | cut -d " " -f1 | sed 's/v.*$//' | sed 's/p\b/+/g') #i.e. DS213j
                     DS_MODEL=$( grep -ia -m1 '] Model:' "$KERN" | sed 's/.*: //' | sed 's/-//g' | sed 's/-//p') #i.e. DS213j
@@ -519,6 +538,7 @@ do
                     if [ "$DS_MODEL" = "DS718+" ] || [ "$DS_MODEL" = "DS918+" ] || [ "$DS_MODEL" = "DS218+" ] || [ "$DS_MODEL" = "DS418play" ] || [ "$DS_HWMODEL" = "DS718+" ] || [ "$DS_HWMODEL" = "DS918+" ] || [ "$DS_HWMODEL" = "DS218+" ] || [ "$DS_HWMODEL" = "DS418play" ]; then
                         echo "possible BIOS-Issue: https://css.synology.com/issue/12026" >> "$sm"
                         echo "Update to DSM 6.1.3-15152 Update 7 to update the BIOS." >> "$sm"
+                        echo "Bug is fixed in: DS718+  M.220, DS918+  M.024, DS218+  M.124, DS418play M.310" >> "$sm"
                     fi
                 if [[ -f $DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/messages.log ]]
                 then
@@ -698,26 +718,35 @@ do
                 declare -a PicArray
                 counter=0
                 allpics=$(find "$DOWNLOAD_DIR/debug_${DATE}/" -type f \( -name "*.jpg" -o -name "*.png" -o -name "*.PNG"-o -name "*.JPG" \))
-                for pic in $allpics
+                for pic in "${allpics}"
                 do  PicArray["${counter}"]="${pic}"
                     counter=$((counter + 1))
                 done
 
                 sleep 1
-                $subl "$OpenFiles"
+
+                source "${Script_dir}/files/config.sh" #load OpenFiles[] Array from config.sh
+                "${subl}" "${OpenFiles[@]}" #open files defined in config.sh with editor
+                echo -n "${subl} "
+                echo -n "${subl} " > ~/last_debug.sh
+                for arg in "${OpenFiles[@]}"
+                    do echo -n "\"$arg\" "
+                       echo -n "\"$arg\" " >> ~/last_debug.sh
+                done
+                echo "\"" #??
                 #$subl "$DEBUG_DIR" "$SMART_GREP" "$PACK" "$Bash_history" "$hb_debug" "$HB" "$DF" "$IFCONFIG" "$SPACE_FILES":10000 "$SYSDBtac":100000 "$sm" "$MESSAGES":1000000 "${PicArray[@]}"
                 #"${subl}" "$DEBUG_DIR" "$SMART_GREP" "$PACK" "$Bash_history" "$hb_debug" "$HB" "$DF" "$IFCONFIG" "$SPACE_FILES":10000 "$SYSDBtac":100000 "$sm" "$MESSAGES":1000000 "${PicArray[@]}" #$pics
-                echo "subl \"$DEBUG_DIR\" \"$SMART_GREP\" \"$PACK\" \"$Bash_history\" \"$hb_debug\" \"$HB\" \"$DF\" \"$IFCONFIG\" \"$SPACE_FILES:10000\" \"$SYSDBtac:100000\" \"$sm\" \"$MESSAGES:1000000\" \"${PicArray[@]}\""
-                echo "subl \"$DEBUG_DIR\" \"$SMART_GREP\" \"$PACK\" \"$Bash_history\" \"$hb_debug\" \"$HB\" \"$DF\" \"$IFCONFIG\" \"$SPACE_FILES:10000\" \"$SYSDBtac:100000\" \"$sm\" \"$MESSAGES:1000000\" \"${PicArray[@]}\"" > ~/last_debug.sh
-                echo "Array: $OpenFiles"
+                #echo "subl \"$DEBUG_DIR\" \"$SMART_GREP\" \"$PACK\" \"$Bash_history\" \"$hb_debug\" \"$HB\" \"$DF\" \"$IFCONFIG\" \"$SPACE_FILES:10000\" \"$SYSDBtac:100000\" \"$sm\" \"$MESSAGES:1000000\" \"${PicArray[@]}\""
+                #echo "subl \"$DEBUG_DIR\" \"$SMART_GREP\" \"$PACK\" \"$Bash_history\" \"$hb_debug\" \"$HB\" \"$DF\" \"$IFCONFIG\" \"$SPACE_FILES:10000\" \"$SYSDBtac:100000\" \"$sm\" \"$MESSAGES:1000000\" \"${PicArray[@]}\"" > ~/last_debug.sh
+                #echo "Array: ${OpenFiles[@]}"
                 # for smart-files: ${SMART_FILES[@]}  $MDSTAT
             else
-                mkdir -p $DOWNLOAD_DIR/kapott
-                mv "$file" $DOWNLOAD_DIR/kapott/debug_"$DATE".dat
+                mkdir -p "${DOWNLOAD_DIR}"/kapott
+                mv "$file" "${DOWNLOAD_DIR}"/kapott/debug_"$DATE".dat
                 echo "$file" "konnte nicht entpackt werden."
-                if [[ $os = "win" ]]; then
+                if [[ "$os" = "win" ]]; then
                     echo "" #maybe add things here
-                elif [[ $os = "other" ]]; then
+                elif [[ "$os" = "other" ]]; then
                     #statements
                     zenity --error --text="Debug konnte nicht entpackt werden\!" --title="Achtung!" 2> /dev/null
                 fi

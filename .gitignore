@@ -1,1 +1,3 @@
-*.txt
+*.php
+/files/available_packages.txt
+/files/package_versions.txt

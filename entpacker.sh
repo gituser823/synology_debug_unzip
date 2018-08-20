@@ -532,7 +532,7 @@ do
                         grep_cputemp=$( grep -c "<cpu_temperature> is over" $DOWNLOAD_DIR/debug_"$DATE"/"$DSM"/var/log/scemd.log )
                         if [ "$grep_cputemp" -gt 0 ]; then
                         echo "CPU is overheating, RMA unit: https://css.synology.com/issue/11124" >> "$sm"
-                        grep -i "<cpu_temperature> is over" $DOWNLOAD_DIR/debug_"$DATE"/"$DSM"/var/log/scemd.log >> "$sm"
+                        grep -ia "<cpu_temperature> is over" $DOWNLOAD_DIR/debug_"$DATE"/"$DSM"/var/log/scemd.log >> "$sm"
                         fi
                     fi
                     if [ "$DS_MODEL" = "DS718+" ] || [ "$DS_MODEL" = "DS918+" ] || [ "$DS_MODEL" = "DS218+" ] || [ "$DS_MODEL" = "DS418play" ] || [ "$DS_HWMODEL" = "DS718+" ] || [ "$DS_HWMODEL" = "DS918+" ] || [ "$DS_HWMODEL" = "DS218+" ] || [ "$DS_HWMODEL" = "DS418play" ]; then

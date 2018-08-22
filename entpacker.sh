@@ -147,6 +147,7 @@ do
                 sleep $sleep_extract_zip
             done
             #echo $file
+            TIMEFORMAT='Executiontime: %Rsec'
             time(
             date_now=$(date +"%d. %B %H:%M:%S: ")
             echo "$date_now" "found .dat-file! Timer started now"
@@ -198,7 +199,7 @@ do
                             aver=$(grep "^$i " "$package_versions")
                             PureVerAvailable=$(echo "${aver}" | rev | cut -d " " -f1 | rev | sed 's/\-/./g')
                             PureVerInstalled=$(grep -a "$i " "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/var/log/synopkg.log | tail -n1 | grep -aoP '(?<='$i' )\S*' | sed 's/\-/./g')
-                            echo "${InstalledPackageArray[$counter]}: Installed: $PureVerInstalled vs. available: $PureVerAvailable"
+                            log "${InstalledPackageArray[$counter]}: Installed: $PureVerInstalled vs. available: $PureVerAvailable"
 
                             # "gt" means "greater than"
                             version_compare_gt() {
@@ -206,12 +207,12 @@ do
                             }
 
                             if version_compare_gt "$PureVerAvailable" "$PureVerInstalled"; then
-                                echo -e "\e[31mUpdate to $PureVerAvailable available!\e[0m"
-                                echo "Update for ${InstalledPackageArray[$counter]} from currently $PureVerInstalled to $PureVerAvailable available!" >> "$sm"
+                                log "\e[31mUpdate to $PureVerAvailable available!\e[0m"
+                                log "Update for ${InstalledPackageArray[$counter]} from currently $PureVerInstalled to $PureVerAvailable available!" >> "$sm"
                             elif version_compare_gt "$PureVerInstalled" "$PureVerAvailable"; then
-                                echo -e "\e[93minstalled Version later than available?!\e[0m"
+                                log "\e[93minstalled Version later than available?!\e[0m"
                             elif [[ "$PureVerInstalled" == "$PureVerAvailable" ]] ; then
-                                echo -e "\e[32msame Version, package is up to date!\e[0m"
+                                log "\e[32msame Version, package is up to date!\e[0m"
                             else
                                 echo -ne "\e[101msome error occured: "
                                 echo -e "${InstalledPackageArray[$counter]}: Installed: $PureVerInstalled vs. available: $PureVerAvailable\e[0m"
@@ -489,6 +490,10 @@ do
                     } >> "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/space
                 done
                 SPACE_FILES="$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/space
+
+                if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/disk_log.xml" ]]
+                then    DiskLog="$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/disk_log.xml"
+                fi
 
                 if [[ -f "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/smartgrep ]]
                 then    SMART_GREP="$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/smartgrep

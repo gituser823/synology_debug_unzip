@@ -46,42 +46,42 @@ while getopts ":uvh" opt; do
         echo "updating files:" >&2
         echo -e "\nDownloading latest genRSS.php:"
         curl "https://update.synology.com/autoupdate/genRSS.php" -# --output "$rss"
-        echo $(stat --printf="Size: %s" "$rss")
+        stat --printf="Size: %s" "$rss"
         echo -e "\nDownloading latest SRS-list:"
         curl "https://www.synology.com/de-de/solution/SRS" -# --output "$srs"
-        echo $(stat --printf="Size: %s" "$srs")
+        stat --printf="Size: %s" "$srs"
         awk '/<div class="selected_country">Deutschland<\/div>/{f=1;next} /<div class="selected_country">Griechenland<\/div>/{f=0} f' "$srs" > "$srsde"
-        #CommentedOut() { #uncomment this and line 72 to stop downloading hdd-comp on -u
+        #CommentedOut() { #uncomment this and line 82 to stop downloading hdd-comp on -u
         echo -e "\nGetting available Models:"
-        curl "https://www.synology.com/cgi/misc/?action=getProductList_withOEM" -# | grep -oP '(?<=\[).*(?=\])' > "$ProductList" #get all Models listed in Synolgoy API
-        echo $(stat --printf="Size: %s" "$ProductList")
-        #OLDIFS=$IFS
+        curl "https://www.synology.com/cgi/misc/?action=getProductList_withOEM" -# | grep -oP '(?<=\[).*(?=\])' > "$ProductList" #get all Models listed in Synology API
+        stat --printf="Size: %s" "$ProductList"
         IFS=","
-        declare -a ModelArray
+        #declare -a ModelArray
         counter="0"
         for v in $(cat "$ProductList")
         do  Models["${counter}"]="${v//\"}"
             counter=$((counter + 1))
         done
-        #IFS=$OLDIFS
         IFS=$' \t\n'
-        echo -e "\nModels: ${Models[@]}"
+        echo -e "\nModels: ${Models[*]}" #old: echo -e "\nModels: ${Models[@]}"
         echo "Downloading In-/Compatibility-lists:"
             echo "set net:connection-limit 20" > "${Script_dir}/comp/lftp.cfg"
             echo "set xfer:clobber yes" >> "${Script_dir}/comp/lftp.cfg"
             for m in "${Models[@]}"
                 do
-                    echo 'echo getting /comp/'"${m}"'_hdds_compatible.txt' >> "${Script_dir}/comp/lftp.cfg"
-                    echo 'get "https://www.synology.com/api/compatibility/findHclList?lang=en-global&search_by=products&model='"${m//+/%2B}"'&category=hdds&usage_id=12&recommend=t" -o "'"${Script_dir}"'/comp/'"${m}"'_hdds_compatible.txt"' >> "${Script_dir}/comp/lftp.cfg"
-                    #echo $(stat --printf=", Size: %s" "${Script_dir}/comp/${m}_hdds_compatible.txt")
-                    echo 'echo getting /comp/'"${m}"'_hdds_incompatible.txt' >> "${Script_dir}/comp/lftp.cfg"
-                    echo 'get "https://www.synology.com/api/compatibility/findHclList?lang=en-global&search_by=products&model='"${m//+/%2B}"'&category=hdds&usage_id=12&recommend=f" -o "'"${Script_dir}"'/comp/'"${m}"'_hdds_incompatible.txt"' >> "${Script_dir}/comp/lftp.cfg"
-                    #echo $(stat --printf=", Size: %s" "${Script_dir}/comp/${m}_hdds_compatible.txt")
+                {
+                    echo 'echo getting /comp/'"${m}"'_hdds_compatible.txt'
+                    echo 'get "https://www.synology.com/api/compatibility/findHclList?lang=en-global&search_by=products&model='"${m//+/%2B}"'&category=hdds&usage_id=12&recommend=t" -o "'"${Script_dir}"'/comp/'"${m}"'_hdds_compatible.txt"'
+                    #stat --printf=", Size: %s" "${Script_dir}/comp/${m}_hdds_compatible.txt"
+                    echo 'echo getting /comp/'"${m}"'_hdds_incompatible.txt'
+                    echo 'get "https://www.synology.com/api/compatibility/findHclList?lang=en-global&search_by=products&model='"${m//+/%2B}"'&category=hdds&usage_id=12&recommend=f" -o "'"${Script_dir}"'/comp/'"${m}"'_hdds_incompatible.txt"'
+                    #stat --printf=", Size: %s" "${Script_dir}/comp/${m}_hdds_compatible.txt"
+                } >> "${Script_dir}/comp/lftp.cfg"
                 done
             echo "bye" >> "${Script_dir}/comp/lftp.cfg"
             lftp -f "${Script_dir}/comp/lftp.cfg"
             echo "done.";
-        #}
+
         echo "Updating latest package Versions:"
         lftp -c "open https://archive.synology.com/download/Package/spk/; cls" > "${available_packages_pre}"; #download package list
         sed -i '/^enabled$/d' "${available_packages_pre}"
@@ -89,6 +89,7 @@ while getopts ":uvh" opt; do
         	echo "set net:connection-limit 20" > "${Script_dir}/comp/lftp2.cfg"
         	echo "set xfer:clobber yes" >> "${Script_dir}/comp/lftp2.cfg"
             cat "${available_packages_pre}" | awk -v OFS="\\\ " '$1=$1' > "${available_packages}"
+            declare -a "PackageArray" #??
         	readarray -t "PackageArray" < "${available_packages}"
             #echo "Array: ${PackageArray[@]}" #package array, i.e. Java7/
         	echo "" > "${package_versions}"
@@ -158,18 +159,18 @@ do
                 mv "$file" "$DOWNLOAD_DIR"/debug_"$DATE"
                 date_now=$(date +"%d. %B %H:%M:%S: ")
                 echo "$date_now" "debug extracted to ""$DOWNLOAD_DIR"/debug_"$DATE"
-                if [[ -f $DOWNLOAD_DIR/debug_$DATE/packages.list ]]
+                if [[ -f "$DOWNLOAD_DIR/debug_$DATE/packages.list" ]]
                 then    DSM=""
                 fi
-                if [[ -f $DOWNLOAD_DIR/debug_$DATE/$DSM/ha/ha.conf ]]
+                if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/ha/ha.conf" ]]
                 then
-                    if [[ -f $DOWNLOAD_DIR/debug_$DATE/$DSM/ha/passive_debug.dat ]]
+                    if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/ha/passive_debug.dat" ]]
                     then
                         #sha=1
                         sm=$DOWNLOAD_DIR/debug_$DATE/$DSM/sm.log
                         echo -e "Synology HA: Detected, this is the ACTIVE Server-log" >> "$sm"
                         sleep_scan_time=0.2
-                        mv $DOWNLOAD_DIR/debug_"$DATE"/"$DSM"/ha/passive_debug.dat $DOWNLOAD_DIR/passive_debugfile.dat
+                        mv "$DOWNLOAD_DIR/debug_$DATE/$DSM/ha/passive_debug.dat" "$DOWNLOAD_DIR/passive_debugfile.dat"
                     fi
                 elif [[ "$file" = "$DOWNLOAD_DIR/passive_debugfile.dat" ]]; then
                     #sha=2
@@ -191,7 +192,7 @@ do
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/packages.list" ]]
                 then    PACK=$DOWNLOAD_DIR/debug_$DATE/$DSM/packages.list
                         declare -a InstalledPackageArray
-                        cat "${PACK}" | sed '1d' | awk '{for(i=NF;i>1;i=i-1) printf "%s ", $i; printf "%s\n", $1}' | cut -d " " -f1 > "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/packages_ver.list
+                        sed '1d' "${PACK}" | awk '{for(i=NF;i>1;i=i-1) printf "%s ", $i; printf "%s\n", $1}' | cut -d " " -f1 > "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/packages_ver.list
                         readarray -t "InstalledPackageArray" < "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/packages_ver.list
                         counter=0
                         for i in "${InstalledPackageArray[@]}"
@@ -236,7 +237,7 @@ do
                             echo "$third_packages" >> "$sm"
                         fi
                 fi
-                if [[ -f $DOWNLOAD_DIR/debug_$DATE/$DSM/result/df.result ]]
+                if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/df.result" ]]
                 then    DF=$DOWNLOAD_DIR/debug_$DATE/$DSM/result/df.result
                         full_number=$(awk '0+$5 >= 90 { count++ } END{print 0+count}' "$DF")
                         echo -en "\nMountpoints more than 90% full: (""$full_number"")" >> "$sm"
@@ -286,14 +287,14 @@ do
                 then    IFCONFIG=$DOWNLOAD_DIR/debug_$DATE/$DSM/result/ifconfig.result
                     ipv6_enabled=$(grep eth -A7 "$IFCONFIG" | grep -c "inet6 addr")
                     declare -a ifc_dropped
-                    ifc_dropped=$(grep "dropped" $DOWNLOAD_DIR/debug_"$DATE"/"$DSM"/result/ifconfig.result | sed 's/.*dropped://' | cut -d " " -f1)
+                    ifc_dropped=$(grep "dropped" "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/ifconfig.result" | sed 's/.*dropped://' | cut -d " " -f1)
                     ifc_dropped_sum=0
                     for i in "${ifc_dropped[@]}"; do
                         let ifc_dropped_sum+=$i
                     done
 
                     declare -a ifc_error
-                    ifc_error=$(grep "errors" $DOWNLOAD_DIR/debug_"$DATE"/"$DSM"/result/ifconfig.result | sed 's/.*errors://' | cut -d " " -f1)
+                    ifc_error=$(grep "errors" "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/ifconfig.result" | sed 's/.*errors://' | cut -d " " -f1)
                     ifc_error_sum=0
                     for i in "${ifc_error[@]}"; do
                         let ifc_error_sum+=$i
@@ -327,10 +328,10 @@ do
                         fi
                 fi
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/hostname" ]]
-                then    Hostname=$(cat $DOWNLOAD_DIR/debug_"$DATE"/"$DSM"/etc/hostname)
+                then    Hostname=$(cat "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/hostname")
                 fi
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/usr/syno/etc/synorelayd/synorelayd.conf" ]]
-                then    QuickConnect_alias=$(grep '"alias"' $DOWNLOAD_DIR/debug_"$DATE"/"$DSM"/usr/syno/etc/synorelayd/synorelayd.conf | sed "s/.*: //" | sed 's/\"//g')
+                then    QuickConnect_alias=$(grep '"alias"' "$DOWNLOAD_DIR/debug_$DATE/$DSM/usr/syno/etc/synorelayd/synorelayd.conf" | sed "s/.*: //" | sed 's/\"//g')
                 if [[ -z "$QuickConnect_alias" ]]; then
                     QuickConnect_echo="No QuickConnect alias is set"
                     echo "QuickConnect disabled" >> "$hb_debug"
@@ -340,9 +341,9 @@ do
                 fi
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/messages" ]]
                 then    MESSAGES=$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/messages.log
-                        mv $DOWNLOAD_DIR/debug_"$DATE"/"$DSM"/var/log/messages $DOWNLOAD_DIR/debug_"$DATE"/"$DSM"/var/log/messages.log
+                        mv "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/messages" "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/messages.log"
                 fi
-                if [[ -f $DOWNLOAD_DIR/debug_$DATE/$DSM/etc/ddns.conf ]]
+                if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/ddns.conf" ]]
                 then    ddns=$(grep -c "service=true" $DOWNLOAD_DIR/debug_"$DATE"/"$DSM"/etc/ddns.conf)
                     if [[ $ddns = 1 ]]; then
                         echo "DDNS enabled" >> "$hb_debug"
@@ -358,10 +359,10 @@ do
                #     else echo "Domainname: $windomain" >> "$sm"
                # fi
                # fi
-                if [[ -f $DOWNLOAD_DIR/debug_$DATE/$DSM/result/uptime.result ]]
+                if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/uptime.result" ]]
                 then    UPTIME=$(cat $DOWNLOAD_DIR/debug_"$DATE"/"$DSM"/result/uptime.result)
                 fi
-                if [[ -f $DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/hibernation.log ]]
+                if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/hibernation.log" ]]
                 then    HB=$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/hibernation.log
                 # find if NAS is LDSP-Client
                 #Check if LMB enabled
@@ -384,11 +385,11 @@ do
                 if [ "${#SMART_neu[@]}" -ne "0" ]; then
                         tar xf "${SMART_neu[-1]}" -C "$DOWNLOAD_DIR/debug_""$DATE""/""$DSM""/result/"
                         smarttar=$(ls "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/result/var/log/smart_result/ )
-                        for file in $(ls $DOWNLOAD_DIR/debug_"$DATE"/"$DSM"/result/var/log/smart_result/"$smarttar"/* )
+                        for file in $(ls "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/var/log/smart_result/$smarttar/"* )
                         do
                             #[[ -e $f ]] || break #no smart-files
                             filename=$(basename -- "$file")
-                            mv "$file" $DOWNLOAD_DIR/debug_"$DATE"/"$DSM"/result/smart_"$filename".result
+                            mv "$file" "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/smart_$filename".result
                         done
                         SMART_FILES=( "${DOWNLOAD_DIR}/debug_${DATE}/${DSM}/result/smart"*.result )
                         log "neusmart#: ${#SMART_FILES[@]}"
@@ -397,9 +398,9 @@ do
                 fi
 
                 # ALT: for file in $(ls $DOWNLOAD_DIR/debug_$DATE/$DSM/result/smart*.result)
-                for file in $(ls $DOWNLOAD_DIR/debug_"$DATE"/"$DSM"/result/smart*.result)
+                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/smart"*.result
                 do
-                    #[[ -e $f ]] || break #no smart-files
+                    [[ -e "$file" ]] || break #no smart-files
                     declare -a BadSectors
                     declare -a PendingSectors
                     declare -a OfflineUncorrectable
@@ -434,9 +435,9 @@ do
                 fi
 
                 #declare -a PowerOnHours
-                for file in $(ls "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/result/smart*.result)
+                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/smart"*.result
                 do
-                    #[[ -e $f ]] || break #no smart-files
+                    [[ -e "$file" ]] || break #no smart-files
                     hddname=$(basename -- "$file")
                     hddname2=$(grep -i "Model Family\|Device Model" "$file" | cut -d " " -f7-20 | sed -r 's/\"/Inch/' | xargs )
                     echo -n "$hddname: $hddname2: PowerOnHours: " >> "$sm"
@@ -455,7 +456,7 @@ do
                     elif [[ -z "${LastSmartTest+x}" ]]; then
                     echo "error";
                         else
-                        LastSmartExpr=$(expr "${PoH}" - "${LastSmartTest}" )
+                        LastSmartExpr=$(("${PoH}"-"${LastSmartTest}"))
                         echo -n "$LastSmartExpr" "hours ago, " >> "$sm"
                         echo  "$LastSmartResult" >> "$sm"
                     fi
@@ -463,36 +464,39 @@ do
                 #mehr smart-kram
                 echo -e "\n" >> "$sm"
 
-                for file in $(ls "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/result/smart*.result)
+                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/smart"*.result
                 do
-                    #[[ -e $f ]] || break #no smart-files
+                    [[ -e "$file" ]] || break #no smart-files
                     grep -i "Model Family\|Device Model" "$file" >> "$sg"
                 done
-                for file in $(ls "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/result/smart*.result)
+                for file in "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/result/smart*.result
                 do
-                    #[[ -e $f ]] || break #no smart-files
-                    echo -e "\n"  >> "$sg"
-                    echo "$file" >> "$sg"
-                    grep -i "overall-health self-assessment\|Model Family\|Device Model\|Serial Number\|User Capacity\|Sector Sizes\|ID\#\|Raw_Read_Error_Rate\|Reallocated_Sector_Ct\|Seek_Error_Rate\|Spin_Retry_Count\|Calibration_Retry_Count\|Reallocated_Event_Count\|Current_Pending_Sector\|Offline_Uncorrectable\|UDMA_CRC_Error_Count\|Multi_Zone_Error_Rate\|Power_On_Hours\|Reallocated_Sector_Count\|Power-on_Hours\|Program_Fail_Count_(total)\|Erase_Fail_Count_(total)\|Runtime_Bad_Count_(total)\|Uncorrectable_Error_Count\|ECC_Error_Rate\|CRC_Error_Count\|POR_Recovery_Count" "$file" >> "$sg"
-                            echo " "  >> "$sg"
-                            awk '/SMART Error Log Version: 1/{f=1;next} /Selective self-test flags/{f=0} f' "$file" >> "$sg"
-                    echo -e " \n \n"  >> "$sg"
+                    [[ -e "$file" ]] || break #no smart-files
+                {
+                    echo -e "\n"
+                    echo "$file"
+                    grep -i "overall-health self-assessment\|Model Family\|Device Model\|Serial Number\|User Capacity\|Sector Sizes\|ID\#\|Raw_Read_Error_Rate\|Reallocated_Sector_Ct\|Seek_Error_Rate\|Spin_Retry_Count\|Calibration_Retry_Count\|Reallocated_Event_Count\|Current_Pending_Sector\|Offline_Uncorrectable\|UDMA_CRC_Error_Count\|Multi_Zone_Error_Rate\|Power_On_Hours\|Reallocated_Sector_Count\|Power-on_Hours\|Program_Fail_Count_(total)\|Erase_Fail_Count_(total)\|Runtime_Bad_Count_(total)\|Uncorrectable_Error_Count\|ECC_Error_Rate\|CRC_Error_Count\|POR_Recovery_Count" "$file"
+                            echo " "
+                            awk '/SMART Error Log Version: 1/{f=1;next} /Selective self-test flags/{f=0} f' "$file"
+                    echo -e " \n \n"
+                } >> "$sg"
                 done
 
                 ls -lh "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/etc/space/space_history_*.xml >> "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/space
-                for file in $(ls "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/etc/space/space_history_*.xml)
+                for file in "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/etc/space/space_history_*.xml
                 do
-                    #[[ -e $f ]] || break #no space-files
+                    [[ -e "$file" ]] || break #no space-files
                     {
                     echo "$file"
                     cat "$file"
+                    cat "$file" | awk -F '"' '/dev_path/ {print $4} /raid path/ {print $2} /raid>/ {print $5}' - | grep -v "vg" | grep -v "volume" | tr '\n' ' '  | sed 's#  #\n\n#g'
                     #cat "$file" | awk -F '"' '/dev_path/ {print $4} /raid path/ {print $2} /raid>/ {print $5}' - | grep -v "vg" | tr '\n' ' '  | sed 's#  #\n\n#g'
                     echo -e "\n \n \n \n"
                     } >> "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/space
                 done
                 SPACE_FILES="$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/space
 
-                if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/disk_log.xml" ]] && [ $(stat --printf="%s" "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/disk_log.xml") -gt 0 ]
+                if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/disk_log.xml" ]] && [ $(stat --printf='%s' "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/disk_log.xml") -gt 0 ]
                 then    DiskLog="$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/disk_log.xml"
                 fi
 
@@ -501,9 +505,9 @@ do
                 fi
                 if [[ -f "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/result/dmidecode.result ]]
                 then
-                    BIOS_V_CUT=$( grep -i "BIOS Information" -A5 $DOWNLOAD_DIR/debug_"$DATE"/"$DSM"/result/dmidecode.result | grep -i "Version" | sed "s/.*Version: //" )
+                    BIOS_V_CUT=$( grep -i "BIOS Information" -A5 "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/dmidecode.result" | grep -i "Version" | sed "s/.*Version: //" )
                         #DS_MEM=$( grep -A6 "Memory Device Mapped Address" $DOWNLOAD_DIR/debug_$DATE/$DSM/result/dmidecode.result | grep "Range Size" | sed "s/.*Size: //" )
-                        DS_MEM3=$(grep -A6 "Memory Device$" $DOWNLOAD_DIR/debug_$DATE/$DSM/result/dmidecode.result | grep Size)
+                        DS_MEM3=$(grep -A6 "Memory Device$" "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/dmidecode.result" | grep Size)
                         DS_MEM3_cut=$(grep -A6 "Memory Device$" $DOWNLOAD_DIR/debug_$DATE/$DSM/result/dmidecode.result | grep Size | cut -d " " -f2)
                         re='^[0-9]+$'
                             if [[ "$DS_MEM3" =~ $re ]] ; then
@@ -524,10 +528,10 @@ do
                 fi
                 if [[ -f "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/result/free.result ]]
                 then
-                        free_mem=$( grep Mem $DOWNLOAD_DIR/debug_"$DATE"/"$DSM"/result/free.result | awk '{ print 1000+$2 }' | awk '{ split( "KB MB GB" , v ); s=1; while( $1>1000 ){ $1/=1000; s++ } print int($1) v[s] }' )
+                        free_mem=$( grep Mem "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/result/free.result | awk '{ print 1000+$2 }' | awk '{ split( "KB MB GB" , v ); s=1; while( "$1">1000 ){ "$1"/=1000; s++ } print int($1) v[s] }' )
                 fi
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/route.result" ]]
-                then    Route=$DOWNLOAD_DIR/debug_$DATE/$DSM/result/route.result
+                then    Route="$DOWNLOAD_DIR/debug_$DATE/$DSM/result/route.result"
                 fi
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/kern.log" ]]
                 then    KERN=$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/kern.log
@@ -543,10 +547,10 @@ do
                                 DS_MODEL_unter="${DS_HWMODEL_v}_"
                                 DS_MODEL_plus="${DS_MODEL_unter//+/%2B}"
                     fi
-                    DS_CPU=$( grep -m1 "model name\|Hardware" $DOWNLOAD_DIR/debug_"$DATE"/"$DSM"/proc/cpuinfo )
-                    DS_Cores=$( cat $DOWNLOAD_DIR/debug_"$DATE"/"$DSM"/proc/sys/kernel/syno_CPU_info_core )
-                    Processor_count=$( grep -i -c "processor" $DOWNLOAD_DIR/debug_"$DATE"/"$DSM"/proc/cpuinfo ) #CPU Count
-                    DS_SN=$( cat $DOWNLOAD_DIR/debug_"$DATE"/"$DSM"/proc/sys/kernel/syno_serial )
+                    DS_CPU=$( grep -m1 "model name\|Hardware" "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/proc/cpuinfo )
+                    DS_Cores=$( cat "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/proc/sys/kernel/syno_CPU_info_core )
+                    Processor_count=$( grep -i -c "processor" "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/proc/cpuinfo ) #CPU Count
+                    DS_SN=$( cat "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/proc/sys/kernel/syno_serial )
                     #DS_SN=$( grep -i -m1 "serial number" $DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/kern.log | sed "s/.*[Ss]erial [Nn]umber//" )
                 fi
                 #hdd-compatibility:
@@ -598,7 +602,7 @@ do
                 fi
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/scemd.log" ]]
                 then
-                    grep_disktemp=$( grep -c "temperature> is over" $DOWNLOAD_DIR/debug_"$DATE"/"$DSM"/var/log/scemd.log )
+                    grep_disktemp=$( grep -c "temperature> is over" "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/var/log/scemd.log )
                         if [ "$grep_disktemp" -gt 0 ]; then
                         echo "CPU or Disk is overheating:" >> "$sm"
                         grep -ia "temperature> is over" "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/scemd.log" >> "$sm"
@@ -620,7 +624,7 @@ do
                 fi
                 echo "found ${ifc_dropped_sum} dropped Packages in ifconfig.result." >> "$sm"
                 echo "found ${ifc_error_sum} bugged Packages in ifconfig.result." >> "$sm"
-                for file in $(ls "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/ethtool.eth"*.result)
+                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/ethtool.eth"*.result
                 do
                     [[ -e "$file" ]] || break  # handle the case of no *.result files
                     ethresult=$(grep "Speed" -H "$file")
@@ -638,7 +642,7 @@ do
                 DS_upnp_unter="${DS_upnp_v}_"
                 DS_upnp_plus="${DS_upnp_unter//+/%2B}"
                 LatestBuildNumber=$( grep -i "$DS_upnp_plus" "$rss" | sed -e 's/<[^>]*>//g' | head -n 1 | cut -d "_" -f3 | cut -d "." -f1 ) #_plus
-                DSMBuildNumber=$( grep buildnumber $DOWNLOAD_DIR/debug_"$DATE"/"$DSM"/etc.defaults/VERSION | cut -d "\"" -f2 )
+                DSMBuildNumber=$( grep buildnumber "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/etc.defaults/VERSION | cut -d "\"" -f2 )
                 if [ "$LatestBuildNumber" -gt "$DSMBuildNumber" ]; then
                     {
                     echo "More current DSM Version available."
@@ -730,14 +734,14 @@ do
                     } >> "$sm"
                 fi
                 #write hibernation info:
-                satadeepsleep=$(grep -c "satadeepsleeptimer=\"1\"" $DOWNLOAD_DIR/debug_"$DATE"/"$DSM"/etc/synoinfo.conf)
+                satadeepsleep=$(grep -c "satadeepsleeptimer=\"1\"" "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/etc/synoinfo.conf)
                 if [ "$satadeepsleep" -gt 0 ]
                         then echo -e "Hibernation enabled.\n" >> "$hb_debug"
                         else echo -e "Hibernation is disabled.\n" >> "$hb_debug"
                 fi
                 grep "^standbytimer" "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/synoinfo.conf" >> "$hb_debug"
                 grep "enable_fan_debug" "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/synoinfo.conf" >> "$hb_debug"
-                kernel_log_max=$(grep -c "kern_log_max=\"yes\"" $DOWNLOAD_DIR/debug_"$DATE"/"$DSM"/etc/synoinfo.conf)
+                kernel_log_max=$(grep -c "kern_log_max=\"yes\"" "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/etc/synoinfo.conf)
                 if [ "$kernel_log_max" -gt 0 ]
                         then echo "Extended kernel logging enabled." >> "$hb_debug"
                         else echo "Extended kernel logging disabled." >> "$hb_debug"
@@ -750,7 +754,7 @@ do
                     while read p; do
                         re='^[0-9]+$'
                         if [[ $p =~ $re ]] ; then
-                           python "${PShedPy}" $p >> "$hb_debug";
+                           python "${PShedPy}" "$p" >> "$hb_debug";
                         fi
                         done < "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/power_sched.conf"
                     else
@@ -768,7 +772,7 @@ do
                 sleep 0.5
 
                 source "${Script_dir}/files/config.sh" #load OpenFiles[] Array from config.sh
-                log "Array before unsetting: ${OpenFiles[@]}"
+                log "Array before unsetting: ${OpenFiles[*]}"
                 for i in "${!OpenFiles[@]}"; do #remove empty vars from array
                     [ -n "${OpenFiles[$i]}" ] || log "OpenFiles[$i] unset, because empty!"
                     [ -n "${OpenFiles[$i]}" ] || unset "OpenFiles[$i]"
@@ -808,7 +812,5 @@ do
         fi
     done
     sleep $sleep_scan_dir
-    #Scan_time=$(date +"%H:%M:%S")
-    #echo $Scan_time "Rescanning for .dat Files"
+    #echo "$(date +"%H:%M:%S") Rescanning for .dat Files"
 done
-#IFS="$OIFS"

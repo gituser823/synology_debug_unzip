@@ -344,7 +344,7 @@ do
                         mv "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/messages" "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/messages.log"
                 fi
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/ddns.conf" ]]
-                then    ddns=$(grep -c "service=true" $DOWNLOAD_DIR/debug_"$DATE"/"$DSM"/etc/ddns.conf)
+                then    ddns=$(grep -c "service=true" "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/etc/ddns.conf)
                     if [[ $ddns = 1 ]]; then
                         echo "DDNS enabled" >> "$hb_debug"
                     fi
@@ -360,7 +360,7 @@ do
                # fi
                # fi
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/uptime.result" ]]
-                then    UPTIME=$(cat $DOWNLOAD_DIR/debug_"$DATE"/"$DSM"/result/uptime.result)
+                then    UPTIME=$(cat "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/result/uptime.result)
                 fi
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/hibernation.log" ]]
                 then    HB=$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/hibernation.log
@@ -385,9 +385,9 @@ do
                 if [ "${#SMART_neu[@]}" -ne "0" ]; then
                         tar xf "${SMART_neu[-1]}" -C "$DOWNLOAD_DIR/debug_""$DATE""/""$DSM""/result/"
                         smarttar=$(ls "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/result/var/log/smart_result/ )
-                        for file in $(ls "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/var/log/smart_result/$smarttar/"* )
+                        for file in ls "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/var/log/smart_result/$smarttar/"*
                         do
-                            #[[ -e $f ]] || break #no smart-files
+                            [[ -e $file ]] || break #no smart-files
                             filename=$(basename -- "$file")
                             mv "$file" "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/smart_$filename".result
                         done
@@ -489,14 +489,14 @@ do
                     {
                     echo "$file"
                     cat "$file"
-                    cat "$file" | awk -F '"' '/dev_path/ {print $4} /raid path/ {print $2} /raid>/ {print $5}' - | grep -v "vg" | grep -v "volume" | tr '\n' ' '  | sed 's#  #\n\n#g'
+                    awk -F '"' '/dev_path/ {print $4} /raid path/ {print $2} /raid>/ {print $5}' "$file" | grep -v "vg" | grep -v "volume" | tr '\n' ' '  | sed 's#  #\n\n#g'
                     #cat "$file" | awk -F '"' '/dev_path/ {print $4} /raid path/ {print $2} /raid>/ {print $5}' - | grep -v "vg" | tr '\n' ' '  | sed 's#  #\n\n#g'
                     echo -e "\n \n \n \n"
                     } >> "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/space
                 done
                 SPACE_FILES="$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/space
 
-                if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/disk_log.xml" ]] && [ $(stat --printf='%s' "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/disk_log.xml") -gt 0 ]
+                if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/disk_log.xml" ]] && [ "$(stat --printf='%s' "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/disk_log.xml")" -gt 0 ]
                 then    DiskLog="$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/disk_log.xml"
                 fi
 
@@ -508,10 +508,10 @@ do
                     BIOS_V_CUT=$( grep -i "BIOS Information" -A5 "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/dmidecode.result" | grep -i "Version" | sed "s/.*Version: //" )
                         #DS_MEM=$( grep -A6 "Memory Device Mapped Address" $DOWNLOAD_DIR/debug_$DATE/$DSM/result/dmidecode.result | grep "Range Size" | sed "s/.*Size: //" )
                         DS_MEM3=$(grep -A6 "Memory Device$" "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/dmidecode.result" | grep Size)
-                        DS_MEM3_cut=$(grep -A6 "Memory Device$" $DOWNLOAD_DIR/debug_$DATE/$DSM/result/dmidecode.result | grep Size | cut -d " " -f2)
+                        DS_MEM3_cut=$(grep -A6 "Memory Device$" "$DOWNLOAD_DIR"/debug_$DATE/$DSM/result/dmidecode.result | grep Size | cut -d " " -f2)
                         re='^[0-9]+$'
                             if [[ "$DS_MEM3" =~ $re ]] ; then
-                            DS_MEM3_calc=$(grep -A6 "Memory Device$" $DOWNLOAD_DIR/debug_$DATE/$DSM/result/dmidecode.result | grep Size | cut -d " " -f2 | sed ':a;N;$!ba;s/\n/+/g' | bc | sed 's/$/\/1024/' | bc)
+                            DS_MEM3_calc=$(grep -A6 "Memory Device$" "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/dmidecode.result" | grep Size | cut -d " " -f2 | sed ':a;N;$!ba;s/\n/+/g' | bc | sed 's/$/\/1024/' | bc)
                             else
                                 DS_MEM3_calc="Error calculating RAM-Size"
                                 log "Error calculating RAM-Size"
@@ -569,17 +569,19 @@ do
                         echo -e "This Machines BIOS-Version: $BIOS_V_CUT\n" >> "$sm"
                     fi
                     if [ "$DS_MODEL" = "DS718+" ] || [ "$DS_HWMODEL" = "DS718+" ]; then
-                        grep_cputemp=$( grep -c "<cpu_temperature> is over" $DOWNLOAD_DIR/debug_"$DATE"/"$DSM"/var/log/scemd.log )
+                        grep_cputemp=$( grep -c "<cpu_temperature> is over" "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/scemd.log" )
                         if [ "$grep_cputemp" -gt 0 ]; then
                         echo "CPU is overheating, RMA unit: https://css.synology.com/issue/11124" >> "$sm"
                         grep -i "<cpu_temperature> is over" "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/scemd.log" >> "$sm"
                         fi
                     fi
                     if [ "$DS_MODEL" = "DS718+" ] || [ "$DS_MODEL" = "DS918+" ] || [ "$DS_MODEL" = "DS218+" ] || [ "$DS_MODEL" = "DS418play" ] || [ "$DS_HWMODEL" = "DS718+" ] || [ "$DS_HWMODEL" = "DS918+" ] || [ "$DS_HWMODEL" = "DS218+" ] || [ "$DS_HWMODEL" = "DS418play" ]; then
-                        echo "possible BIOS-Issue: https://css.synology.com/issue/12026" >> "$sm"
-                        echo "Update to DSM 6.1.3-15152 Update 7 to update the BIOS." >> "$sm"
-                        echo "Bug is fixed in: DS718+  M.220, DS918+  M.024, DS218+  M.124, DS418play M.310" >> "$sm"
-                        echo -e "This Machines BIOS-Version: $BIOS_V_CUT\n" >> "$sm"
+                    {
+                        echo "possible BIOS-Issue: https://css.synology.com/issue/12026"
+                        echo "Update to DSM 6.1.3-15152 Update 7 to update the BIOS."
+                        echo "Bug is fixed in: DS718+  M.220, DS918+  M.024, DS218+  M.124, DS418play M.310"
+                        echo -e "This Machines BIOS-Version: $BIOS_V_CUT\n"
+                    } >> "$sm"
                     fi
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/messages.log" ]]
                 then

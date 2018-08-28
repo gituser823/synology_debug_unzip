@@ -456,7 +456,7 @@ do
                     elif [[ -z "${LastSmartTest+x}" ]]; then
                     echo "error";
                         else
-                        LastSmartExpr=$(("${PoH}"-"${LastSmartTest}"))
+                        LastSmartExpr=$(expr "${PoH}" - "${LastSmartTest}" )
                         echo -n "$LastSmartExpr" "hours ago, " >> "$sm"
                         echo  "$LastSmartResult" >> "$sm"
                     fi
@@ -507,11 +507,11 @@ do
                 then
                     BIOS_V_CUT=$( grep -i "BIOS Information" -A5 "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/dmidecode.result" | grep -i "Version" | sed "s/.*Version: //" )
                         #DS_MEM=$( grep -A6 "Memory Device Mapped Address" $DOWNLOAD_DIR/debug_$DATE/$DSM/result/dmidecode.result | grep "Range Size" | sed "s/.*Size: //" )
-                        DS_MEM3=$(grep -A6 "Memory Device$" "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/dmidecode.result" | grep Size)
-                        DS_MEM3_cut=$(grep -A6 "Memory Device$" "$DOWNLOAD_DIR"/debug_$DATE/$DSM/result/dmidecode.result | grep Size | cut -d " " -f2)
                         re='^[0-9]+$'
-                            if [[ "$DS_MEM3" =~ $re ]] ; then
-                            DS_MEM3_calc=$(grep -A6 "Memory Device$" "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/dmidecode.result" | grep Size | cut -d " " -f2 | sed ':a;N;$!ba;s/\n/+/g' | bc | sed 's/$/\/1024/' | bc)
+                        DS_MEM3=$(grep -A6 "Memory Device$" "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/dmidecode.result" | grep Size)
+                        DS_MEM3_cut=$(grep -A6 "Memory Device$" "$DOWNLOAD_DIR"/debug_$DATE/$DSM/result/dmidecode.result | grep Size | cut -d " " -f2 |  sed 's/[^0-9]*//g'| sed '/^\s*$/d' | sed ':a;N;$!ba;s/\n//g')
+                            if [[ "$DS_MEM3_cut" =~ $re ]] ; then
+                            DS_MEM3_calc=$(grep -A6 "Memory Device$" "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/dmidecode.result" | grep Size | cut -d " " -f2 | sed 's/[^0-9]*//g' | sed '/^\s*$/d' | sed ':a;N;$!ba;s/\n/+/g' | bc | sed 's/$/\/1024/' | bc)
                             else
                                 DS_MEM3_calc="Error calculating RAM-Size"
                                 log "Error calculating RAM-Size"
@@ -528,7 +528,7 @@ do
                 fi
                 if [[ -f "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/result/free.result ]]
                 then
-                        free_mem=$( grep Mem "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/result/free.result | awk '{ print 1000+$2 }' | awk '{ split( "KB MB GB" , v ); s=1; while( "$1">1000 ){ "$1"/=1000; s++ } print int($1) v[s] }' )
+                        free_mem=$( grep Mem "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/result/free.result | awk '{ print 1000+$2 }' | awk '{ split( "KB MB GB" , v ); s=1; while( $1>1000 ){ $1/=1000; s++ } print int($1) v[s] }' )
                 fi
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/route.result" ]]
                 then    Route="$DOWNLOAD_DIR/debug_$DATE/$DSM/result/route.result"

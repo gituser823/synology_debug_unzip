@@ -383,11 +383,11 @@ do
                 log "altsmart#: ${#SMART_FILES[@]}"
                 fi
                 if [ "${#SMART_neu[@]}" -ne "0" ]; then
-                        tar xf "${SMART_neu[-1]}" -C "$DOWNLOAD_DIR/debug_""$DATE""/""$DSM""/result/"
+                        tar xf "${SMART_neu[-1]}" -C "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/"
                         smarttar=$(ls "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/result/var/log/smart_result/ )
-                        for file in ls "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/var/log/smart_result/$smarttar/"*
+                        for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/var/log/smart_result/$smarttar/"*
                         do
-                            [[ -e $file ]] || break #no smart-files
+                            [[ -e "$file" ]] || break #no smart-files
                             filename=$(basename -- "$file")
                             mv "$file" "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/smart_$filename".result
                         done
@@ -686,7 +686,7 @@ do
                 echo "Arbeitsspeicher free.result:" "$free_mem""+"
                 } >> "$sm"
 
-                log "$DS_MEM3_calc"
+                #log "$DS_MEM3_calc"
 
                 if [ -z "${UpnpModel}" ];
                 then
@@ -694,11 +694,10 @@ do
                 fi
 
                 DS_CPU_TXTINFO=$( grep -m1 "CPU-Modell" "$CPU_FILE" )
-                UpnpModel_plusgrep="${UpnpModel/+/\\+}" #  $( echo "${UpnpModel}" | sed -r 's/[+]/\\+/g' | sed 's/$/\\s/')
-                DS_CPU_TXT=$( grep -Ew "${UpnpModel_plusgrep}" "$CPU_FILE" )
-                DS_MEM_TXT=$( grep -Ew "${UpnpModel_plusgrep}" "$CPU_FILE" | rev | cut -d ' ' -f1,2 |rev ) #todo: if realRAM > preinstalled then echo
+                DS_CPU_TXT=$( grep "${UpnpModel}[[:space:]]" "$CPU_FILE" )
+                DS_MEM_TXT=$( grep "${UpnpModel}[[:space:]]" "$CPU_FILE" | rev | cut -d ' ' -f1,2 |rev ) #todo: if realRAM > preinstalled then echo
                 log "${UpnpModel}"
-                log "${UpnpModel_plusgrep}"
+                log "${UpnpModel/+/\\+}\S"
                 {
                 echo "CPUinfo from txt:"
                 echo "$DS_CPU_TXTINFO"

@@ -3,6 +3,10 @@
 #for handling spaces in filenames
 #IFS=$'\n'
 
+#debugging with times:
+#N=`date +%s%N`
+#export PS4='+[$(((`date +%s%N`-$N)/1000000))ms][${BASH_SOURCE}:${LINENO}]: ${FUNCNAME[0]:+${FUNCNAME[0]}(): }'; set -x;
+
 # set bash option to avoid
 # unmatched patterns expand as result values
 shopt -s nullglob
@@ -799,7 +803,7 @@ do
                     counter=$((counter + 1))
                 done
 
-                sleep 0.5
+                sleep 0.1
 
                 source "${Script_dir}/files/config.sh" #load OpenFiles[] Array from config.sh
                 #log "Array before unsetting: ${OpenFiles[@]}"

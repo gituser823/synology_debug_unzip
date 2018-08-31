@@ -8,12 +8,10 @@
 shopt -s nullglob
 
 #win sub:sudo apt-get  install bc unzip (sqlite3) xmllint
-#sudo apt install (sqlite3) zenity sublime-text xmllint lftp
-#DOWNLOAD_DIR=/home/thomas/Downloads/neu
+#sudo apt install sqlite3 zenity sublime-text xmllint lftp
 
-sleep_scan_time=2 #Folder rescan time
-sleep_scan_dir="$sleep_scan_time"
-sleep_extract_zip=0.5 #rescan time for finished download
+sleep_scan_dir=2 #Folder rescan time in seconds
+sleep_extract_zip=0.5 #rescan time for finishing download
 Script_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 source "${Script_dir}/files/config.sh"
 DSM=dsm
@@ -158,7 +156,7 @@ do
             then
                 mv "$file" "$DOWNLOAD_DIR"/debug_"$DATE"
                 date_now=$(date +"%d. %B %H:%M:%S: ")
-                echo "$date_now" "debug extracted to ""$DOWNLOAD_DIR"/debug_"$DATE"
+                echo "$date_now debug extracted to $DOWNLOAD_DIR/debug_$DATE"
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/packages.list" ]]
                 then    DSM=""
                 fi
@@ -167,24 +165,21 @@ do
                     if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/ha/passive_debug.dat" ]]
                     then
                         #sha=1
-                        sm=$DOWNLOAD_DIR/debug_$DATE/$DSM/sm.log
+                        sm="$DOWNLOAD_DIR/debug_$DATE/$DSM/sm.log"
                         echo -e "Synology HA: Detected, this is the ACTIVE Server-log" >> "$sm"
-                        sleep_scan_time=0.2
                         mv "$DOWNLOAD_DIR/debug_$DATE/$DSM/ha/passive_debug.dat" "$DOWNLOAD_DIR/passive_debugfile.dat"
                     fi
                 elif [[ "$file" = "$DOWNLOAD_DIR/passive_debugfile.dat" ]]; then
                     #sha=2
-                    DSM=$(ls "$DOWNLOAD_DIR"/debug_"$DATE"/tmp )
+                    DSM=$(ls "$DOWNLOAD_DIR/debug_$DATE/tmp" )
                     DSM="tmp/${DSM}"
-                    sm="$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/sm.log
-                    sleep_scan_dir="$sleep_scan_time"
+                    sm="$DOWNLOAD_DIR/debug_$DATE/$DSM/sm.log"
                     echo -e "Synology HA: Detected, this is the PASSIVE Server-log" >> "$sm"
                 else
-                    sleep_scan_dir="$sleep_scan_time"
-                    sm=$DOWNLOAD_DIR/debug_$DATE/$DSM/sm.log
+                    sm="$DOWNLOAD_DIR/debug_$DATE/$DSM/sm.log"
                     echo -e "No Synology HA detected" >> "$sm"
                 fi
-                sm=$DOWNLOAD_DIR/debug_$DATE/$DSM/sm.log
+                #sm=$DOWNLOAD_DIR/debug_$DATE/$DSM/sm.log
                 sg=$DOWNLOAD_DIR/debug_$DATE/$DSM/smartgrep
                 hb_debug=$DOWNLOAD_DIR/debug_$DATE/$DSM/hibernation_debug.log
                 DEBUG_DIR=$DOWNLOAD_DIR/debug_$DATE
@@ -193,7 +188,7 @@ do
                 then    PACK=$DOWNLOAD_DIR/debug_$DATE/$DSM/packages.list
                         declare -a InstalledPackageArray
                         sed '1d' "${PACK}" | awk '{for(i=NF;i>1;i=i-1) printf "%s ", $i; printf "%s\n", $1}' | cut -d " " -f1 > "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/packages_ver.list
-                        readarray -t "InstalledPackageArray" < "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/packages_ver.list
+                        readarray -t "InstalledPackageArray" < "$DOWNLOAD_DIR/debug_$DATE/$DSM/packages_ver.list"
                         counter=0
                         for i in "${InstalledPackageArray[@]}"
                         do
@@ -208,8 +203,8 @@ do
                             }
 
                             if version_compare_gt "$PureVerAvailable" "$PureVerInstalled"; then
-                                log "\e[31mUpdate to $PureVerAvailable available!\e[0m"
-                                log "Update for ${InstalledPackageArray[$counter]} from currently $PureVerInstalled to $PureVerAvailable available!" >> "$sm"
+                                log "\e[31mUpdate for ${InstalledPackageArray[$counter]} from currently $PureVerInstalled to $PureVerAvailable available!\e[0m"
+                                echo "Update for ${InstalledPackageArray[$counter]} from currently $PureVerInstalled to $PureVerAvailable available!" >> "$sm"
                             elif version_compare_gt "$PureVerInstalled" "$PureVerAvailable"; then
                                 log "\e[93minstalled Version later than available?!\e[0m"
                             elif [[ "$PureVerInstalled" == "$PureVerAvailable" ]] ; then
@@ -397,7 +392,6 @@ do
                     echo "No Smart-files found."
                 fi
 
-                # ALT: for file in $(ls $DOWNLOAD_DIR/debug_$DATE/$DSM/result/smart*.result)
                 for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/smart"*.result
                 do
                     [[ -e "$file" ]] || break #no smart-files
@@ -434,14 +428,40 @@ do
                     echo "Offline_Uncorrectable:" "$OfflineUncorrectable_sum" >> "$sm"
                 fi
 
+                #hdd-compatibility:
+                UpnpModel=$(grep -i "upnpmodelname" "$Synoinfo" | cut -d "\"" -f2)
+                if [[ -f "${Script_dir}/comp/${UpnpModel}_hdds_compatible.txt" ]]; then
+                    comp_list="${Script_dir}/comp/${UpnpModel}_hdds_compatible.txt"
+                    echo "Compatibility-list for ${UpnpModel} found and set. ($comp_list)"
+                else
+                    echo "Compatibility-list for ${UpnpModel} not found! should be ${Script_dir}/comp/${UpnpModel}_hdds_compatible.txt"
+                fi
+
+                if [[ -f "${Script_dir}/comp/${UpnpModel}_hdds_incompatible.txt" ]]; then
+                    incomp_list="${Script_dir}/comp/${UpnpModel}_hdds_incompatible.txt"
+                    echo "Incompatibility-list for ${UpnpModel} found and set. ($incomp_list)"
+                else
+                    echo "Incompatibility-list for ${UpnpModel} not found! should be ${Script_dir}/comp/${UpnpModel}_hdds_incompatible.txt"
+                fi
+
                 #declare -a PowerOnHours
                 for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/smart"*.result
                 do
                     [[ -e "$file" ]] || break #no smart-files
                     hddname=$(basename -- "$file")
                     hddname2=$(grep -i "Model Family\|Device Model" "$file" | cut -d " " -f7-20 | sed -r 's/\"/Inch/' | xargs )
-                    echo -n "$hddname: $hddname2: PowerOnHours: " >> "$sm"
-                    PoH=$(grep -E "Power(_|-)(O|o)n_Hours" "$file" | sed -e "s/ ([^()]*)//g" | rev | cut -d " " -f1 | rev | sed 's/h.*//' )
+                    modelname=$(grep -i "Device Model" "$file" | cut -d " " -f7-8 | sed -r 's/\"/Inch/' | xargs ) #evtl f7-20
+
+                    if grep  "${modelname}" "${comp_list}" &> /dev/null; then
+                        HDDComp="(compatible)"
+                    elif grep "${modelname}" "${incomp_list}" &> /dev/null; then
+                        HDDComp="(incompatible)"
+                    else
+                        HDDComp="(not listed)"
+                    fi
+
+                    echo -n "$hddname: $hddname2 $HDDComp: PowerOnHours: " >> "$sm"
+                    PoH=$(grep -iE "Power(_|-)on_Hours" "$file" | sed -e "s/ ([^()]*)//g" | rev | cut -d " " -f1 | rev | sed 's/h.*//' )
                     echo "${PoH}" >> "$sm"
                     echo -n "Last Extended SMART-Test: " >> "$sm"
                     LastSmartTest=$(grep -i -m1 "Extended Offline" "$file" | sed -n '/Extended offline/s/ \+/ /gp' | cut -d " " -f9 )
@@ -457,6 +477,7 @@ do
                     echo "error";
                         else
                         LastSmartExpr=$(expr "${PoH}" - "${LastSmartTest}" )
+                        #log "expr: $PoH und $LastSmarttest"
                         echo -n "$LastSmartExpr" "hours ago, " >> "$sm"
                         echo  "$LastSmartResult" >> "$sm"
                     fi
@@ -469,21 +490,21 @@ do
                     [[ -e "$file" ]] || break #no smart-files
                     grep -i "Model Family\|Device Model" "$file" >> "$sg"
                 done
-                for file in "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/result/smart*.result
+                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/smart"*.result
                 do
                     [[ -e "$file" ]] || break #no smart-files
                 {
                     echo -e "\n"
                     echo "$file"
-                    grep -i "overall-health self-assessment\|Model Family\|Device Model\|Serial Number\|User Capacity\|Sector Sizes\|ID\#\|Raw_Read_Error_Rate\|Reallocated_Sector_Ct\|Seek_Error_Rate\|Spin_Retry_Count\|Calibration_Retry_Count\|Reallocated_Event_Count\|Current_Pending_Sector\|Offline_Uncorrectable\|UDMA_CRC_Error_Count\|Multi_Zone_Error_Rate\|Power_On_Hours\|Reallocated_Sector_Count\|Power-on_Hours\|Program_Fail_Count_(total)\|Erase_Fail_Count_(total)\|Runtime_Bad_Count_(total)\|Uncorrectable_Error_Count\|ECC_Error_Rate\|CRC_Error_Count\|POR_Recovery_Count" "$file"
+                    grep -i "overall-health self-assessment\|Model Family\|Device Model\|Serial Number\|User Capacity\|Sector Sizes\|Rotation Rate\|ID\#\|Raw_Read_Error_Rate\|Reallocated_Sector_Ct\|Seek_Error_Rate\|Spin_Retry_Count\|Calibration_Retry_Count\|Reallocated_Event_Count\|Current_Pending_Sector\|Offline_Uncorrectable\|UDMA_CRC_Error_Count\|Multi_Zone_Error_Rate\|Power_On_Hours\|Reallocated_Sector_Count\|Power-on_Hours\|Program_Fail_Count_(total)\|Erase_Fail_Count_(total)\|Runtime_Bad_Count_(total)\|Uncorrectable_Error_Count\|ECC_Error_Rate\|CRC_Error_Count\|POR_Recovery_Count" "$file"
                             echo " "
                             awk '/SMART Error Log Version: 1/{f=1;next} /Selective self-test flags/{f=0} f' "$file"
                     echo -e " \n \n"
                 } >> "$sg"
                 done
 
-                ls -lh "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/etc/space/space_history_*.xml >> "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/space
-                for file in "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/etc/space/space_history_*.xml
+                ls -lh "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/space/space_history_"*.xml >> "$DOWNLOAD_DIR/debug_$DATE/$DSM/space"
+                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/space/space_history_"*.xml
                 do
                     [[ -e "$file" ]] || break #no space-files
                     {
@@ -492,24 +513,24 @@ do
                     awk -F '"' '/dev_path/ {print $4} /raid path/ {print $2} /raid>/ {print $5}' "$file" | grep -v "vg" | grep -v "volume" | tr '\n' ' '  | sed 's#  #\n\n#g'
                     #cat "$file" | awk -F '"' '/dev_path/ {print $4} /raid path/ {print $2} /raid>/ {print $5}' - | grep -v "vg" | tr '\n' ' '  | sed 's#  #\n\n#g'
                     echo -e "\n \n \n \n"
-                    } >> "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/space
+                    } >> "$DOWNLOAD_DIR/debug_$DATE/$DSM/space"
                 done
-                SPACE_FILES="$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/space
+                SPACE_FILES="$DOWNLOAD_DIR/debug_$DATE/$DSM/space"
 
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/disk_log.xml" ]] && [ "$(stat --printf='%s' "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/disk_log.xml")" -gt 0 ]
                 then    DiskLog="$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/disk_log.xml"
                 fi
 
-                if [[ -f "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/smartgrep ]]
-                then    SMART_GREP="$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/smartgrep
+                if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/smartgrep" ]]
+                then    SMART_GREP="$DOWNLOAD_DIR/debug_$DATE/$DSM/smartgrep"
                 fi
-                if [[ -f "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/result/dmidecode.result ]]
+                if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/dmidecode.result" ]]
                 then
                     BIOS_V_CUT=$( grep -i "BIOS Information" -A5 "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/dmidecode.result" | grep -i "Version" | sed "s/.*Version: //" )
                         #DS_MEM=$( grep -A6 "Memory Device Mapped Address" $DOWNLOAD_DIR/debug_$DATE/$DSM/result/dmidecode.result | grep "Range Size" | sed "s/.*Size: //" )
                         re='^[0-9]+$'
                         DS_MEM3=$(grep -A6 "Memory Device$" "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/dmidecode.result" | grep Size)
-                        DS_MEM3_cut=$(grep -A6 "Memory Device$" "$DOWNLOAD_DIR"/debug_$DATE/$DSM/result/dmidecode.result | grep Size | cut -d " " -f2 |  sed 's/[^0-9]*//g'| sed '/^\s*$/d' | sed ':a;N;$!ba;s/\n//g')
+                        DS_MEM3_cut=$(grep -A6 "Memory Device$" "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/dmidecode.result" | grep Size | cut -d " " -f2 |  sed 's/[^0-9]*//g'| sed '/^\s*$/d' | sed ':a;N;$!ba;s/\n//g')
                             if [[ "$DS_MEM3_cut" =~ $re ]] ; then
                             DS_MEM3_calc=$(grep -A6 "Memory Device$" "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/dmidecode.result" | grep Size | cut -d " " -f2 | sed 's/[^0-9]*//g' | sed '/^\s*$/d' | sed ':a;N;$!ba;s/\n/+/g' | bc | sed 's/$/\/1024/' | bc)
                             else
@@ -521,12 +542,12 @@ do
                         log "dmidecode.result not found!"
 
                 fi
-                if [[ -f "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/result/dmesg.result ]]
+                if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/dmesg.result" ]]
                 then    Dmesg=$DOWNLOAD_DIR/debug_$DATE/$DSM/result/dmesg.result
                         #DS_MEM2=$( grep -i -m1 "Memory: " $Dmesg | sed "s/.*Memory: //" | cut -d " " -f3 )
                         Syno_bios=$( tac "$Dmesg" | grep "synobios: load" -m1 | sed 's/.*load, //' )
                 fi
-                if [[ -f "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/result/free.result ]]
+                if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/free.result" ]]
                 then
                         free_mem=$( grep Mem "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/result/free.result | awk '{ print 1000+$2 }' | awk '{ split( "KB MB GB" , v ); s=1; while( $1>1000 ){ $1/=1000; s++ } print int($1) v[s] }' )
                 fi
@@ -552,15 +573,6 @@ do
                     Processor_count=$( grep -i -c "processor" "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/proc/cpuinfo ) #CPU Count
                     DS_SN=$( cat "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/proc/sys/kernel/syno_serial )
                     #DS_SN=$( grep -i -m1 "serial number" $DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/kern.log | sed "s/.*[Ss]erial [Nn]umber//" )
-                fi
-                #hdd-compatibility:
-                if [[ -f "${Script_dir}/files/comp/${UpnpModel}_hdds_compatible.txt" ]]; then
-                    comp_list=${Script_dir}/files/comp/"${UpnpModel}"_hdds_compatible.txt
-                    echo "Compatibility-list for ${UpnpModel} found and set."
-                fi
-                if [[ -f "${Script_dir}/files/comp/${UpnpModel}_hdds_incompatible.txt" ]]; then
-                    incomp_list=${Script_dir}/files/comp/"${UpnpModel}"_hdds_incompatible.txt
-                    echo "Incompatibility-list for ${UpnpModel} found and set."
                 fi
                     #Hardware-specific things
                     if [ "$DS_MODEL" = "DS216+" ] || [ "$DS_HWMODEL" = "DS216+" ]; then
@@ -683,7 +695,7 @@ do
                 #echo -e "$date_now" 'Associated Tickets: \nhttps://css.synology.com/ticket?list_type=group_all&sort_by=update_time&sort_direction=desc&filter=%7B%22search%22%3A%22'"$DS_SN"'%22%7D'
                 echo -e "\nArbeitsspeichermodules from logs: $DS_MEM3 ??"
                 echo -e "\nArbeitsspeicher, calced: $DS_MEM3_calc GB"
-                echo "Arbeitsspeicher free.result:" "$free_mem""+"
+                echo "Arbeitsspeicher free.result: ~$free_mem"
                 } >> "$sm"
 
                 #log "$DS_MEM3_calc"
@@ -704,34 +716,43 @@ do
                 echo "$DS_CPU_TXT"
                 echo -e "\n"
                 }  >> "$sm"
+
+                echo -e "\n\n\n\nExt4-/Btrfs-Errors:" >> "$sm"
+                grep -i "btrfs critical\|btrfs error\|btrfs warning" "$KERN"  >> "$sm" #btrfs: BTRFS warning (device md2)
+                grep -i "ext-4" "$KERN"  >> "$sm" #ext4
+
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/synolog/synosys.log" ]]; then
-                #if [[ -f $DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/synolog/.SYNOSYSDB ]]; then
-                #    sqlite3 $DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/synolog/.SYNOSYSDB "select id, datetime(time,'unixepoch','localtime'), username, msg from logs;" >> $DOWNLOAD_DIR/debug_$DATE/$DSM/SYSDB
-                    #SYSDB=$DOWNLOAD_DIR/debug_$DATE/$DSM/SYSDB
                     SYSDB="$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/synolog/synosys.log"
+                elif [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/synolog/.SYNOSYSDB" ]]; then
+                    sqlite3 "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/synolog/.SYNOSYSDB" "select id, datetime(time,'unixepoch','localtime'), username, msg from logs;" >> "$DOWNLOAD_DIR/debug_$DATE/$DSM/SYSDB.log"
+                    SYSDB="$DOWNLOAD_DIR/debug_$DATE/$DSM/SYSDB.log"
+                    else
+                        log "No SYSDB found."
+                fi
+
                     tac "$SYSDB" >> "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/synolog/synosystac.log"
                     SYSDBtac="$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/synolog/synosystac.log"
                     {
-                    echo "improper shutdowns:"
+                    echo -e "\n\nimproper shutdowns:"
                     grep -i "improper shutdown" "$SYSDB" #improper shutdown
-                    echo "Volume crashes:"
+                    echo -e "\n\nVolume crashes:"
                     grep -i "was crashed" "$SYSDB" #volumecrash
-                    echo "degraded volumes:"
+                    echo -e "\n\ndegraded volumes:"
                     grep -i "degrade" "$SYSDB" #volume degraded
-                    echo "errors:"
+                    echo -e "\n\nerrors:"
                     grep -i "error" "$SYSDB" #generic Errors
                     } >> "$sm"
-                fi
+
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/messages.log" ]]; then
                     {
-                    echo "DRDY:"
-                    grep -ia -B5 -A10 "DRDY" "$MESSAGES"
-                    echo "malformed database:"
-                    grep -ia "database disk image is malformed" "$MESSAGES"
-                    echo "crashes:"
-                    grep -ia "crash" "$MESSAGES"
-                    echo "call traces + next 25 lines:"
-                    grep -a "Call Trace" "$MESSAGES" -A25
+                    echo -e "\n\nDRDY:"
+                    grep -ia -B5 -A10 "DRDY" "$MESSAGES" | tac
+                    echo -e "\n\nmalformed database:"
+                    grep -ia "database disk image is malformed" "$MESSAGES" | tac
+                    echo -e "\n\ncrashes:"
+                    grep -ia "crash" "$MESSAGES" | tac
+                    echo -e "\n\ncall traces + next 25 lines:"
+                    grep -a "Call Trace" "$MESSAGES" -A25 | tac
                     } >> "$sm"
                 fi
                 #write hibernation info:
@@ -761,7 +782,7 @@ do
                     else
                      echo "power_sched.conf not found." >> "$hb_debug"
                 fi
-                #LDAP: Wenn Ihr Synology NAS als LDAP-Client fungiert (ab DSM 6.0.1)
+
                 declare -a PicArray
                 counter=0
                 allpics=$(find "$DOWNLOAD_DIR/debug_${DATE}/" -type f \( -name "*.jpg" -o -name "*.png" -o -name "*.PNG"-o -name "*.JPG" \))
@@ -773,8 +794,8 @@ do
                 sleep 0.5
 
                 source "${Script_dir}/files/config.sh" #load OpenFiles[] Array from config.sh
-                log "Array before unsetting: ${OpenFiles[*]}"
-                for i in "${!OpenFiles[@]}"; do #remove empty vars from array
+                log "Array before unsetting: ${OpenFiles[@]}"
+                for i in "${!OpenFiles[@]}"; do #remove empty vars from array [@]
                     [ -n "${OpenFiles[$i]}" ] || log "OpenFiles[$i] unset, because empty!"
                     [ -n "${OpenFiles[$i]}" ] || unset "OpenFiles[$i]"
                 done

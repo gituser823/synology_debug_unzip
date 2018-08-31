@@ -146,16 +146,16 @@ do
                 sleep $sleep_extract_zip
             done
             #echo $file
-            TIMEFORMAT='Executiontime: %Rsec'
+            #TIMEFORMAT='Extraction of *.xz took %Rsec'
             time(
-            date_now=$(date +"%d. %B %H:%M:%S: ")
-            echo "$date_now" "found .dat-file! Timer started now"
+            date_now=$(date +"%d. %B %H:%M:%S:")
+            echo "$date_now found .dat-file! Timer started now"
             DATE=$(echo "$(date +"%H%M%S") - ($(date +%S)%10)" | bc)
             unzip -q "$file" -d "$DOWNLOAD_DIR"/debug_"$DATE"
             if [ $? -eq 0 ] # if successfully extracted
             then
                 mv "$file" "$DOWNLOAD_DIR"/debug_"$DATE"
-                date_now=$(date +"%d. %B %H:%M:%S: ")
+                date_now=$(date +"%d. %B %H:%M:%S:")
                 echo "$date_now debug extracted to $DOWNLOAD_DIR/debug_$DATE"
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/packages.list" ]]
                 then    DSM=""
@@ -184,6 +184,16 @@ do
                 hb_debug=$DOWNLOAD_DIR/debug_$DATE/$DSM/hibernation_debug.log
                 DEBUG_DIR=$DOWNLOAD_DIR/debug_$DATE
                 Synoinfo=$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/synoinfo.conf
+                #extract .xz packages:
+                            TIMEFORMAT='Extraction of *.xz archives took %Rsec'
+                            time(
+                    for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/"*.xz
+                        do
+                            unxz "${file}"
+                        done
+                                )
+                      TIMEFORMAT='Executiontime: %Rsec'
+
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/packages.list" ]]
                 then    PACK=$DOWNLOAD_DIR/debug_$DATE/$DSM/packages.list
                         declare -a InstalledPackageArray
@@ -432,14 +442,14 @@ do
                 UpnpModel=$(grep -i "upnpmodelname" "$Synoinfo" | cut -d "\"" -f2)
                 if [[ -f "${Script_dir}/comp/${UpnpModel}_hdds_compatible.txt" ]]; then
                     comp_list="${Script_dir}/comp/${UpnpModel}_hdds_compatible.txt"
-                    echo "Compatibility-list for ${UpnpModel} found and set. ($comp_list)"
+                    log "Compatibility-list for ${UpnpModel} found and set. ($comp_list)"
                 else
                     echo "Compatibility-list for ${UpnpModel} not found! should be ${Script_dir}/comp/${UpnpModel}_hdds_compatible.txt"
                 fi
 
                 if [[ -f "${Script_dir}/comp/${UpnpModel}_hdds_incompatible.txt" ]]; then
                     incomp_list="${Script_dir}/comp/${UpnpModel}_hdds_incompatible.txt"
-                    echo "Incompatibility-list for ${UpnpModel} found and set. ($incomp_list)"
+                    log "Incompatibility-list for ${UpnpModel} found and set. ($incomp_list)"
                 else
                     echo "Incompatibility-list for ${UpnpModel} not found! should be ${Script_dir}/comp/${UpnpModel}_hdds_incompatible.txt"
                 fi
@@ -560,7 +570,7 @@ do
                     DS_MODEL=$( grep -ia -m1 '] Model:' "$KERN" | sed 's/.*: //' | sed 's/-//g' | sed 's/-//p') #i.e. DS213j
                     UpnpModel=$(grep -i "upnpmodelname" "$Synoinfo" | cut -d "\"" -f2)
                     if [ -z "$DS_HWMODEL" ]; then
-                            echo "No DS_Model found, using UPNP-Name: $UpnpModel"
+                            log "No DS_Model found, using UPNP-Name."
                             DS_MODEL_v="${UpnpModel}"
                             DS_MODEL_unter="${DS_MODEL_v}_"
                             DS_MODEL_plus="${DS_MODEL_unter//+/%2B}"
@@ -574,6 +584,8 @@ do
                     DS_SN=$( cat "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/proc/sys/kernel/syno_serial )
                     #DS_SN=$( grep -i -m1 "serial number" $DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/kern.log | sed "s/.*[Ss]erial [Nn]umber//" )
                 fi
+                date_now=$(date +"%d. %B %H:%M:%S:")
+                echo "$date_now $UpnpModel" #write to sm after this
                     #Hardware-specific things
                     if [ "$DS_MODEL" = "DS216+" ] || [ "$DS_HWMODEL" = "DS216+" ]; then
                         echo "Possible BIOS-Issue: https://css.synology.com/issue/4334" >> "$sm"
@@ -622,8 +634,6 @@ do
                         grep -ia "temperature> is over" "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/scemd.log" >> "$sm"
                         fi
                 fi
-                date_now=$(date +"%d. %B %H:%M:%S: ")
-                echo "$date_now" "$DS_MODEL" #write to sm after this
 
                 if grep -wi "$DS_HWMODEL\|$DS_MODEL\|$UpnpModel" "$srsde" &> /dev/null ; then
                     echo -e "NAS can be SRSed in DE! ( enabled )" >> "$sm"
@@ -689,16 +699,15 @@ do
                 echo "Anzahl Threads:" "$Processor_count"
                 echo "Anzahl Cores:" "$DS_Cores"
                 echo "Seriennummer:" "$DS_SN"
-                 # hwversion before: $DS_HWMODEL DS_MODEL_plus
-                #echo -e 'Associated Tickets: \nhttps://css.synology.com/ticket?list_type=group_all&sort_by=update_time&sort_direction=desc&filter=%7B%22search%22%3A%22'"$DS_SN"'%22%7D' >> "$sm"
-                #date_now=$(date +"%d. %B %H:%M:%S: ")
-                #echo -e "$date_now" 'Associated Tickets: \nhttps://css.synology.com/ticket?list_type=group_all&sort_by=update_time&sort_direction=desc&filter=%7B%22search%22%3A%22'"$DS_SN"'%22%7D'
+                echo -e 'Associated Tickets: \nhttps://cssnew.synology.com/ticket?list_type=agent_all&sort_by=update_time&sort_direction=desc&filter=%7B%22search_column%22%3A%5B%22ticket_id%22%2C%22content%22%5D%2C%22sn%22%3A%22'"$DS_SN"'%22%7D'
                 echo -e "\nArbeitsspeichermodules from logs: $DS_MEM3 ??"
                 echo -e "\nArbeitsspeicher, calced: $DS_MEM3_calc GB"
                 echo "Arbeitsspeicher free.result: ~$free_mem"
                 } >> "$sm"
 
                 #log "$DS_MEM3_calc"
+                date_now=$(date +"%d. %B %H:%M:%S: ")
+                echo -e $date_now 'Associated Tickets: \nhttps://cssnew.synology.com/ticket?list_type=agent_all&sort_by=update_time&sort_direction=desc&filter=%7B%22search_column%22%3A%5B%22ticket_id%22%2C%22content%22%5D%2C%22sn%22%3A%22'"$DS_SN"'%22%7D'
 
                 if [ -z "${UpnpModel}" ];
                 then
@@ -714,7 +723,6 @@ do
                 echo "CPUinfo from txt:"
                 echo "$DS_CPU_TXTINFO"
                 echo "$DS_CPU_TXT"
-                echo -e "\n"
                 }  >> "$sm"
 
                 echo -e "\n\n\n\nExt4-/Btrfs-Errors:" >> "$sm"
@@ -746,13 +754,13 @@ do
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/messages.log" ]]; then
                     {
                     echo -e "\n\nDRDY:"
-                    grep -ia -B5 -A10 "DRDY" "$MESSAGES" | tac
+                    grep -ia -B5 -A10 "DRDY" "$MESSAGES"
                     echo -e "\n\nmalformed database:"
-                    grep -ia "database disk image is malformed" "$MESSAGES" | tac
+                    grep -ia "database disk image is malformed" "$MESSAGES"
                     echo -e "\n\ncrashes:"
-                    grep -ia "crash" "$MESSAGES" | tac
+                    grep -ia "crash" "$MESSAGES"
                     echo -e "\n\ncall traces + next 25 lines:"
-                    grep -a "Call Trace" "$MESSAGES" -A25 | tac
+                    grep -a "Call Trace" "$MESSAGES" -A25
                     } >> "$sm"
                 fi
                 #write hibernation info:
@@ -794,7 +802,7 @@ do
                 sleep 0.5
 
                 source "${Script_dir}/files/config.sh" #load OpenFiles[] Array from config.sh
-                log "Array before unsetting: ${OpenFiles[@]}"
+                #log "Array before unsetting: ${OpenFiles[@]}"
                 for i in "${!OpenFiles[@]}"; do #remove empty vars from array [@]
                     [ -n "${OpenFiles[$i]}" ] || log "OpenFiles[$i] unset, because empty!"
                     [ -n "${OpenFiles[$i]}" ] || unset "OpenFiles[$i]"
@@ -808,8 +816,8 @@ do
                     do echo -n "\"$arg\" "
                        echo -n "\"$arg\" " >> ~/last_debug.sh
                 done
-                echo "\"" #??
-                log "$subl" "${OpenFiles[@]}"
+                echo -e "\n" #??
+                #log "$subl" "${OpenFiles[@]}"
                 #$subl "$DEBUG_DIR" "$SMART_GREP" "$PACK" "$Bash_history" "$hb_debug" "$HB" "$DF" "$IFCONFIG" "$SPACE_FILES":10000 "$SYSDBtac":100000 "$sm" "$MESSAGES":1000000 "${PicArray[@]}"
                 #"${subl}" "$DEBUG_DIR" "$SMART_GREP" "$PACK" "$Bash_history" "$hb_debug" "$HB" "$DF" "$IFCONFIG" "$SPACE_FILES":10000 "$SYSDBtac":100000 "$sm" "$MESSAGES":1000000 "${PicArray[@]}" #$pics
                 #echo "subl \"$DEBUG_DIR\" \"$SMART_GREP\" \"$PACK\" \"$Bash_history\" \"$hb_debug\" \"$HB\" \"$DF\" \"$IFCONFIG\" \"$SPACE_FILES:10000\" \"$SYSDBtac:100000\" \"$sm\" \"$MESSAGES:1000000\" \"${PicArray[@]}\""
@@ -817,8 +825,8 @@ do
                 #echo "Array: ${OpenFiles[@]}"
                 # for smart-files: ${SMART_FILES[@]}  $MDSTAT
             else
-                mkdir -p "${DOWNLOAD_DIR}"/kapott
-                mv "$file" "${DOWNLOAD_DIR}"/kapott/debug_"$DATE".dat
+                mkdir -p "${DOWNLOAD_DIR}/kapott"
+                mv "$file" "${DOWNLOAD_DIR}/kapott/debug_$DATE.dat"
                 echo "$file" "konnte nicht entpackt werden."
                 if [[ "$os" = "win" ]]; then
                     echo "" #maybe add things here

@@ -149,8 +149,6 @@ do
                 #echo "Waiting for Download to finish.."
                 sleep $sleep_extract_zip
             done
-            #echo $file
-            #TIMEFORMAT='Extraction of *.xz took %Rsec'
             time(
             date_now=$(date +"%d. %B %H:%M:%S:")
             echo "$date_now found .dat-file! Timer started now"
@@ -188,7 +186,7 @@ do
                 hb_debug=$DOWNLOAD_DIR/debug_$DATE/$DSM/hibernation_debug.log
                 DEBUG_DIR=$DOWNLOAD_DIR/debug_$DATE
                 Synoinfo=$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/synoinfo.conf
-                #extract .xz packages:
+                    #extract .xz packages:
                             TIMEFORMAT='Extraction of *.xz archives took %Rsec'
                             time(
                     for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/"*.xz
@@ -230,14 +228,6 @@ do
 
                             counter=$((counter + 1))
                         done
-                        #echo -e "\n\n\navailable Versions:"
-                        #cat "${package_versions}"
-                        grep -i "CloudSync\|MailServer\|SurveillanceStation" "$PACK" >> "$hb_debug"
-                        #to add: AD Server, AudioStation protokollierung, CloudStation Server, CloudStation Sharesync, Directory server
-                        #DownloadStation: emule, Docker-Discourse, Docker-GitLab, Docker-LXQt, Docker-Redmine, Docker-Spree, Document Viewer
-                        #MailPlus Server
-                        #Drittanbieterpakete, Asterisk, Bittorrent sync, Cloud Fleet, DVBLink-Server, Egnyte, ElephantDrive, Logitech® Medienserver, minimserver, Odoo8, OpenERP6, OpenERP7, OracleDBXE, PACS, Polkast, Symform Cloud Backup, VirtualHere, Webalizer, Wonderbox, xCloud, Zarafa, Andere Drittanbieter-Software oder Optware, z. B. SABnzbd
-                        #usb-geraet angeschlossen
                         echo -e "Drittanbieterpakete:" >> "$sm"
                         third_packages=$(grep -v "AntiVirus\|AudioStation\|Calendar\|CloudStation\|FileStation\|HyperBackup\|LogCenter\|MediaServer\|NoteStation\|PHP[0-9].[0-9]\|PhotoStation\|ProxyServer\|StorageAnalyzer\|SynoFinder\|SynologyApplicationService\|SynologyDrive\|TextEditor\|USBCopy\|VideoStation\|WebDAVServer\|CloudSync\|DownloadStation\|SurveillanceStation\|WebStation\|VPNCenter\|MariaDB\|Chat\|Git\|Node.js_4\|Perl\|ActiveBackup\|ActiveBackup-Office365\|ActiveDirectoryServer\|Apache[0-9].[0-9]\|CMS\|CardDAVServer\|DNSServer\|DiagnosisTool\|Docker\|MailClient\|MailPlus-Server\|OAuthService\|PetaSpace\|PrestoServer\|PythonModule\|SSOServer\|SnapshotReplication\|Spreadsheet\|SynologyMoments\|Virtualization\|iTunesServer\| enabled\|TimeBackup\|Java7\|Java8\|exFAT\|PDFViewer\|MailStation\|phpMyAdmin\|total [[:digit:]]\{,3\}" "$PACK")
                         if [ -z "$third_packages" ]; then
@@ -373,7 +363,7 @@ do
                 fi
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/hibernation.log" ]]
                 then    HB=$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/hibernation.log
-                # find if NAS is LDSP-Client
+                # find if NAS is LDAP-Client
                 #Check if LMB enabled
                 #System-Protokoll: Wenn eins der Systemprotokoll-Tools (Support-Center > Support-Dienste > Systemprotokoll-Tools) aktiviert ist (ab DSM 6.0).
                 #process synoindexd
@@ -546,7 +536,9 @@ do
                         DS_MEM3=$(grep -A6 "Memory Device$" "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/dmidecode.result" | grep Size)
                         DS_MEM3_cut=$(grep -A6 "Memory Device$" "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/dmidecode.result" | grep Size | cut -d " " -f2 |  sed 's/[^0-9]*//g'| sed '/^\s*$/d' | sed ':a;N;$!ba;s/\n//g')
                             if [[ "$DS_MEM3_cut" =~ $re ]] ; then
-                            DS_MEM3_calc=$(grep -A6 "Memory Device$" "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/dmidecode.result" | grep Size | cut -d " " -f2 | sed 's/[^0-9]*//g' | sed '/^\s*$/d' | sed ':a;N;$!ba;s/\n/+/g' | bc | sed 's/$/\/1024/' | bc)
+                            #DS_MEM3_calc=$(grep -A6 "Memory Device$" "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/dmidecode.result" | grep Size | cut -d " " -f2 | sed 's/[^0-9]*//g' | sed '/^\s*$/d' | sed ':a;N;$!ba;s/\n/+/g' | bc | sed 's/$/\/1024/' | bc)
+                            DS_MEM3_calc=$(cat "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/dmidecode.result" | sed -nr '/^Memory Device$/,/^$/ { /^\s*Size:\s*/ { s///; /No Module/! { s/ //; s/B//; p } } }' | numfmt --from=iec | awk '{ sum += $1 } END{ print sum }' | numfmt --to=iec | sed -r 's/([A-Z])/ \1B/')
+                            DS_MEM3_calc_byte=$(cat "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/dmidecode.result" | sed -nr '/^Memory Device$/,/^$/ { /^\s*Size:\s*/ { s///; /No Module/! { s/ //; s/B//; p } } }' | numfmt --from=iec | awk '{ sum += $1 } END{ print sum }')
                             else
                                 DS_MEM3_calc="Error calculating RAM-Size"
                                 log "Error calculating RAM-Size"
@@ -705,7 +697,7 @@ do
                 echo "Seriennummer:" "$DS_SN"
                 echo -e 'Associated Tickets: \nhttps://cssnew.synology.com/ticket?list_type=agent_all&sort_by=update_time&sort_direction=desc&filter=%7B%22search_column%22%3A%5B%22ticket_id%22%2C%22content%22%5D%2C%22sn%22%3A%22'"$DS_SN"'%22%7D'
                 echo -e "\nArbeitsspeichermodules from logs: $DS_MEM3 ??"
-                echo -e "\nArbeitsspeicher, calced: $DS_MEM3_calc GB"
+                echo -e "\nArbeitsspeicher, calced: $DS_MEM3_calc"
                 echo "Arbeitsspeicher free.result: ~$free_mem"
                 } >> "$sm"
 
@@ -721,6 +713,20 @@ do
                 DS_CPU_TXTINFO=$( grep -m1 "CPU-Modell" "$CPU_FILE" )
                 DS_CPU_TXT=$( grep "${UpnpModel}[[:space:]]" "$CPU_FILE" )
                 DS_MEM_TXT=$( grep "${UpnpModel}[[:space:]]" "$CPU_FILE" | rev | cut -d ' ' -f1,2 |rev ) #todo: if realRAM > preinstalled then echo
+                DS_MEM_TXT_byte=$( grep "${UpnpModel}[[:space:]]" "$CPU_FILE" | rev | cut -d ' ' -f1,2 |rev | tr -d ' B' | numfmt --from=iec)
+                if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/dmidecode.result" ]]
+                then
+                    if [ "$DS_MEM3_calc_byte" -gt "$DS_MEM_TXT_byte" ];
+                    then
+                        echo "More RAM installed! $DS_MEM3_calc vs $DS_MEM_TXT preinstalled" >> "$sm"
+                    elif [ "$DS_MEM3_calc_byte" -eq "$DS_MEM_TXT_byte" ];
+                    then
+                        echo "same RAM installed as preinstalled!"  >> "$sm"
+                    else
+                        echo "error comparing RAM-Size"  >> "$sm"
+                    fi
+                fi
+
                 log "${UpnpModel}"
                 log "${UpnpModel/+/\\+}\S"
                 {
@@ -768,6 +774,18 @@ do
                     } >> "$sm"
                 fi
                 #write hibernation info:
+                        echo -e "Packages interfering with Hibernation:" >> "$hb_debug"
+                        hb_packages=$(grep "ActiveDirectoryServer\|AudioStation\|CloudStation\|MediaServer\|SynologyDrive\|CloudSync\|DownloadStation\|SurveillanceStation\|CMS\|Docker\|MailClient\|MailPlus\|MailPlus-Server\|PetaSpace\|Virtualization\|PDFViewer\|MailStation" "$PACK")
+                        #to add: DocumentViewer?, CloudStation Server, CS ShareSync, CMS, DirectoryServer, MailServer?, Plex Media Server, Drittanbieterpakete
+                        #to add: AudioStation protokollierung, Directory server
+                        #DownloadStation: emule, Docker-Discourse, Docker-GitLab, Docker-LXQt, Docker-Redmine, Docker-Spree, Document Viewer
+                        #Drittanbieterpakete, Asterisk, Bittorrent sync, Cloud Fleet, DVBLink-Server, Egnyte, ElephantDrive, Logitech® Medienserver, minimserver, Odoo8, OpenERP6, OpenERP7, OracleDBXE, PACS, Polkast, Symform Cloud Backup, VirtualHere, Webalizer, Wonderbox, xCloud, Zarafa, Andere Drittanbieter-Software oder Optware, z. B. SABnzbd
+                        #usb-geraet angeschlossen
+                        if [ -z "$third_packages" ]; then
+                            echo "none." >> "$hb_debug"
+                            else
+                            echo "$hb_packages" >> "$hb_debug"
+                        fi
                 satadeepsleep=$(grep -c "satadeepsleeptimer=\"1\"" "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/etc/synoinfo.conf)
                 if [ "$satadeepsleep" -gt 0 ]
                         then echo -e "Hibernation enabled.\n" >> "$hb_debug"

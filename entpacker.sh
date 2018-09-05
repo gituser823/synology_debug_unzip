@@ -187,9 +187,16 @@ do
                 DEBUG_DIR=$DOWNLOAD_DIR/debug_$DATE
                 Synoinfo=$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/synoinfo.conf
                     #extract .xz packages:
-                            TIMEFORMAT='Extraction of *.xz archives took %Rsec'
+                            TIMEFORMAT='Extraction of messages.xz archives took %Rsec'
                             time(
-                    for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/"*.xz
+                    for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/messages"*.xz
+                        do
+                            unxz "${file}"
+                        done
+                                )
+                            TIMEFORMAT='Extraction of kern.xz archives took %Rsec'
+                            time(
+                    for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/kern"*.xz
                         do
                             unxz "${file}"
                         done
@@ -555,7 +562,7 @@ do
                 fi
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/free.result" ]]
                 then
-                        free_mem=$( grep Mem "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/result/free.result | awk '{ print 1000+$2 }' | awk '{ split( "KB MB GB" , v ); s=1; while( $1>1000 ){ $1/=1000; s++ } print int($1) v[s] }' )
+                        free_mem=$( grep Mem "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/result/free.result | awk '{ print 1000+$2 }' | awk '{ split( "KB MB GB" , v ); s=1; while( $1>1000 ){ $1/=1000; s++ } print int($1) v[s] }' | sed -r 's/B//' | numfmt --from=iec | numfmt --to=iec )
                 fi
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/route.result" ]]
                 then    Route="$DOWNLOAD_DIR/debug_$DATE/$DSM/result/route.result"

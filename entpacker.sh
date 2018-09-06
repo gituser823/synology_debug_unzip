@@ -222,8 +222,8 @@ do
                             }
 
                             if version_compare_gt "$PureVerAvailable" "$PureVerInstalled"; then
-                                log "\e[31mUpdate for ${InstalledPackageArray[$counter]} from currently $PureVerInstalled to $PureVerAvailable available!\e[0m"
-                                echo "Update for ${InstalledPackageArray[$counter]} from currently $PureVerInstalled to $PureVerAvailable available!" >> "$sm"
+                                log "\e[31mUpdate for ${InstalledPackageArray[$counter]} from $PureVerInstalled to $PureVerAvailable available!\e[0m"
+                                echo "Update for ${InstalledPackageArray[$counter]} from $PureVerInstalled to $PureVerAvailable available!" >> "$sm"
                             elif version_compare_gt "$PureVerInstalled" "$PureVerAvailable"; then
                                 log "\e[93minstalled Version later than available?!\e[0m"
                             elif [[ "$PureVerInstalled" == "$PureVerAvailable" ]] ; then
@@ -235,7 +235,7 @@ do
 
                             counter=$((counter + 1))
                         done
-                        echo -e "Drittanbieterpakete:" >> "$sm"
+                        echo -e "Third Party packages:" >> "$sm"
                         third_packages=$(grep -v "AntiVirus\|AudioStation\|Calendar\|CloudStation\|FileStation\|HyperBackup\|LogCenter\|MediaServer\|NoteStation\|PHP[0-9].[0-9]\|PhotoStation\|ProxyServer\|StorageAnalyzer\|SynoFinder\|SynologyApplicationService\|SynologyDrive\|TextEditor\|USBCopy\|VideoStation\|WebDAVServer\|CloudSync\|DownloadStation\|SurveillanceStation\|WebStation\|VPNCenter\|MariaDB\|Chat\|Git\|Node.js_4\|Perl\|ActiveBackup\|ActiveBackup-Office365\|ActiveDirectoryServer\|Apache[0-9].[0-9]\|CMS\|CardDAVServer\|DNSServer\|DiagnosisTool\|Docker\|MailClient\|MailPlus-Server\|OAuthService\|PetaSpace\|PrestoServer\|PythonModule\|SSOServer\|SnapshotReplication\|Spreadsheet\|SynologyMoments\|Virtualization\|iTunesServer\| enabled\|TimeBackup\|Java7\|Java8\|exFAT\|PDFViewer\|MailStation\|phpMyAdmin\|total [[:digit:]]\{,3\}" "$PACK")
                         if [ -z "$third_packages" ]; then
                             echo "No Third Party Packages found." >> "$sm"
@@ -246,14 +246,15 @@ do
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/df.result" ]]
                 then    DF=$DOWNLOAD_DIR/debug_$DATE/$DSM/result/df.result
                         full_number=$(awk '0+$5 >= 90 { count++ } END{print 0+count}' "$DF")
-                        echo -en "\nMountpoints more than 90% full: (""$full_number"")" >> "$sm"
-                        echo -n "Mountpoints more than 90% full: (""$full_number"")" >> "$sg"
                         if [[ "$full_number" -gt 0 ]]
                         then
+                            echo -en "\nMountpoints more than 90% full: (""$full_number"")" >> "$sm"
                             awk '0+$5>90 { printf "\n%s",$0 }' "$DF" >> "$sm"
+                            echo -n "Mountpoints more than 90% full: (""$full_number"")" >> "$sg"
                             awk '0+$5>90 { printf "\n%s",$0 }' "$DF" >> "$sg"
                         else
-                            echo " No full Mountpoints found." >> "$sm"
+                            echo -n "Mountpoints more than 90% full: (""$full_number"")" >> "$sg"
+                            #echo " No full Mountpoints found." >> "$sm"
                             echo " No full Mountpoints found." >> "$sg"
                         fi
                         echo -e "\n"  >> "$sg"
@@ -267,10 +268,10 @@ do
                 fi
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/proc/mounts" ]]
                 then    MOUNTS=$DOWNLOAD_DIR/debug_$DATE/$DSM/proc/mounts
-                        echo -e "\neingehängte Mountpunkte:" >> "$sg"
+                        echo -e "\nMountpoints:" >> "$sg"
                         cat "$MOUNTS" >> "$sg"
-                        echo -e " \n \n"  >> "$sg"
-                        echo -e "\n\neingehängte Mountpunkte:" >> "$sm"
+                        echo -e " \n"  >> "$sg"
+                        echo -e "\nMountpoints:" >> "$sm"
                         grepmounts=$(grep -i "volume" "$MOUNTS" | cut -f1 -d",")
                         grepmounts_c=$(grep -i -c "volume" "$MOUNTS" | cut -f1 -d",")
                         if [ "$grepmounts_c" -ne 0 ]
@@ -278,15 +279,6 @@ do
                         else echo "No Volumes mounted." >> "$sm"
                         fi
 
-                fi
-
-                if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/samba/smb.share.conf" ]]
-                then    SmbShares=$(grep "path=" "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/samba/smb.share.conf")
-                            if [[ -z "$SmbShares" ]]; then
-                                echo "No Samba Shares found." >> "$sm"
-                            else
-                                echo -e "Found Samba-shares:\n$SmbShares" >> "$sm"
-                            fi
                 fi
 
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/ifconfig.result" ]]
@@ -461,16 +453,32 @@ do
                     [[ -e "$file" ]] || break #no smart-files
                     hddname=$(basename -- "$file")
                     hddname2=$(grep -i "Model Family\|Device Model" "$file" | cut -d " " -f7-20 | sed -r 's/\"/Inch/' | xargs )
-                    modelname=$(grep -i "Device Model" "$file" | cut -d " " -f7-8 | sed -r 's/\"/Inch/' | xargs ) #evtl f7-20
-
-                    if grep  "${modelname}" "${comp_list}" &> /dev/null; then
-                        HDDComp="(compatible)"
-                    elif grep "${modelname}" "${incomp_list}" &> /dev/null; then
-                        HDDComp="(incompatible)"
-                    else
-                        HDDComp="(not listed)"
+                    modelname=$(grep -i "Device Model" "$file" | cut -d " " -f8 | sed -r 's/\"/Inch/' | xargs ) #evtl f7-20
+                    if [[ -z "${modelname}" ]]; then
+                        modelname=$(grep -i "Device Model" "$file" | cut -d " " -f7 | sed -r 's/\"/Inch/' | xargs )
                     fi
 
+
+                    if [[ -z "${modelname}" ]]; then
+                        HDDComp=""
+                        log "HDD-Comp: Modelname empty!"
+                    elif grep  "${modelname}" "${comp_list}" &> /dev/null; then
+                        HDDComp="(compatible)"
+                        log "HDD-Comp: found \"${modelname}\""
+                    elif grep  "${modelname//-/ - }" "${comp_list}" &> /dev/null; then
+                        HDDComp="(compatible)"
+                        log "HDD-Comp: found \"${modelname//-/ - }\""
+                    elif grep "${modelname}" "${incomp_list}" &> /dev/null; then
+                        HDDComp="(incompatible)"
+                        log "HDD-INComp: found \"${modelname}\""
+                    elif grep "${modelname//-/ - }" "${incomp_list}" &> /dev/null; then
+                        HDDComp="(incompatible)"
+                        log "HDD-INComp: found \"${modelname//-/ - }\""
+                    else
+                        HDDComp="(not listed)"
+                        log "HDD-Comp: \"${modelname}\" not found"
+                    fi
+                    log "compatibility check for ${hddname} grepped for ${modelname} and ${modelname//-/ - }"
                     echo -n "$hddname: $hddname2 $HDDComp: PowerOnHours: " >> "$sm"
                     PoH=$(grep -iE "Power(_|-)on_Hours" "$file" | sed -e "s/ ([^()]*)//g" | rev | cut -d " " -f1 | rev | sed 's/h.*//' )
                     echo "${PoH}" >> "$sm"
@@ -590,19 +598,19 @@ do
                 date_now=$(date +"%d. %B %H:%M:%S:")
                 echo "$date_now $UpnpModel" #write to sm after this
                     #Hardware-specific things
-                    if [ "$DS_MODEL" = "DS216+" ] || [ "$DS_HWMODEL" = "DS216+" ]; then
+                    if [ "$UpnpModel" = "DS216+" ]; then
                         echo "Possible BIOS-Issue: https://css.synology.com/issue/4334" >> "$sm"
                         echo "Bugged Versions are less than M.616" >> "$sm"
                         echo -e "This Machines BIOS-Version: $BIOS_V_CUT\n" >> "$sm"
                     fi
-                    if [ "$DS_MODEL" = "DS718+" ] || [ "$DS_HWMODEL" = "DS718+" ]; then
+                    if [ "$UpnpModel" = "DS718+" ]; then
                         grep_cputemp=$( grep -c "<cpu_temperature> is over" "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/scemd.log" )
                         if [ "$grep_cputemp" -gt 0 ]; then
                         echo "CPU is overheating, RMA unit: https://css.synology.com/issue/11124" >> "$sm"
                         grep -i "<cpu_temperature> is over" "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/scemd.log" >> "$sm"
                         fi
                     fi
-                    if [ "$DS_MODEL" = "DS718+" ] || [ "$DS_MODEL" = "DS918+" ] || [ "$DS_MODEL" = "DS218+" ] || [ "$DS_MODEL" = "DS418play" ] || [ "$DS_HWMODEL" = "DS718+" ] || [ "$DS_HWMODEL" = "DS918+" ] || [ "$DS_HWMODEL" = "DS218+" ] || [ "$DS_HWMODEL" = "DS418play" ]; then
+                    if [ "$UpnpModel" = "DS718+" ] || [ "$UpnpModel" = "DS918+" ] || [ "$UpnpModel" = "DS218+" ] || [ "$UpnpModel" = "DS418play" ] || [ "$UpnpModel" = "DS718+" ] || [ "$UpnpModel" = "DS918+" ] || [ "$UpnpModel" = "DS218+" ] || [ "$UpnpModel" = "DS418play" ]; then
                     {
                         echo "possible BIOS-Issue: https://css.synology.com/issue/12026"
                         echo "Update to DSM 6.1.3-15152 Update 7 to update the BIOS."
@@ -610,6 +618,35 @@ do
                         echo -e "This Machines BIOS-Version: $BIOS_V_CUT\n"
                     } >> "$sm"
                     fi
+
+                    if grep -ia "tn40xx" "$KERN" | grep memory &> /dev/null ; then
+                    echo "Known Issue with 10GbE E10G15-F1 Card detected." >> "$sm"
+                    echo "See https://cssnew.synology.com/issue/5206 Issue B" >> "$sm"
+                    grep -ia "tn40xx" "$KERN" | grep memory | tail -n20 >> "$sm"
+                    fi
+
+                    if grep -ia "tn40xx" "$KERN" | grep Link Up 10G &> /dev/null ; then
+                    {
+                    echo "Possible known Issue with 10GbE E10G15-F1 Card detected."
+                    echo "If Time are above 600s after Boot, please check SOP."
+                    echo "See https://cssnew.synology.com/issue/5206 Issue A"
+                    grep -ia "tn40xx" "$KERN" | grep "Link Up 10G\|Link Down" | tail -n20
+                    } >> "$sm"
+                    fi
+
+                    #https://cssnew.synology.com/issue/13942
+                    if [ "$UpnpModel" = "DS218j" ] || [ "$UpnpModel" = "RS217" ] || [ "$UpnpModel" = "RS816" ] || [ "$UpnpModel" = "DS416j" ] || [ "$UpnpModel" = "DS416slim" ] || [ "$UpnpModel" = "DS216" ] || [ "$UpnpModel" = "DS216j" ] || [ "$UpnpModel" = "DS116" ]; then
+                        grep_Issue_13942=$( grep -ca "Linux processing - Can't refill, try to allocate again in cleanup timer" "$MESSAGES" )
+                        if [ "$grep_Issue_13942" -gt 0 ]; then
+                        {
+                        echo "Known Issue: https://cssnew.synology.com/issue/13942"
+                        echo "[Cause] The marvell model may suffer from memory allocating issue."
+                        echo "[Workaround]Add the following command to a bootup task:"
+                        echo "/sbin/sysctl -w vm.min_free_kbytes=16384"
+                        } >> "$sm"
+                        fi
+                    fi
+
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/messages.log" ]]
                 then
                     echo "Memory Tests: " >> "$sm"
@@ -626,8 +663,8 @@ do
                     if [[ "$Passed_Memtest" -eq 0 ]] && [[ "$Failed_Memtest" -eq 0 ]]; then #MEMTESTS
                         echo "No Memory tests have been run." >> "$sm"
                     fi
-                    DSM_VERSION=$( cat "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc.defaults/VERSION" ) #DSM Version
-                    #echo -e " "  >> "$sm"
+                    DSM_VERSION=$( cat "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc.defaults/VERSION" | grep "productversion" ) #DSM Version
+                    DSM_BuildVERSION=$( cat "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc.defaults/VERSION" | grep "buildnumber" )
                 fi
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/scemd.log" ]]
                 then
@@ -638,7 +675,7 @@ do
                         fi
                 fi
 
-                if grep -wi "$DS_HWMODEL\|$DS_MODEL\|$UpnpModel" "$srsde" &> /dev/null ; then
+                if grep -wi "$UpnpModel" "$srsde" &> /dev/null ; then
                     echo -e "NAS can be SRSed in DE! ( enabled )" >> "$sm"
                 else
                     echo -e "no DE-SRS possible. ( disabled )" >> "$sm"
@@ -679,7 +716,7 @@ do
                 else echo "DSM Version is latest!" >> "$sm"
                 fi
                 {
-                echo "installed VERSION: " "$DSM_VERSION"
+                echo "installed VERSION: " "$DSM_VERSION, $DSM_BuildVERSION"
                 echo -e "\nUptime: " "$UPTIME"
                 echo "Hostname: " "$Hostname"
                 echo "$QuickConnect_echo"
@@ -694,13 +731,11 @@ do
                 fi
                 {
                 echo "BIOS:" "$BIOS_V_CUT"
-                echo "SynoBIOS: " "$Syno_bios"
-                echo "Hardware Version:" "$DS_HWMODEL"
-                echo "Diskstationmodel:" "$DS_MODEL"
+                #echo "SynoBIOS: " "$Syno_bios"
+                echo "Hardware Version: $DS_HWMODEL and Diskstationmodel: $DS_MODEL"
                 echo "UPNP Model:" "$UpnpModel"
                 echo "CPU from logs:" "$DS_CPU"
-                echo "Anzahl Threads:" "$Processor_count"
-                echo "Anzahl Cores:" "$DS_Cores"
+                echo "Anzahl Threads: $Processor_count , Anzahl Cores: $DS_Cores"
                 echo "Seriennummer:" "$DS_SN"
                 echo -e 'Associated Tickets: \nhttps://cssnew.synology.com/ticket?list_type=agent_all&sort_by=update_time&sort_direction=desc&filter=%7B%22search_column%22%3A%5B%22ticket_id%22%2C%22content%22%5D%2C%22sn%22%3A%22'"$DS_SN"'%22%7D'
                 echo -e "\nArbeitsspeichermodules from logs: $DS_MEM3 ??"
@@ -742,7 +777,17 @@ do
                 echo "$DS_CPU_TXT"
                 }  >> "$sm"
 
-                echo -e "\n\n\n\nExt4-/Btrfs-Errors:" >> "$sm"
+                if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/samba/smb.share.conf" ]]
+                then    SmbShares=$(grep "path=" "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/samba/smb.share.conf")
+                            if [[ -z "$SmbShares" ]]; then
+                                echo -e "\nNo Samba Shares found." >> "$sm"
+                            else
+                                echo -e "\nFound Samba-shares:\n$SmbShares" >> "$sm"
+                            fi
+                fi
+
+
+                echo -e "\n\nExt4-/Btrfs-Errors:" >> "$sm"
                 grep -i "btrfs critical\|btrfs error\|btrfs warning" "$KERN"  >> "$sm" #btrfs: BTRFS warning (device md2)
                 grep -i "ext-4" "$KERN"  >> "$sm" #ext4
 

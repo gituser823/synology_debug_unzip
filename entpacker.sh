@@ -435,16 +435,16 @@ do
                 UpnpModel=$(grep -i "upnpmodelname" "$Synoinfo" | cut -d "\"" -f2)
                 if [[ -f "${Script_dir}/comp/${UpnpModel}_hdds_compatible.txt" ]]; then
                     comp_list="${Script_dir}/comp/${UpnpModel}_hdds_compatible.txt"
-                    log "Compatibility-list for ${UpnpModel} found and set. ($comp_list)"
+                    log "\e[32mCompatibility-list for ${UpnpModel} found and set. ($comp_list)\e[0m"
                 else
-                    echo "Compatibility-list for ${UpnpModel} not found! should be ${Script_dir}/comp/${UpnpModel}_hdds_compatible.txt"
+                    echo "\e[31mCompatibility-list for ${UpnpModel} not found! should be ${Script_dir}/comp/${UpnpModel}_hdds_compatible.txt\e[0m"
                 fi
 
                 if [[ -f "${Script_dir}/comp/${UpnpModel}_hdds_incompatible.txt" ]]; then
                     incomp_list="${Script_dir}/comp/${UpnpModel}_hdds_incompatible.txt"
-                    log "Incompatibility-list for ${UpnpModel} found and set. ($incomp_list)"
+                    log "\e[32mIncompatibility-list for ${UpnpModel} found and set. ($incomp_list)\e[0m"
                 else
-                    echo "Incompatibility-list for ${UpnpModel} not found! should be ${Script_dir}/comp/${UpnpModel}_hdds_incompatible.txt"
+                    echo "\e[31mIncompatibility-list for ${UpnpModel} not found! should be ${Script_dir}/comp/${UpnpModel}_hdds_incompatible.txt\e[0m"
                 fi
 
                 #declare -a PowerOnHours
@@ -454,31 +454,45 @@ do
                     hddname=$(basename -- "$file")
                     hddname2=$(grep -i "Model Family\|Device Model" "$file" | cut -d " " -f7-20 | sed -r 's/\"/Inch/' | xargs )
                     modelname=$(grep -i "Device Model" "$file" | cut -d " " -f8 | sed -r 's/\"/Inch/' | xargs ) #evtl f7-20
+                    modelname_hdd_size=$(grep -i "User Capacity" "$file" | awk -F '[][]+' 'NF && !/\[\[/{print $2}' | sed 's/\..* //' | sed 's/\.* //' ) # i.e.: 3TB or 500GB
+                    if [[ "${modelname}" == "SSD" ]]; then #samsung SSDs!
+                        modelname=$(grep -i "Device Model" "$file" | cut -d " " -f9-10 | sed -r 's/\"/Inch/' | xargs)
+                        #modelname_hdd_size=$(grep -i "Device Model" "$file" | cut -d " " -f11 | xargs)
+                        modelname_first_part=$(grep -i "Device Model" "$file" | cut -d " " -f8 | sed -r 's/\"/Inch/' | cut -d "-" -f1 )
+                    modelname_first_part=$(grep -i "Device Model" "$file" | cut -d " " -f8 | sed -r 's/\"/Inch/' | cut -d "-" -f1 ) #evtl f7-20
+                    #to add: include size of HDD/SSD
                     if [[ -z "${modelname}" ]]; then
                         modelname=$(grep -i "Device Model" "$file" | cut -d " " -f7 | sed -r 's/\"/Inch/' | xargs )
+                        modelname_first_part=$(grep -i "Device Model" "$file" | cut -d " " -f7 | sed -r 's/\"/Inch/' | cut -d "-" -f1)
                     fi
-
 
                     if [[ -z "${modelname}" ]]; then
                         HDDComp=""
-                        log "HDD-Comp: Modelname empty!"
-                    elif grep  "${modelname}" "${comp_list}" &> /dev/null; then
-                        HDDComp="(compatible)"
-                        log "HDD-Comp: found \"${modelname}\""
-                    elif grep  "${modelname//-/ - }" "${comp_list}" &> /dev/null; then
-                        HDDComp="(compatible)"
-                        log "HDD-Comp: found \"${modelname//-/ - }\""
+                        log "\e[31mHDD-Comp: Modelname empty!\e[0m"
                     elif grep "${modelname}" "${incomp_list}" &> /dev/null; then
                         HDDComp="(incompatible)"
-                        log "HDD-INComp: found \"${modelname}\""
+                        log "\e[31mHDD-INComp: found \"${modelname}\"\e[0m"
                     elif grep "${modelname//-/ - }" "${incomp_list}" &> /dev/null; then
                         HDDComp="(incompatible)"
-                        log "HDD-INComp: found \"${modelname//-/ - }\""
+                        log "\e[31mHDD-INComp: found \"${modelname//-/ - }\"\e[0m"
+                    elif grep  "${modelname%-*}" "${incomp_list}" &> /dev/null; then # remove part after "-"; check if two parts first?
+                        HDDComp="(incompatible)"
+                        log "\e[31mHDD-INComp: found \"${modelname%-*}\"\e[0m"
+                    elif grep  "${modelname}" "${comp_list}" &> /dev/null; then
+                        HDDComp="(compatible)"
+                        log "\e[32mHDD-Comp: found \"${modelname}\"\e[0m"
+                    elif grep  "${modelname//-/ - }" "${comp_list}" &> /dev/null; then
+                        HDDComp="(compatible)"
+                        log "\e[32mHDD-Comp: found \"${modelname//-/ - }\"\e[0m"
+                    elif grep  "${modelname%-*}" "${comp_list}" &> /dev/null; then # remove part after "-"; check if two parts first?
+                        HDDComp="(compatible)"
+                        log "\e[32mHDD-Comp: found \"${modelname%-*}\"\e[0m"
                     else
                         HDDComp="(not listed)"
-                        log "HDD-Comp: \"${modelname}\" not found"
+                        log "HDD-Comp: \"${modelname}\" not found."
                     fi
-                    log "compatibility check for ${hddname} grepped for ${modelname} and ${modelname//-/ - }"
+                    log "compatibility check for ${hddname} grepped for ${modelname} , ${modelname//-/ - } and ${modelname%-*}"
+                    log "HDD Size: ${modelname_hdd_size}"
                     echo -n "$hddname: $hddname2 $HDDComp: PowerOnHours: " >> "$sm"
                     PoH=$(grep -iE "Power(_|-)on_Hours" "$file" | sed -e "s/ ([^()]*)//g" | rev | cut -d " " -f1 | rev | sed 's/h.*//' )
                     echo "${PoH}" >> "$sm"
@@ -738,7 +752,7 @@ do
                 echo "Anzahl Threads: $Processor_count , Anzahl Cores: $DS_Cores"
                 echo "Seriennummer:" "$DS_SN"
                 echo -e 'Associated Tickets: \nhttps://cssnew.synology.com/ticket?list_type=agent_all&sort_by=update_time&sort_direction=desc&filter=%7B%22search_column%22%3A%5B%22ticket_id%22%2C%22content%22%5D%2C%22sn%22%3A%22'"$DS_SN"'%22%7D'
-                echo -e "\nArbeitsspeichermodules from logs: $DS_MEM3 ??"
+                echo -e "\nArbeitsspeichermodules from logs:\n$DS_MEM3 ??"
                 echo -e "\nArbeitsspeicher, calced: $DS_MEM3_calc"
                 echo "Arbeitsspeicher free.result: ~$free_mem"
                 } >> "$sm"
@@ -867,7 +881,7 @@ do
 
                 declare -a PicArray
                 counter=0
-                allpics=$(find "$DOWNLOAD_DIR/debug_${DATE}/" -type f \( -name "*.jpg" -o -name "*.png" -o -name "*.PNG"-o -name "*.JPG" \))
+                allpics=$(find "$DOWNLOAD_DIR/debug_${DATE}/" -type f \( -name "*.jpg" -o -name "*.png" -o -name "*.PNG"-o -name "*.JPG" \) 2>/dev/null)
                 for pic in "${allpics}"
                 do  PicArray["${counter}"]="${pic}"
                     counter=$((counter + 1))

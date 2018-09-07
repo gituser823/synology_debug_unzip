@@ -412,6 +412,7 @@ do
                     done
                     for i in "${OfflineUncorrectable[@]}"; do
                         (( OfflineUncorrectable_sum+="$i" ))  &> /dev/null #shows errors, if Offline_uncorrectable not found in a smart-file (Intel SSDs)
+
                     done
                 done
                 echo -e "\nHDDs: " >> "$sm"
@@ -507,13 +508,14 @@ do
                     if [[ -z "${LastSmartTest}" ]]; then
                     echo "never, " >> "$sm"
                     elif [[ -z "${LastSmartTest+x}" ]]; then
-                    echo "error";
+                    echo "error"
                         else
                         LastSmartExpr=$(expr "${PoH}" - "${LastSmartTest}" )
                         #log "expr: $PoH und $LastSmarttest"
                         echo -n "$LastSmartExpr" "hours ago, " >> "$sm"
                         echo  "$LastSmartResult" >> "$sm"
                     fi
+                fi
                 done
                 #mehr smart-kram
                 echo -e "\n" >> "$sm"

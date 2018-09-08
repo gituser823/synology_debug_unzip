@@ -29,7 +29,7 @@ available_packages="${Script_dir}/tmp/available_packages.txt"
 package_versions="${Script_dir}/tmp/package_versions.txt"
 mkdir -p "${Script_dir}/comp"
 mkdir -p "${Script_dir}/tmp"
-ProductList="${Script_dir}/comp/ProductList.txt"
+ProductList="${Script_dir}/comp/ProductList.json"
 
 
 function log() {
@@ -53,7 +53,7 @@ while getopts ":uvh" opt; do
         curl "https://www.synology.com/de-de/solution/SRS" -# --output "$srs"
         stat --printf="Size: %s" "$srs"
         awk '/<div class="selected_country">Deutschland<\/div>/{f=1;next} /<div class="selected_country">Griechenland<\/div>/{f=0} f' "$srs" > "$srsde"
-        #CommentedOut() { #uncomment this and line 82 to stop downloading hdd-comp on -u
+        #CommentedOut() { #uncomment this and line 86 to stop downloading hdd-comp on -u
         echo -e "\nGetting available Models:"
         curl "https://www.synology.com/cgi/misc/?action=getProductList_withOEM" -# | grep -oP '(?<=\[).*(?=\])' > "$ProductList" #get all Models listed in Synology API
         stat --printf="Size: %s" "$ProductList"
@@ -72,18 +72,18 @@ while getopts ":uvh" opt; do
             for m in "${Models[@]}"
                 do
                 {
-                    echo 'echo getting /comp/'"${m}"'_hdds_compatible.txt'
-                    echo 'get "https://www.synology.com/api/compatibility/findHclList?lang=en-global&search_by=products&model='"${m//+/%2B}"'&category=hdds&usage_id=12&recommend=t" -o "'"${Script_dir}"'/comp/'"${m}"'_hdds_compatible.txt"'
-                    #stat --printf=", Size: %s" "${Script_dir}/comp/${m}_hdds_compatible.txt"
-                    echo 'echo getting /comp/'"${m}"'_hdds_incompatible.txt'
-                    echo 'get "https://www.synology.com/api/compatibility/findHclList?lang=en-global&search_by=products&model='"${m//+/%2B}"'&category=hdds&usage_id=12&recommend=f" -o "'"${Script_dir}"'/comp/'"${m}"'_hdds_incompatible.txt"'
-                    #stat --printf=", Size: %s" "${Script_dir}/comp/${m}_hdds_compatible.txt"
+                    echo 'echo getting /comp/'"${m}"'_hdds_compatible.json'
+                    echo 'get "https://www.synology.com/api/compatibility/findHclList?lang=en-global&search_by=products&model='"${m//+/%2B}"'&category=hdds&usage_id=12&recommend=t" -o "'"${Script_dir}"'/comp/'"${m}"'_hdds_compatible.json"'
+                    #stat --printf=", Size: %s" "${Script_dir}/comp/${m}_hdds_compatible.json"
+                    echo 'echo getting /comp/'"${m}"'_hdds_incompatible.json'
+                    echo 'get "https://www.synology.com/api/compatibility/findHclList?lang=en-global&search_by=products&model='"${m//+/%2B}"'&category=hdds&usage_id=12&recommend=f" -o "'"${Script_dir}"'/comp/'"${m}"'_hdds_incompatible.json"'
+                    #stat --printf=", Size: %s" "${Script_dir}/comp/${m}_hdds_compatible.json"
                 } >> "${Script_dir}/comp/lftp.cfg"
                 done
             echo "bye" >> "${Script_dir}/comp/lftp.cfg"
             lftp -f "${Script_dir}/comp/lftp.cfg"
             echo "done.";
-
+            #}
         echo "Updating latest package Versions:"
         lftp -c "open https://archive.synology.com/download/Package/spk/; cls" > "${available_packages_pre}"; #download package list
         sed -i '/^enabled$/d' "${available_packages_pre}"
@@ -395,9 +395,11 @@ do
                     echo "No Smart-files found."
                 fi
 
+                counter=0
                 for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/smart"*.result
                 do
                     [[ -e "$file" ]] || break #no smart-files
+                    counter=$((counter + 1))
                     declare -a BadSectors
                     declare -a PendingSectors
                     declare -a OfflineUncorrectable
@@ -415,7 +417,7 @@ do
 
                     done
                 done
-                echo -e "\nHDDs: " >> "$sm"
+                echo -e "\n$counter HDDs:" >> "$sm"
                 if [ -z "${BadSector_sum+x}" ]; then
                     echo "Reallocated_Sector_Ct: error" >> "$sm"
                     else
@@ -434,18 +436,18 @@ do
 
                 #hdd-compatibility:
                 UpnpModel=$(grep -i "upnpmodelname" "$Synoinfo" | cut -d "\"" -f2)
-                if [[ -f "${Script_dir}/comp/${UpnpModel}_hdds_compatible.txt" ]]; then
-                    comp_list="${Script_dir}/comp/${UpnpModel}_hdds_compatible.txt"
+                if [[ -f "${Script_dir}/comp/${UpnpModel}_hdds_compatible.json" ]]; then
+                    comp_list="${Script_dir}/comp/${UpnpModel}_hdds_compatible.json"
                     log "\e[32mCompatibility-list for ${UpnpModel} found and set. ($comp_list)\e[0m"
                 else
-                    echo "\e[31mCompatibility-list for ${UpnpModel} not found! should be ${Script_dir}/comp/${UpnpModel}_hdds_compatible.txt\e[0m"
+                    echo "\e[31mCompatibility-list for ${UpnpModel} not found! should be ${Script_dir}/comp/${UpnpModel}_hdds_compatible.json\e[0m"
                 fi
 
-                if [[ -f "${Script_dir}/comp/${UpnpModel}_hdds_incompatible.txt" ]]; then
-                    incomp_list="${Script_dir}/comp/${UpnpModel}_hdds_incompatible.txt"
+                if [[ -f "${Script_dir}/comp/${UpnpModel}_hdds_incompatible.json" ]]; then
+                    incomp_list="${Script_dir}/comp/${UpnpModel}_hdds_incompatible.json"
                     log "\e[32mIncompatibility-list for ${UpnpModel} found and set. ($incomp_list)\e[0m"
                 else
-                    echo "\e[31mIncompatibility-list for ${UpnpModel} not found! should be ${Script_dir}/comp/${UpnpModel}_hdds_incompatible.txt\e[0m"
+                    echo "\e[31mIncompatibility-list for ${UpnpModel} not found! should be ${Script_dir}/comp/${UpnpModel}_hdds_incompatible.json\e[0m"
                 fi
 
                 #declare -a PowerOnHours
@@ -458,9 +460,10 @@ do
                     modelname_hdd_size=$(grep -i "User Capacity" "$file" | awk -F '[][]+' 'NF && !/\[\[/{print $2}' | sed 's/\..* //' | sed 's/\.* //' ) # i.e.: 3TB or 500GB
                     if [[ "${modelname}" == "SSD" ]]; then #samsung SSDs!
                         modelname=$(grep -i "Device Model" "$file" | cut -d " " -f9-10 | sed -r 's/\"/Inch/' | xargs)
-                        #modelname_hdd_size=$(grep -i "Device Model" "$file" | cut -d " " -f11 | xargs)
+                        modelname_hdd_size=$(grep -i "Device Model" "$file" | cut -d " " -f11 | xargs)
                         modelname_first_part=$(grep -i "Device Model" "$file" | cut -d " " -f8 | sed -r 's/\"/Inch/' | cut -d "-" -f1 )
                     modelname_first_part=$(grep -i "Device Model" "$file" | cut -d " " -f8 | sed -r 's/\"/Inch/' | cut -d "-" -f1 ) #evtl f7-20
+                    fi
                     #to add: include size of HDD/SSD
                     if [[ -z "${modelname}" ]]; then
                         modelname=$(grep -i "Device Model" "$file" | cut -d " " -f7 | sed -r 's/\"/Inch/' | xargs )
@@ -472,28 +475,27 @@ do
                         log "\e[31mHDD-Comp: Modelname empty!\e[0m"
                     elif grep "${modelname}" "${incomp_list}" &> /dev/null; then
                         HDDComp="(incompatible)"
-                        log "\e[31mHDD-INComp: found \"${modelname}\"\e[0m"
+                        log "HDD-INComp: found \"\e[31m${modelname}\e[0m\""
                     elif grep "${modelname//-/ - }" "${incomp_list}" &> /dev/null; then
                         HDDComp="(incompatible)"
-                        log "\e[31mHDD-INComp: found \"${modelname//-/ - }\"\e[0m"
+                        log "HDD-INComp: found \"\e[31m${modelname//-/ - }\e[0m\""
                     elif grep  "${modelname%-*}" "${incomp_list}" &> /dev/null; then # remove part after "-"; check if two parts first?
                         HDDComp="(incompatible)"
-                        log "\e[31mHDD-INComp: found \"${modelname%-*}\"\e[0m"
+                        log "HDD-INComp: found \"\e[32m${modelname%-*}\e[0m\""
                     elif grep  "${modelname}" "${comp_list}" &> /dev/null; then
                         HDDComp="(compatible)"
-                        log "\e[32mHDD-Comp: found \"${modelname}\"\e[0m"
+                        log "HDD-Comp: found \"\e[32m${modelname}\e[0m\""
                     elif grep  "${modelname//-/ - }" "${comp_list}" &> /dev/null; then
                         HDDComp="(compatible)"
-                        log "\e[32mHDD-Comp: found \"${modelname//-/ - }\"\e[0m"
+                        log "HDD-Comp: found \"\e[32m${modelname//-/ - }\e[0m\""
                     elif grep  "${modelname%-*}" "${comp_list}" &> /dev/null; then # remove part after "-"; check if two parts first?
                         HDDComp="(compatible)"
-                        log "\e[32mHDD-Comp: found \"${modelname%-*}\"\e[0m"
+                        log "HDD-Comp: found \"\e[32m${modelname%-*}\e[0m\""
                     else
                         HDDComp="(not listed)"
-                        log "HDD-Comp: \"${modelname}\" not found."
+                        log "\e[34mHDD-Comp: \"${modelname}\" not found.\e[0m"
                     fi
-                    log "compatibility check for ${hddname} grepped for ${modelname} , ${modelname//-/ - } and ${modelname%-*}"
-                    log "HDD Size: ${modelname_hdd_size}"
+                    log "compatibility check for ${hddname} grepped for ${modelname} , ${modelname//-/ - } and ${modelname%-*} ; HDD Size: ${modelname_hdd_size}"
                     echo -n "$hddname: $hddname2 $HDDComp: PowerOnHours: " >> "$sm"
                     PoH=$(grep -iE "Power(_|-)on_Hours" "$file" | sed -e "s/ ([^()]*)//g" | rev | cut -d " " -f1 | rev | sed 's/h.*//' )
                     echo "${PoH}" >> "$sm"
@@ -506,16 +508,16 @@ do
                     LastSmartResult=$(grep -i -m1 "Extended Offline" "$file" | sed -n '/Extended offline/s/ \+/ /gp' | cut -d " " -f4-5 )
                     fi
                     if [[ -z "${LastSmartTest}" ]]; then
-                    echo "never, " >> "$sm"
+                    echo -n "never, " >> "$sm"
                     elif [[ -z "${LastSmartTest+x}" ]]; then
                     echo "error"
                         else
                         LastSmartExpr=$(expr "${PoH}" - "${LastSmartTest}" )
                         #log "expr: $PoH und $LastSmarttest"
                         echo -n "$LastSmartExpr" "hours ago, " >> "$sm"
-                        echo  "$LastSmartResult" >> "$sm"
+                        echo -n "$LastSmartResult" >> "$sm"
                     fi
-                fi
+                    echo "HDD Size: $modelname_hdd_size" >> "$sm"
                 done
                 #mehr smart-kram
                 echo -e "\n" >> "$sm"
@@ -831,13 +833,13 @@ do
 
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/messages.log" ]]; then
                     {
-                    echo -e "\n\nDRDY:"
-                    grep -ia -B5 -A10 "DRDY" "$MESSAGES"
+                    echo -e "\n\nDRDY found "$(grep -ia -ac "DRDY" "$MESSAGES")" times, showing last 45 lines:"
+                    grep -ia -B5 -A10 "DRDY" "$MESSAGES" | tail -45
                     echo -e "\n\nmalformed database:"
                     grep -ia "database disk image is malformed" "$MESSAGES"
                     echo -e "\n\ncrashes:"
                     grep -ia "crash" "$MESSAGES"
-                    echo -e "\n\ncall traces + next 25 lines:"
+                    echo -e "\n\nshowing ("$(grep -ac "Call Trace" "$MESSAGES")") call traces + next 25 lines:"
                     grep -a "Call Trace" "$MESSAGES" -A25
                     } >> "$sm"
                 fi

@@ -15,7 +15,7 @@ else
     #subl='tilix -e vim -p'
     #subl='tilix -e vim -p' #vim
     #OpenFiles=("${DEBUG_DIR} ${SMART_GREP} ${PACK} ${Bash_history} ${hb_debug} ${HB} ${sm} ${MESSAGES}") #for vim
-    OpenFiles=("${DEBUG_DIR}" "${SMART_GREP}" "${PACK}" "${Bash_history}" "${hb_debug}" "${HB}" "${DF}" "${IFCONFIG}" "${SPACE_FILES}":100000 "${DiskLog}" "${KERN}" "${SYSDBtac}":100000 "${sm}" "${MESSAGES}":1000000 "${PicArray[@]}") # for subl
+    OpenFiles=("${DEBUG_DIR}" "${SMART_GREP}" "${PACK}" "${Bash_history}" "${hb_debug}" "${HB}" "${DF}" "${IFCONFIG}" "${SPACE_FILES}":100000 "${DiskLog}" "${KERN}":100000 "${SYSDBtac}":100000 "${sm}" "${MESSAGES}":1000000 "${PicArray[@]}") # for subl
     #subl='tilix -e vim -g -p' #vim-gnome
     #to add:
     #IFS=$' \t\n'

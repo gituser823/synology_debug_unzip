@@ -11,8 +11,8 @@
 # unmatched patterns expand as result values
 shopt -s nullglob
 
-#win sub:sudo apt-get  install bc unzip (sqlite3) xmllint
-#sudo apt install sqlite3 zenity sublime-text xmllint lftp
+#win sub:sudo apt-get  install bc unzip (sqlite3) xmllint jq
+#sudo apt install sqlite3 zenity sublime-text xmllint lftp jq
 
 sleep_scan_dir=2 #Folder rescan time in seconds
 sleep_extract_zip=0.5 #rescan time for finishing download
@@ -186,6 +186,7 @@ do
                 hb_debug=$DOWNLOAD_DIR/debug_$DATE/$DSM/hibernation_debug.log
                 DEBUG_DIR=$DOWNLOAD_DIR/debug_$DATE
                 Synoinfo=$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/synoinfo.conf
+                UpnpModel=$(grep -i "upnpmodelname" "$Synoinfo" | cut -d "\"" -f2)
                     #extract .xz packages:
                             TIMEFORMAT='Extraction of messages.xz archives took %Rsec'
                             time(
@@ -201,8 +202,6 @@ do
                             unxz "${file}"
                         done
                                 )
-                      TIMEFORMAT='Executiontime: %Rsec'
-
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/packages.list" ]]
                 then    PACK=$DOWNLOAD_DIR/debug_$DATE/$DSM/packages.list
                         declare -a InstalledPackageArray
@@ -350,6 +349,31 @@ do
                         echo "DDNS disabled" >> "$hb_debug"
                     fi
                 fi
+
+                #Analyze ExtensionUnits
+                echo "ExtensionUnits:" >> "$sm"
+                OIFS=$IFS
+                IFS=","
+                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/sys/class/scsi_host/host"*"/syno_pm_info"
+                        do
+                            [[ -e "$file" ]] || log "$file not found."
+                            [[ -e "$file" ]] || break
+                            ExtensionHdds=$(grep "syno_device_list" "$file" | cut -d "\"" -f2 | sed 's/\/dev\///g')
+                            ExtensionHddsLoopArray=($ExtensionHdds)
+                            for ((i=0; i<${#ExtensionHddsLoopArray[@]}; ++i))
+                            do
+                                ExtensionHddsArray=("${ExtensionHddsArray[@]}" "${ExtensionHddsLoopArray[i]}")
+                            done
+                            ExtensionUnit=$(grep "Unique" "$file" | cut -d "\"" -f2)
+                            if [ -n "$ExtensionUnit" ]; then
+                                echo "$ExtensionUnit with $ExtensionHdds" >> "$sm"
+                            fi
+                        done
+                IFS=$OIFS
+                if [ "${#ExtensionHddsArray[@]}" -eq 0 ]; then
+                    echo "None found." >> "$sm"
+                fi
+                log "Extension all hdds-array: ${ExtensionHddsArray[@]}"
                # if [[ -f $DOWNLOAD_DIR/debug_$DATE/$DSM/etc/private/domain_info ]]
                # then    windomain=$(grep "ads:domain_name" $DOWNLOAD_DIR/debug_$DATE/$DSM/etc/private/domain_info)
                # if [[ -z "$windomain" ]]; then
@@ -362,12 +386,6 @@ do
                 fi
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/hibernation.log" ]]
                 then    HB=$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/hibernation.log
-                # find if NAS is LDAP-Client
-                #Check if LMB enabled
-                #System-Protokoll: Wenn eins der Systemprotokoll-Tools (Support-Center > Support-Dienste > Systemprotokoll-Tools) aktiviert ist (ab DSM 6.0).
-                #process synoindexd
-                #Windows Media Player: Wenn der Netzwerk-Freigabedienst des Windows Media Players im LAN aktiviert ist.
-                #Ihr Synology NAS kann nicht in den Ruhezustand wechseln, wenn gleichzeitig laufende Prozesse Swap-Speicher benötigen, wenn die RAM-Kapazität überschritten wurde und Festplatten vorübergehend für Lese-/Schreibvorgänge verwendet werden.
                 fi
 
                 declare -a SMART_FILES
@@ -417,7 +435,7 @@ do
 
                     done
                 done
-                echo -e "\n$counter HDDs:" >> "$sm"
+                echo -e "\nNAS: $UpnpModel\n$counter HDDs:" >> "$sm"
                 if [ -z "${BadSector_sum+x}" ]; then
                     echo "Reallocated_Sector_Ct: error" >> "$sm"
                     else
@@ -435,7 +453,6 @@ do
                 fi
 
                 #hdd-compatibility:
-                UpnpModel=$(grep -i "upnpmodelname" "$Synoinfo" | cut -d "\"" -f2)
                 if [[ -f "${Script_dir}/comp/${UpnpModel}_hdds_compatible.json" ]]; then
                     comp_list="${Script_dir}/comp/${UpnpModel}_hdds_compatible.json"
                     log "\e[32mCompatibility-list for ${UpnpModel} found and set. ($comp_list)\e[0m"
@@ -451,6 +468,8 @@ do
                 fi
 
                 #declare -a PowerOnHours
+                TIMEFORMAT='hdd-compatibility-check took %Rsec'
+                            time(
                 for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/smart"*.result
                 do
                     [[ -e "$file" ]] || break #no smart-files
@@ -508,17 +527,18 @@ do
                     LastSmartResult=$(grep -i -m1 "Extended Offline" "$file" | sed -n '/Extended offline/s/ \+/ /gp' | cut -d " " -f4-5 )
                     fi
                     if [[ -z "${LastSmartTest}" ]]; then
-                    echo -n "never, " >> "$sm"
+                    echo -n "never" >> "$sm"
                     elif [[ -z "${LastSmartTest+x}" ]]; then
                     echo "error"
                         else
                         LastSmartExpr=$(expr "${PoH}" - "${LastSmartTest}" )
                         #log "expr: $PoH und $LastSmarttest"
-                        echo -n "$LastSmartExpr" "hours ago, " >> "$sm"
-                        echo -n "$LastSmartResult" >> "$sm"
+                        echo -n "$LastSmartExpr" "hours ago, $LastSmartResult" >> "$sm"
                     fi
-                    echo "HDD Size: $modelname_hdd_size" >> "$sm"
+                    echo ", HDD Size: $modelname_hdd_size" >> "$sm"
                 done
+                )
+                TIMEFORMAT='Executiontime: %Rsec'
                 #mehr smart-kram
                 echo -e "\n" >> "$sm"
 
@@ -574,6 +594,7 @@ do
                             DS_MEM3_calc_byte=$(cat "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/dmidecode.result" | sed -nr '/^Memory Device$/,/^$/ { /^\s*Size:\s*/ { s///; /No Module/! { s/ //; s/B//; p } } }' | numfmt --from=iec | awk '{ sum += $1 } END{ print sum }')
                             else
                                 DS_MEM3_calc="Error calculating RAM-Size"
+                                DS_MEM3_calc_byte="Error"
                                 log "Error calculating RAM-Size"
                             fi
                     else
@@ -589,6 +610,8 @@ do
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/free.result" ]]
                 then
                         free_mem=$( grep Mem "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/result/free.result | awk '{ print 1000+$2 }' | awk '{ split( "KB MB GB" , v ); s=1; while( $1>1000 ){ $1/=1000; s++ } print int($1) v[s] }' | sed -r 's/B//' | numfmt --from=iec | numfmt --to=iec )
+                        free_mem_nocomma=$( grep Mem "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/result/free.result | awk '{ print 1000+$2 }' | awk '{ split( "KB MB GB" , v ); s=1; while( $1>1000 ){ $1/=1000; s++ } print int($1) v[s] }' | sed -r 's/B//' )
+                        free_mem_kbyte=$( grep Mem "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/result/free.result | awk '{ print $2 }')
                 fi
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/route.result" ]]
                 then    Route="$DOWNLOAD_DIR/debug_$DATE/$DSM/result/route.result"
@@ -597,7 +620,6 @@ do
                 then    KERN=$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/kern.log
                     DS_HWMODEL=$( grep -ia -m1 'syno_hw_version' "$KERN" | sed 's/.*syno_hw_version=//' | cut -d " " -f1 | sed 's/v.*$//' | sed 's/p\b/+/g') #i.e. DS213j
                     DS_MODEL=$( grep -ia -m1 '] Model:' "$KERN" | sed 's/.*: //' | sed 's/-//g' | sed 's/-//p') #i.e. DS213j
-                    UpnpModel=$(grep -i "upnpmodelname" "$Synoinfo" | cut -d "\"" -f2)
                     if [ -z "$DS_HWMODEL" ]; then
                             log "No DS_Model found, using UPNP-Name."
                             DS_MODEL_v="${UpnpModel}"
@@ -756,7 +778,7 @@ do
                 echo "Anzahl Threads: $Processor_count , Anzahl Cores: $DS_Cores"
                 echo "Seriennummer:" "$DS_SN"
                 echo -e 'Associated Tickets: \nhttps://cssnew.synology.com/ticket?list_type=agent_all&sort_by=update_time&sort_direction=desc&filter=%7B%22search_column%22%3A%5B%22ticket_id%22%2C%22content%22%5D%2C%22sn%22%3A%22'"$DS_SN"'%22%7D'
-                echo -e "\nArbeitsspeichermodules from logs:\n$DS_MEM3 ??"
+                echo -e "\nArbeitsspeichermodules from logs:\n$DS_MEM3"
                 echo -e "\nArbeitsspeicher, calced: $DS_MEM3_calc"
                 echo "Arbeitsspeicher free.result: ~$free_mem"
                 } >> "$sm"
@@ -774,12 +796,19 @@ do
                 DS_CPU_TXT=$( grep "${UpnpModel}[[:space:]]" "$CPU_FILE" )
                 DS_MEM_TXT=$( grep "${UpnpModel}[[:space:]]" "$CPU_FILE" | rev | cut -d ' ' -f1,2 |rev ) #todo: if realRAM > preinstalled then echo
                 DS_MEM_TXT_byte=$( grep "${UpnpModel}[[:space:]]" "$CPU_FILE" | rev | cut -d ' ' -f1,2 |rev | tr -d ' B' | numfmt --from=iec)
+                DS_MEM_TXT_kbyte=$( grep "${UpnpModel}[[:space:]]" "$CPU_FILE" | rev | cut -d ' ' -f1,2 |rev | tr -d ' B' | numfmt --from=iec | awk '{ number = $1 / 1024; print number }' )
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/dmidecode.result" ]]
                 then
                     if [ "$DS_MEM3_calc_byte" -gt "$DS_MEM_TXT_byte" ];
                     then
                         echo "More RAM installed! $DS_MEM3_calc vs $DS_MEM_TXT preinstalled" >> "$sm"
+                    elif [ "$free_mem_kbyte" -gt "$DS_MEM_TXT_kbyte" ];
+                    then
+                        echo "More RAM installed! $free_mem_nocomma vs $DS_MEM_TXT preinstalled" >> "$sm"
                     elif [ "$DS_MEM3_calc_byte" -eq "$DS_MEM_TXT_byte" ];
+                    then
+                        echo "same RAM installed as preinstalled!"  >> "$sm"
+                    elif [ "$free_mem_kbyte" -eq "$DS_MEM_TXT_kbyte" ];
                     then
                         echo "same RAM installed as preinstalled!"  >> "$sm"
                     else
@@ -827,14 +856,14 @@ do
                     grep -i "was crashed" "$SYSDB" #volumecrash
                     echo -e "\n\ndegraded volumes:"
                     grep -i "degrade" "$SYSDB" #volume degraded
-                    echo -e "\n\nerrors:"
-                    grep -i "error" "$SYSDB" #generic Errors
+                    echo -e "\n\nfound $(grep -i "error" "$SYSDB" | uniq -u | wc -l) errors:"
+                    grep -i "error" "$SYSDB" | uniq -u #generic Errors
                     } >> "$sm"
 
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/messages.log" ]]; then
                     {
-                    echo -e "\n\nDRDY found "$(grep -ia -ac "DRDY" "$MESSAGES")" times, showing last 45 lines:"
-                    grep -ia -B5 -A10 "DRDY" "$MESSAGES" | tail -45
+                    echo -e "\n\nDRDY found "$(grep -ia -ac "DRDY" "$MESSAGES")" times:"
+                    grep -ia -B5 -A10 "DRDY" "$MESSAGES"
                     echo -e "\n\nmalformed database:"
                     grep -ia "database disk image is malformed" "$MESSAGES"
                     echo -e "\n\ncrashes:"
@@ -883,9 +912,10 @@ do
                      echo "power_sched.conf not found." >> "$hb_debug"
                 fi
 
-                declare -a PicArray
+
                 counter=0
-                allpics=$(find "$DOWNLOAD_DIR/debug_${DATE}/" -type f \( -name "*.jpg" -o -name "*.png" -o -name "*.PNG"-o -name "*.JPG" \) 2>/dev/null)
+                allpics=$(find "$DOWNLOAD_DIR/debug_${DATE}/" -maxdepth 1 -type f \( -name "*.jpg" -o -name "*.png" -o -name "*.PNG"-o -name "*.JPG" \) 2>/dev/null)
+                declare -a PicArray
                 for pic in "${allpics}"
                 do  PicArray["${counter}"]="${pic}"
                     counter=$((counter + 1))
@@ -900,7 +930,11 @@ do
                     [ -n "${OpenFiles[$i]}" ] || unset "OpenFiles[$i]"
                 done
 
-                "$subl" "${OpenFiles[@]}" #open files defined in config.sh with editor
+                for i in "${OpenFiles[@]}"; do # open single files
+                    "$subl" "$i"
+                    sleep 0.1
+                done
+                #"$subl" "${OpenFiles[@]}" #open files defined in config.sh with editor
 
                 echo -n "${subl} "
                 echo -n "${subl} " > ~/last_debug.sh
@@ -930,6 +964,7 @@ do
             DSM=dsm
             #sha=0
             )
+            #echo "message extraction time: $messages_time"
             echo -e "\n"
         fi
     done

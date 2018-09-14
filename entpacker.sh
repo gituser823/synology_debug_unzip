@@ -202,57 +202,18 @@ do
                             unxz "${file}"
                         done
                                 )
-                if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/packages.list" ]]
-                then    PACK=$DOWNLOAD_DIR/debug_$DATE/$DSM/packages.list
-                        declare -a InstalledPackageArray
-                        sed '1d' "${PACK}" | awk '{for(i=NF;i>1;i=i-1) printf "%s ", $i; printf "%s\n", $1}' | cut -d " " -f1 > "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/packages_ver.list
-                        readarray -t "InstalledPackageArray" < "$DOWNLOAD_DIR/debug_$DATE/$DSM/packages_ver.list"
-                        counter=0
-                        for i in "${InstalledPackageArray[@]}"
-                        do
-                            aver=$(grep "^$i " "$package_versions")
-                            PureVerAvailable=$(echo "${aver}" | rev | cut -d " " -f1 | rev | sed 's/\-/./g')
-                            PureVerInstalled=$(grep -a "$i " "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/var/log/synopkg.log | tail -n1 | grep -aoP '(?<='$i' )\S*' | sed 's/\-/./g')
-                            log "${InstalledPackageArray[$counter]}: Installed: $PureVerInstalled vs. available: $PureVerAvailable"
 
-                            # "gt" means "greater than"
-                            version_compare_gt() {
-                                ! printf "%s\n" "$@" | sort --check --version-sort &> /dev/null
-                            }
-
-                            if version_compare_gt "$PureVerAvailable" "$PureVerInstalled"; then
-                                log "\e[31mUpdate for ${InstalledPackageArray[$counter]} from $PureVerInstalled to $PureVerAvailable available!\e[0m"
-                                echo "Update for ${InstalledPackageArray[$counter]} from $PureVerInstalled to $PureVerAvailable available!" >> "$sm"
-                            elif version_compare_gt "$PureVerInstalled" "$PureVerAvailable"; then
-                                log "\e[93minstalled Version later than available?!\e[0m"
-                            elif [[ "$PureVerInstalled" == "$PureVerAvailable" ]] ; then
-                                log "\e[32msame Version, package is up to date!\e[0m"
-                            else
-                                echo -ne "\e[101msome error occured: "
-                                echo -e "${InstalledPackageArray[$counter]}: Installed: $PureVerInstalled vs. available: $PureVerAvailable\e[0m"
-                            fi
-
-                            counter=$((counter + 1))
-                        done
-                        echo -e "Third Party packages:" >> "$sm"
-                        third_packages=$(grep -v "AntiVirus\|AudioStation\|Calendar\|CloudStation\|FileStation\|HyperBackup\|LogCenter\|MediaServer\|NoteStation\|PHP[0-9].[0-9]\|PhotoStation\|ProxyServer\|StorageAnalyzer\|SynoFinder\|SynologyApplicationService\|SynologyDrive\|TextEditor\|USBCopy\|VideoStation\|WebDAVServer\|CloudSync\|DownloadStation\|SurveillanceStation\|WebStation\|VPNCenter\|MariaDB\|Chat\|Git\|Node.js_4\|Perl\|ActiveBackup\|ActiveBackup-Office365\|ActiveDirectoryServer\|Apache[0-9].[0-9]\|CMS\|CardDAVServer\|DNSServer\|DiagnosisTool\|Docker\|MailClient\|MailPlus-Server\|OAuthService\|PetaSpace\|PrestoServer\|PythonModule\|SSOServer\|SnapshotReplication\|Spreadsheet\|SynologyMoments\|Virtualization\|iTunesServer\| enabled\|TimeBackup\|Java7\|Java8\|exFAT\|PDFViewer\|MailStation\|phpMyAdmin\|total [[:digit:]]\{,3\}" "$PACK")
-                        if [ -z "$third_packages" ]; then
-                            echo "No Third Party Packages found." >> "$sm"
-                            else
-                            echo "$third_packages" >> "$sm"
-                        fi
-                fi
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/df.result" ]]
                 then    DF=$DOWNLOAD_DIR/debug_$DATE/$DSM/result/df.result
                         full_number=$(awk '0+$5 >= 90 { count++ } END{print 0+count}' "$DF")
                         if [[ "$full_number" -gt 0 ]]
                         then
-                            echo -en "\nMountpoints more than 90% full: (""$full_number"")" >> "$sm"
+                            echo -e "\nMountpoints more than 90% full: (""$full_number"")" >> "$sm"
                             awk '0+$5>90 { printf "\n%s",$0 }' "$DF" >> "$sm"
                             echo -n "Mountpoints more than 90% full: (""$full_number"")" >> "$sg"
                             awk '0+$5>90 { printf "\n%s",$0 }' "$DF" >> "$sg"
                         else
-                            echo -n "Mountpoints more than 90% full: (""$full_number"")" >> "$sg"
+                            echo "Mountpoints more than 90% full: (""$full_number"")" >> "$sg"
                             #echo " No full Mountpoints found." >> "$sm"
                             echo " No full Mountpoints found." >> "$sg"
                         fi
@@ -351,7 +312,7 @@ do
                 fi
 
                 #Analyze ExtensionUnits
-                echo "ExtensionUnits:" >> "$sm"
+                echo -n "ExtensionUnits:" >> "$sm"
                 OIFS=$IFS
                 IFS=","
                 for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/sys/class/scsi_host/host"*"/syno_pm_info"
@@ -366,7 +327,7 @@ do
                             done
                             ExtensionUnit=$(grep "Unique" "$file" | cut -d "\"" -f2)
                             if [ -n "$ExtensionUnit" ]; then
-                                echo "$ExtensionUnit with $ExtensionHdds" >> "$sm"
+                                echo -e "\n$ExtensionUnit with $ExtensionHdds" >> "$sm"
                             fi
                         done
                 IFS=$OIFS
@@ -766,8 +727,8 @@ do
                         grep "hostname" "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/ddns.conf" >> "$sm"
                 fi
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/synoinfo.conf" ]]; then
-                    grep -ia "supportrcpower" "$Synoinfo" >> "$sg"
-                    grep -ia "enableRCPower" "$Synoinfo" >> "$sg"
+                    grep -ia "supportrcpower" "$Synoinfo" >> "$hb_debug"
+                    grep -ia "enableRCPower" "$Synoinfo" >> "$hb_debug"
                 fi
                 {
                 echo "BIOS:" "$BIOS_V_CUT"
@@ -833,6 +794,46 @@ do
                             fi
                 fi
 
+                if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/packages.list" ]]
+                then    PACK=$DOWNLOAD_DIR/debug_$DATE/$DSM/packages.list
+                        declare -a InstalledPackageArray
+                        sed '1d' "${PACK}" | awk '{for(i=NF;i>1;i=i-1) printf "%s ", $i; printf "%s\n", $1}' | cut -d " " -f1 > "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/packages_ver.list
+                        readarray -t "InstalledPackageArray" < "$DOWNLOAD_DIR/debug_$DATE/$DSM/packages_ver.list"
+                        counter=0
+                        for i in "${InstalledPackageArray[@]}"
+                        do
+                            aver=$(grep "^$i " "$package_versions")
+                            PureVerAvailable=$(echo "${aver}" | rev | cut -d " " -f1 | rev | sed 's/\-/./g')
+                            PureVerInstalled=$(grep -a "$i " "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/var/log/synopkg.log | tail -n1 | grep -aoP '(?<='$i' )\S*' | sed 's/\-/./g')
+                            log "${InstalledPackageArray[$counter]}: Installed: $PureVerInstalled vs. available: $PureVerAvailable"
+
+                            # "gt" means "greater than"
+                            version_compare_gt() {
+                                ! printf "%s\n" "$@" | sort --check --version-sort &> /dev/null
+                            }
+
+                            if version_compare_gt "$PureVerAvailable" "$PureVerInstalled"; then
+                                log "\e[31mUpdate for ${InstalledPackageArray[$counter]} from $PureVerInstalled to $PureVerAvailable available!\e[0m"
+                                echo "Update for ${InstalledPackageArray[$counter]} from $PureVerInstalled to $PureVerAvailable available!" >> "$sm"
+                            elif version_compare_gt "$PureVerInstalled" "$PureVerAvailable"; then
+                                log "\e[93minstalled Version later than available?!\e[0m"
+                            elif [[ "$PureVerInstalled" == "$PureVerAvailable" ]] ; then
+                                log "\e[32msame Version, package is up to date!\e[0m"
+                            else
+                                echo -ne "\e[101msome error occured: "
+                                echo -e "${InstalledPackageArray[$counter]}: Installed: $PureVerInstalled vs. available: $PureVerAvailable\e[0m"
+                            fi
+
+                            counter=$((counter + 1))
+                        done
+                        echo -e "Third Party packages:" >> "$sm"
+                        third_packages=$(grep -v "AntiVirus\|AudioStation\|Calendar\|CloudStation\|FileStation\|HyperBackup\|LogCenter\|MediaServer\|NoteStation\|PHP[0-9].[0-9]\|PhotoStation\|ProxyServer\|StorageAnalyzer\|SynoFinder\|SynologyApplicationService\|SynologyDrive\|TextEditor\|USBCopy\|VideoStation\|WebDAVServer\|CloudSync\|DownloadStation\|SurveillanceStation\|WebStation\|VPNCenter\|MariaDB\|Chat\|Git\|Node.js_4\|Perl\|ActiveBackup\|ActiveBackup-Office365\|ActiveDirectoryServer\|Apache[0-9].[0-9]\|CMS\|CardDAVServer\|DNSServer\|DiagnosisTool\|Docker\|MailClient\|MailPlus-Server\|OAuthService\|PetaSpace\|PrestoServer\|PythonModule\|SSOServer\|SnapshotReplication\|Spreadsheet\|SynologyMoments\|Virtualization\|iTunesServer\| enabled\|TimeBackup\|Java7\|Java8\|exFAT\|PDFViewer\|MailStation\|phpMyAdmin\|total [[:digit:]]\{,3\}" "$PACK")
+                        if [ -z "$third_packages" ]; then
+                            echo "No Third Party Packages found." >> "$sm"
+                            else
+                            echo "$third_packages" >> "$sm"
+                        fi
+                fi
 
                 echo -e "\n\nExt4-/Btrfs-Errors:" >> "$sm"
                 grep -i "btrfs critical\|btrfs error\|btrfs warning" "$KERN"  >> "$sm" #btrfs: BTRFS warning (device md2)

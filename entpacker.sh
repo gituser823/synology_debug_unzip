@@ -396,7 +396,7 @@ do
 
                     done
                 done
-                echo -e "\nNAS: $UpnpModel\n$counter HDDs:" >> "$sm"
+                echo -e "\nUPNP Model: $UpnpModel\n$counter HDDs:" >> "$sm"
                 if [ -z "${BadSector_sum+x}" ]; then
                     echo "Reallocated_Sector_Ct: error" >> "$sm"
                     else
@@ -793,7 +793,7 @@ do
                                 echo -e "\nFound Samba-shares:\n$SmbShares" >> "$sm"
                             fi
                 fi
-
+                echo -e "\n" >> "$sm"
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/packages.list" ]]
                 then    PACK=$DOWNLOAD_DIR/debug_$DATE/$DSM/packages.list
                         declare -a InstalledPackageArray
@@ -826,7 +826,7 @@ do
 
                             counter=$((counter + 1))
                         done
-                        echo -e "Third Party packages:" >> "$sm"
+                        echo -e "\nThird Party packages:" >> "$sm"
                         third_packages=$(grep -v "AntiVirus\|AudioStation\|Calendar\|CloudStation\|FileStation\|HyperBackup\|LogCenter\|MediaServer\|NoteStation\|PHP[0-9].[0-9]\|PhotoStation\|ProxyServer\|StorageAnalyzer\|SynoFinder\|SynologyApplicationService\|SynologyDrive\|TextEditor\|USBCopy\|VideoStation\|WebDAVServer\|CloudSync\|DownloadStation\|SurveillanceStation\|WebStation\|VPNCenter\|MariaDB\|Chat\|Git\|Node.js_4\|Perl\|ActiveBackup\|ActiveBackup-Office365\|ActiveDirectoryServer\|Apache[0-9].[0-9]\|CMS\|CardDAVServer\|DNSServer\|DiagnosisTool\|Docker\|MailClient\|MailPlus-Server\|OAuthService\|PetaSpace\|PrestoServer\|PythonModule\|SSOServer\|SnapshotReplication\|Spreadsheet\|SynologyMoments\|Virtualization\|iTunesServer\| enabled\|TimeBackup\|Java7\|Java8\|exFAT\|PDFViewer\|MailStation\|phpMyAdmin\|total [[:digit:]]\{,3\}" "$PACK")
                         if [ -z "$third_packages" ]; then
                             echo "No Third Party Packages found." >> "$sm"
@@ -933,7 +933,7 @@ do
 
                 for i in "${OpenFiles[@]}"; do # open single files
                     "$subl" "$i"
-                    sleep 0.1
+                    sleep 0.12
                 done
                 #"$subl" "${OpenFiles[@]}" #open files defined in config.sh with editor
 

@@ -185,8 +185,19 @@ do
                 sg=$DOWNLOAD_DIR/debug_$DATE/$DSM/smartgrep
                 hb_debug=$DOWNLOAD_DIR/debug_$DATE/$DSM/hibernation_debug.log
                 DEBUG_DIR=$DOWNLOAD_DIR/debug_$DATE
-                Synoinfo=$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/synoinfo.conf
+                if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc.defaults/synoinfo.conf" ]]
+                then
+                    Synoinfo=$DOWNLOAD_DIR/debug_$DATE/$DSM/etc.defaults/synoinfo.conf
+                elif [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/synoinfo.conf" ]]
+                then
+                    Synoinfo=$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/synoinfo.conf
+                else
+                    log "Synoinfo.conf not found."
+                fi
+
+
                 UpnpModel=$(grep -i "upnpmodelname" "$Synoinfo" | cut -d "\"" -f2)
+                UpnpModel_migrated_from=$(grep -i "upnpmodelname" "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/synoinfo.conf" | cut -d "\"" -f2)
                     #extract .xz packages:
                             TIMEFORMAT='Extraction of messages.xz archives took %Rsec'
                             time(
@@ -319,11 +330,13 @@ do
                         do
                             [[ -e "$file" ]] || log "$file not found."
                             [[ -e "$file" ]] || break
-                            ExtensionHdds=$(grep "syno_device_list" "$file" | cut -d "\"" -f2 | sed 's/\/dev\///g')
-                            ExtensionHddsLoopArray=($ExtensionHdds)
+                            ExtensionHdds=$(grep -a "syno_device_list" "$file" | cut -d "\"" -f2 | sed 's/\/dev\///g')
+                            ExtensionHddsLoopArray=("$ExtensionHdds")
                             for ((i=0; i<${#ExtensionHddsLoopArray[@]}; ++i))
                             do
-                                ExtensionHddsArray=("${ExtensionHddsArray[@]}" "${ExtensionHddsLoopArray[i]}")
+                                if [ -n "${ExtensionHddsArray[$i]}" ]; then
+                                    ExtensionHddsArray=("${ExtensionHddsArray[@]}" "${ExtensionHddsLoopArray[i]}")
+                                fi
                             done
                             ExtensionUnit=$(grep "Unique" "$file" | cut -d "\"" -f2)
                             if [ -n "$ExtensionUnit" ]; then
@@ -331,9 +344,13 @@ do
                             fi
                         done
                 IFS=$OIFS
-                if [ "${#ExtensionHddsArray[@]}" -eq 0 ]; then
-                    echo "None found." >> "$sm"
+                if [ "$UpnpModel_migrated_from" != "$UpnpModel" ]; then
+                    echo "DSM was possibly migrated from $UpnpModel_migrated_from to $UpnpModel" >> "$sm"
                 fi
+
+                #for i in "${!OpenFiles[@]}"; do #remove empty vars from array [@]
+                #    [ -n "${OpenFiles[$i]}" ] || log "OpenFiles[$i] unset, because empty!"
+
                 log "Extension all hdds-array: ${ExtensionHddsArray[@]}"
                # if [[ -f $DOWNLOAD_DIR/debug_$DATE/$DSM/etc/private/domain_info ]]
                # then    windomain=$(grep "ads:domain_name" $DOWNLOAD_DIR/debug_$DATE/$DSM/etc/private/domain_info)
@@ -418,14 +435,14 @@ do
                     comp_list="${Script_dir}/comp/${UpnpModel}_hdds_compatible.json"
                     log "\e[32mCompatibility-list for ${UpnpModel} found and set. ($comp_list)\e[0m"
                 else
-                    echo "\e[31mCompatibility-list for ${UpnpModel} not found! should be ${Script_dir}/comp/${UpnpModel}_hdds_compatible.json\e[0m"
+                    echo -e "\e[31mCompatibility-list for ${UpnpModel} not found! should be ${Script_dir}/comp/${UpnpModel}_hdds_compatible.json\e[0m"
                 fi
 
                 if [[ -f "${Script_dir}/comp/${UpnpModel}_hdds_incompatible.json" ]]; then
                     incomp_list="${Script_dir}/comp/${UpnpModel}_hdds_incompatible.json"
                     log "\e[32mIncompatibility-list for ${UpnpModel} found and set. ($incomp_list)\e[0m"
                 else
-                    echo "\e[31mIncompatibility-list for ${UpnpModel} not found! should be ${Script_dir}/comp/${UpnpModel}_hdds_incompatible.json\e[0m"
+                    echo -e "\e[31mIncompatibility-list for ${UpnpModel} not found! should be ${Script_dir}/comp/${UpnpModel}_hdds_incompatible.json\e[0m"
                 fi
 
                 #declare -a PowerOnHours
@@ -448,6 +465,12 @@ do
                     if [[ -z "${modelname}" ]]; then
                         modelname=$(grep -i "Device Model" "$file" | cut -d " " -f7 | sed -r 's/\"/Inch/' | xargs )
                         modelname_first_part=$(grep -i "Device Model" "$file" | cut -d " " -f7 | sed -r 's/\"/Inch/' | cut -d "-" -f1)
+                    fi
+
+                    #for SAS in FS2017
+                    if [[ -z "${modelname}" ]]; then
+                        modelname=$(grep -i "Product" "$file" | cut -d ":" -f2 | xargs)
+                        hddname2=$(grep -i "Vendor\S\|Product\S" "$file" | cut -d ":" -f2 | xargs )
                     fi
 
                     if [[ -z "${modelname}" ]]; then
@@ -611,12 +634,17 @@ do
                         grep -i "<cpu_temperature> is over" "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/scemd.log" >> "$sm"
                         fi
                     fi
+                        grep_hddissue=$( grep -c "core_clear_root_int_from_queue Error Interrupt\|Issued IDENTIFY to non-existent device ?!" "$MESSAGES" )
+                        if [ "$grep_hddissue" -gt 0 ]; then
+                            echo "random HDD drops of WD or HGST HDDs, update HDD Firmware: https://css.synology.com/issue/9198" >> "$sm"
+                            grep -i "core_clear_root_int_from_queue Error Interrupt: PHY Decoding Error\|Issued IDENTIFY to non-existent device ?!" "$MESSAGES" >> "$sm"
+                        fi
                     if [ "$UpnpModel" = "DS718+" ] || [ "$UpnpModel" = "DS918+" ] || [ "$UpnpModel" = "DS218+" ] || [ "$UpnpModel" = "DS418play" ] || [ "$UpnpModel" = "DS718+" ] || [ "$UpnpModel" = "DS918+" ] || [ "$UpnpModel" = "DS218+" ] || [ "$UpnpModel" = "DS418play" ]; then
                     {
                         echo "possible BIOS-Issue: https://css.synology.com/issue/12026"
                         echo "Update to DSM 6.1.3-15152 Update 7 to update the BIOS."
                         echo "Bug is fixed in: DS718+  M.220, DS918+  M.024, DS218+  M.124, DS418play M.310"
-                        echo -e "This Machines BIOS-Version: $BIOS_V_CUT\n"
+                        echo -e "This Machines BIOS-Version: $UpnpModel $BIOS_V_CUT\n"
                     } >> "$sm"
                     fi
 
@@ -857,20 +885,20 @@ do
                     grep -i "was crashed" "$SYSDB" #volumecrash
                     echo -e "\n\ndegraded volumes:"
                     grep -i "degrade" "$SYSDB" #volume degraded
-                    echo -e "\n\nfound $(grep -i "error" "$SYSDB" | uniq -u | wc -l) errors:"
+                    echo -e "\n\n$(grep -ia "error" "$SYSDB" | uniq -u | wc -l) times errors:"
                     grep -i "error" "$SYSDB" | uniq -u #generic Errors
                     } >> "$sm"
 
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/messages.log" ]]; then
                     {
-                    echo -e "\n\nDRDY found "$(grep -ia -ac "DRDY" "$MESSAGES")" times:"
-                    grep -ia -B5 -A10 "DRDY" "$MESSAGES"
-                    echo -e "\n\nmalformed database:"
+                    echo -e "\n\n$(grep -ia "DRDY" "$MESSAGES" | uniq -u | wc -l) times DRDY, showing 20 max:"
+                    tac "$MESSAGES" | grep -ia -B5 -A10 -m 20 "DRDY" | tac
+                    echo -e "\n\n$(grep -iac "database disk image is malformed" "$MESSAGES") times malformed database:"
                     grep -ia "database disk image is malformed" "$MESSAGES"
-                    echo -e "\n\ncrashes:"
+                    echo -e "\n\n$(grep -iac "crash" "$MESSAGES") times crashes:"
                     grep -ia "crash" "$MESSAGES"
-                    echo -e "\n\nshowing ("$(grep -ac "Call Trace" "$MESSAGES")") call traces + next 25 lines:"
-                    grep -a "Call Trace" "$MESSAGES" -A25
+                    echo -e "\n\n$(grep -iac "Call Trace" "$MESSAGES") times call traces + next 25 lines:"
+                    grep -ia "Call Trace" "$MESSAGES" -A25
                     } >> "$sm"
                 fi
                 #write hibernation info:

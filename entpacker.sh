@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#for handling spaces in filenames
+#for handling spaces in filenames 
 #IFS=$'\n'
 
 #debugging with times:

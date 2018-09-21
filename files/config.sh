@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#set download directory to find *.dat files
+#set download directory to find *.dat files 
 #DOWNLOAD_DIR=/mnt/c/Users/no-sp/Downloads/neu/
 
 declare -a OpenFiles

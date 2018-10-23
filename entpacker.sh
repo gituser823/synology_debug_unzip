@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#for handling spaces in filenames
+#for handling spaces in filenames 
 #IFS=$'\n'
 
 #debugging with times:
@@ -17,7 +17,8 @@ shopt -s nullglob
 sleep_scan_dir=2 #Folder rescan time in seconds
 sleep_extract_zip=0.5 #rescan time for finishing download
 Script_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-source "${Script_dir}/files/config.sh"
+#source "${Script_dir}/files/config.sh"
+DOWNLOAD_DIR=/mnt/c/Users/no-sp/Downloads/neu/
 DSM=dsm
 CPU_FILE="${Script_dir}/files/CPU.txt"
 PShedPy="${Script_dir}/files/power_shed.py"
@@ -963,7 +964,7 @@ do
                 done
 
                 for i in "${OpenFiles[@]}"; do # open single files
-                    "$subl" "$i"
+                    "$subl" "$(wslpath -w $i)"
                     sleep 0.12
                 done
                 #"$subl" "${OpenFiles[@]}" #open files defined in config.sh with editor

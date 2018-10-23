@@ -199,14 +199,14 @@ do
                 UpnpModel=$(grep -i "upnpmodelname" "$Synoinfo" | cut -d "\"" -f2)
                 UpnpModel_migrated_from=$(grep -i "upnpmodelname" "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/synoinfo.conf" | cut -d "\"" -f2)
                     #extract .xz packages:
-                            TIMEFORMAT='Extraction of messages.xz archives took %Rsec'
+                            TIMEFORMAT=$'Extractiontime messages.xz: \t\t\t\t\t\t\e[36m%Rsec\e[39m'
                             time(
                     for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/messages"*.xz
                         do
                             unxz "${file}"
                         done
                                 )
-                            TIMEFORMAT='Extraction of kern.xz archives took %Rsec'
+                            TIMEFORMAT=$'Extractiontime kern.xz: \t\t\t\t\t\t\e[36m%Rsec\e[39m'
                             time(
                     for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/kern"*.xz
                         do
@@ -446,7 +446,7 @@ do
                 fi
 
                 #declare -a PowerOnHours
-                TIMEFORMAT='hdd-compatibility-check took %Rsec'
+                TIMEFORMAT=$'hdd-compatibility-check took \t\t\t\t\t\t\e[36m%Rsec\e[39m'
                             time(
                 for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/smart"*.result
                 do
@@ -470,33 +470,33 @@ do
                     #for SAS in FS2017
                     if [[ -z "${modelname}" ]]; then
                         modelname=$(grep -i "Product" "$file" | cut -d ":" -f2 | xargs)
-                        hddname2=$(grep -i "Vendor\S\|Product\S" "$file" | cut -d ":" -f2 | xargs )
+                        hddname2=$(grep -i "Vendor:\|Product:" "$file" | cut -d ":" -f2 | xargs )
                     fi
 
                     if [[ -z "${modelname}" ]]; then
                         HDDComp=""
-                        log "\e[31mHDD-Comp: Modelname empty!\e[0m"
+                        echo -e "\e[31mHDD-Comp: Modelname empty!\e[0m"
                     elif grep "${modelname}" "${incomp_list}" &> /dev/null; then
                         HDDComp="(incompatible)"
-                        log "HDD-INComp: found \"\e[31m${modelname}\e[0m\""
+                        echo -e "HDD-INComp: found \"\e[31m${modelname}\e[0m\""
                     elif grep "${modelname//-/ - }" "${incomp_list}" &> /dev/null; then
                         HDDComp="(incompatible)"
-                        log "HDD-INComp: found \"\e[31m${modelname//-/ - }\e[0m\""
+                        echo -e "HDD-INComp: found \"\e[31m${modelname//-/ - }\e[0m\""
                     elif grep  "${modelname%-*}" "${incomp_list}" &> /dev/null; then # remove part after "-"; check if two parts first?
                         HDDComp="(incompatible)"
-                        log "HDD-INComp: found \"\e[32m${modelname%-*}\e[0m\""
+                        echo -e "HDD-INComp: found \"\e[32m${modelname%-*}\e[0m\""
                     elif grep  "${modelname}" "${comp_list}" &> /dev/null; then
                         HDDComp="(compatible)"
-                        log "HDD-Comp: found \"\e[32m${modelname}\e[0m\""
+                        echo -e "HDD-Comp: found \"\e[32m${modelname}\e[0m\""
                     elif grep  "${modelname//-/ - }" "${comp_list}" &> /dev/null; then
                         HDDComp="(compatible)"
-                        log "HDD-Comp: found \"\e[32m${modelname//-/ - }\e[0m\""
+                        echo -e "HDD-Comp: found \"\e[32m${modelname//-/ - }\e[0m\""
                     elif grep  "${modelname%-*}" "${comp_list}" &> /dev/null; then # remove part after "-"; check if two parts first?
                         HDDComp="(compatible)"
-                        log "HDD-Comp: found \"\e[32m${modelname%-*}\e[0m\""
+                        echo -e "HDD-Comp: found \"\e[32m${modelname%-*}\e[0m\""
                     else
                         HDDComp="(not listed)"
-                        log "\e[34mHDD-Comp: \"${modelname}\" not found.\e[0m"
+                        echo -e "\e[34mHDD-Comp: \"${modelname}\" not found.\e[0m"
                     fi
                     log "compatibility check for ${hddname} grepped for ${modelname} , ${modelname//-/ - } and ${modelname%-*} ; HDD Size: ${modelname_hdd_size}"
                     echo -n "$hddname: $hddname2 $HDDComp: PowerOnHours: " >> "$sm"
@@ -522,7 +522,6 @@ do
                     echo ", HDD Size: $modelname_hdd_size" >> "$sm"
                 done
                 )
-                TIMEFORMAT='Executiontime: %Rsec'
                 #mehr smart-kram
                 echo -e "\n" >> "$sm"
 
@@ -764,12 +763,12 @@ do
                 echo "Hardware Version: $DS_HWMODEL and Diskstationmodel: $DS_MODEL"
                 echo "UPNP Model:" "$UpnpModel"
                 echo "CPU from logs:" "$DS_CPU"
-                echo "Anzahl Threads: $Processor_count , Anzahl Cores: $DS_Cores"
-                echo "Seriennummer:" "$DS_SN"
+                echo "Threads: $Processor_count , Cores: $DS_Cores"
+                echo "Serialnumber:" "$DS_SN"
                 echo -e 'Associated Tickets: \nhttps://cssnew.synology.com/ticket?list_type=agent_all&sort_by=update_time&sort_direction=desc&filter=%7B%22search_column%22%3A%5B%22ticket_id%22%2C%22content%22%5D%2C%22sn%22%3A%22'"$DS_SN"'%22%7D'
-                echo -e "\nArbeitsspeichermodules from logs:\n$DS_MEM3"
-                echo -e "\nArbeitsspeicher, calced: $DS_MEM3_calc"
-                echo "Arbeitsspeicher free.result: ~$free_mem"
+                echo -e "\nRAM-modules from logs:\n$DS_MEM3"
+                echo -e "\RAM, calced: $DS_MEM3_calc"
+                echo "RAM free.result: ~$free_mem"
                 } >> "$sm"
 
                 #log "$DS_MEM3_calc"
@@ -826,6 +825,8 @@ do
                 then    PACK=$DOWNLOAD_DIR/debug_$DATE/$DSM/packages.list
                         declare -a InstalledPackageArray
                         sed '1d' "${PACK}" | awk '{for(i=NF;i>1;i=i-1) printf "%s ", $i; printf "%s\n", $1}' | cut -d " " -f1 > "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/packages_ver.list
+                        TIMEFORMAT=$'Packageversion comparison took: \t\t\t\t\t\t\e[36m%Rsec\e[39m'
+                        time(
                         readarray -t "InstalledPackageArray" < "$DOWNLOAD_DIR/debug_$DATE/$DSM/packages_ver.list"
                         counter=0
                         for i in "${InstalledPackageArray[@]}"
@@ -854,6 +855,8 @@ do
 
                             counter=$((counter + 1))
                         done
+                        )
+                        TIMEFORMAT=$'Executiontime: \t\t\t\t\t\t\t\t\e[36m%Rsec\e[39m'
                         echo -e "\nThird Party packages:" >> "$sm"
                         third_packages=$(grep -v "AntiVirus\|AudioStation\|Calendar\|CloudStation\|FileStation\|HyperBackup\|LogCenter\|MediaServer\|NoteStation\|PHP[0-9].[0-9]\|PhotoStation\|ProxyServer\|StorageAnalyzer\|SynoFinder\|SynologyApplicationService\|SynologyDrive\|TextEditor\|USBCopy\|VideoStation\|WebDAVServer\|CloudSync\|DownloadStation\|SurveillanceStation\|WebStation\|VPNCenter\|MariaDB\|Chat\|Git\|Node.js_4\|Perl\|ActiveBackup\|ActiveBackup-Office365\|ActiveDirectoryServer\|Apache[0-9].[0-9]\|CMS\|CardDAVServer\|DNSServer\|DiagnosisTool\|Docker\|MailClient\|MailPlus-Server\|OAuthService\|PetaSpace\|PrestoServer\|PythonModule\|SSOServer\|SnapshotReplication\|Spreadsheet\|SynologyMoments\|Virtualization\|iTunesServer\| enabled\|TimeBackup\|Java7\|Java8\|exFAT\|PDFViewer\|MailStation\|phpMyAdmin\|total [[:digit:]]\{,3\}" "$PACK")
                         if [ -z "$third_packages" ]; then
@@ -864,7 +867,7 @@ do
                 fi
 
                 echo -e "\n\nExt4-/Btrfs-Errors:" >> "$sm"
-                grep -i "btrfs critical\|btrfs error\|btrfs warning" "$KERN"  >> "$sm" #btrfs: BTRFS warning (device md2)
+                grep -i "btrfs critical\|btrfs error\|btrfs warning" "$KERN"  >> "$sm"
                 grep -i "ext-4" "$KERN"  >> "$sm" #ext4
 
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/synolog/synosys.log" ]]; then

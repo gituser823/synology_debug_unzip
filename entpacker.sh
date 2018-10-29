@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#for handling spaces in filenames 
+#for handling spaces in filenames
 #IFS=$'\n'
 
 #debugging with times:
@@ -18,7 +18,7 @@ sleep_scan_dir=2 #Folder rescan time in seconds
 sleep_extract_zip=0.5 #rescan time for finishing download
 Script_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 #source "${Script_dir}/files/config.sh"
-DOWNLOAD_DIR=/mnt/c/Users/no-sp/Downloads/neu/
+DOWNLOAD_DIR=/home/thomas/Downloads/neu
 DSM=dsm
 CPU_FILE="${Script_dir}/files/CPU.txt"
 PShedPy="${Script_dir}/files/power_shed.py"
@@ -154,7 +154,10 @@ do
             date_now=$(date +"%d. %B %H:%M:%S:")
             echo "$date_now found .dat-file! Timer started now"
             DATE=$(echo "$(date +"%H%M%S") - ($(date +%S)%10)" | bc)
+            TIMEFORMAT=$'Extractiontime debug.dat: \t\t\t\t\t\t\e[36m%Rsec\e[39m'
+            time(
             unzip -q "$file" -d "$DOWNLOAD_DIR"/debug_"$DATE"
+            )
             if [ $? -eq 0 ] # if successfully extracted
             then
                 mv "$file" "$DOWNLOAD_DIR"/debug_"$DATE"
@@ -537,7 +540,7 @@ do
                 {
                     echo -e "\n"
                     echo "$file"
-                    grep -i "overall-health self-assessment\|Model Family\|Device Model\|Serial Number\|User Capacity\|Sector Sizes\|Rotation Rate\|ID\#\|Raw_Read_Error_Rate\|Reallocated_Sector_Ct\|Seek_Error_Rate\|Spin_Retry_Count\|Calibration_Retry_Count\|Reallocated_Event_Count\|Current_Pending_Sector\|Offline_Uncorrectable\|UDMA_CRC_Error_Count\|Multi_Zone_Error_Rate\|Power_On_Hours\|Reallocated_Sector_Count\|Power-on_Hours\|Program_Fail_Count_(total)\|Erase_Fail_Count_(total)\|Runtime_Bad_Count_(total)\|Uncorrectable_Error_Count\|ECC_Error_Rate\|CRC_Error_Count\|POR_Recovery_Count" "$file"
+                    grep -i "overall-health self-assessment\|Model Family\|Device Model\|Serial Number\|Firmware Version\|User Capacity\|Sector Sizes\|Rotation Rate\|ID\#\|Raw_Read_Error_Rate\|Reallocated_Sector_Ct\|Seek_Error_Rate\|Spin_Retry_Count\|Calibration_Retry_Count\|Reallocated_Event_Count\|Current_Pending_Sector\|Offline_Uncorrectable\|UDMA_CRC_Error_Count\|Multi_Zone_Error_Rate\|Power_On_Hours\|Reallocated_Sector_Count\|Power-on_Hours\|Program_Fail_Count_(total)\|Erase_Fail_Count_(total)\|Runtime_Bad_Count_(total)\|Uncorrectable_Error_Count\|ECC_Error_Rate\|CRC_Error_Count\|POR_Recovery_Count" "$file"
                             echo " "
                             awk '/SMART Error Log Version: 1/{f=1;next} /Selective self-test flags/{f=0} f' "$file"
                     echo -e " \n \n"
@@ -826,7 +829,7 @@ do
                 then    PACK=$DOWNLOAD_DIR/debug_$DATE/$DSM/packages.list
                         declare -a InstalledPackageArray
                         sed '1d' "${PACK}" | awk '{for(i=NF;i>1;i=i-1) printf "%s ", $i; printf "%s\n", $1}' | cut -d " " -f1 > "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/packages_ver.list
-                        TIMEFORMAT=$'Packageversion comparison took: \t\t\t\t\t\t\e[36m%Rsec\e[39m'
+                        TIMEFORMAT=$'Packageversion comparison took: \t\t\t\t\t\e[36m%Rsec\e[39m'
                         time(
                         readarray -t "InstalledPackageArray" < "$DOWNLOAD_DIR/debug_$DATE/$DSM/packages_ver.list"
                         counter=0
@@ -857,7 +860,6 @@ do
                             counter=$((counter + 1))
                         done
                         )
-                        TIMEFORMAT=$'Executiontime: \t\t\t\t\t\t\t\t\e[36m%Rsec\e[39m'
                         echo -e "\nThird Party packages:" >> "$sm"
                         third_packages=$(grep -v "AntiVirus\|AudioStation\|Calendar\|CloudStation\|FileStation\|HyperBackup\|LogCenter\|MediaServer\|NoteStation\|PHP[0-9].[0-9]\|PhotoStation\|ProxyServer\|StorageAnalyzer\|SynoFinder\|SynologyApplicationService\|SynologyDrive\|TextEditor\|USBCopy\|VideoStation\|WebDAVServer\|CloudSync\|DownloadStation\|SurveillanceStation\|WebStation\|VPNCenter\|MariaDB\|Chat\|Git\|Node.js_4\|Perl\|ActiveBackup\|ActiveBackup-Office365\|ActiveDirectoryServer\|Apache[0-9].[0-9]\|CMS\|CardDAVServer\|DNSServer\|DiagnosisTool\|Docker\|MailClient\|MailPlus-Server\|OAuthService\|PetaSpace\|PrestoServer\|PythonModule\|SSOServer\|SnapshotReplication\|Spreadsheet\|SynologyMoments\|Virtualization\|iTunesServer\| enabled\|TimeBackup\|Java7\|Java8\|exFAT\|PDFViewer\|MailStation\|phpMyAdmin\|total [[:digit:]]\{,3\}" "$PACK")
                         if [ -z "$third_packages" ]; then
@@ -955,7 +957,8 @@ do
                 done
 
                 sleep 0.1
-
+            TIMEFORMAT=$'Opening Sublime took: \t\t\t\t\t\t\t\e[36m%Rsec\e[39m'
+            time(
                 source "${Script_dir}/files/config.sh" #load OpenFiles[] Array from config.sh
                 #log "Array before unsetting: ${OpenFiles[@]}"
                 for i in "${!OpenFiles[@]}"; do #remove empty vars from array [@]
@@ -964,7 +967,7 @@ do
                 done
 
                 for i in "${OpenFiles[@]}"; do # open single files
-                    "$subl" "$(wslpath -w $i)"
+                    "$subl" "$i" #"$subl" "$(wslpath -w $i)"
                     sleep 0.12
                 done
                 #"$subl" "${OpenFiles[@]}" #open files defined in config.sh with editor
@@ -976,6 +979,8 @@ do
                        echo -n "\"$arg\" " >> ~/last_debug.sh
                 done
                 echo -e "\n" #??
+                )
+                TIMEFORMAT=$'Executiontime: \t\t\t\t\t\t\t\t\e[36m%Rsec\e[39m'
                 #log "$subl" "${OpenFiles[@]}"
                 #$subl "$DEBUG_DIR" "$SMART_GREP" "$PACK" "$Bash_history" "$hb_debug" "$HB" "$DF" "$IFCONFIG" "$SPACE_FILES":10000 "$SYSDBtac":100000 "$sm" "$MESSAGES":1000000 "${PicArray[@]}"
                 #"${subl}" "$DEBUG_DIR" "$SMART_GREP" "$PACK" "$Bash_history" "$hb_debug" "$HB" "$DF" "$IFCONFIG" "$SPACE_FILES":10000 "$SYSDBtac":100000 "$sm" "$MESSAGES":1000000 "${PicArray[@]}" #$pics

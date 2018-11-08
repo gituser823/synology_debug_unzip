@@ -477,6 +477,14 @@ do
                         hddname2=$(grep -i "Vendor:\|Product:" "$file" | cut -d ":" -f2 | xargs )
                     fi
 
+                    #Samsung SSDs
+                    if [[ -z "${modelname}" ]]; then
+                        filename=$(basename -- "$file")
+                        model_file=$(echo "$filename" | cut -d "." -f1 | rev | cut -d "_" -f1 | rev)
+                        modelname=$(grep -i "$model_file" "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/disk_overview.xml" -m1 | cut -d "\"" -f2 | awk -F 'SSD ' '{print $2 }' | xargs)
+                        hddname2=$(grep -i "$model_file" "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/disk_overview.xml" -m1 | cut -d "\"" -f2 | xargs )
+                    fi
+
                     if [[ -z "${modelname}" ]]; then
                         HDDComp=""
                         echo -e "\e[31mHDD-Comp: Modelname empty!\e[0m"
@@ -509,10 +517,11 @@ do
                     echo -n "Last Extended SMART-Test: " >> "$sm"
                     LastSmartTest=$(grep -i -m1 "Extended Offline" "$file" | sed -n '/Extended offline/s/ \+/ /gp' | cut -d " " -f9 )
                     LastSmartResult=$(grep -i -m1 "Extended Offline" "$file" | sed -n '/Extended offline/s/ \+/ /gp' | cut -d " " -f5-7 )
+                    #old:                     LastSmartResult=$(grep -i -m1 "Extended Offline" "$file" | sed -n '/Extended offline/s/ \+/ /gp' | cut -d " " -f5-7 )
                     re='^[0-9]+$'
                     if ! [[ "${LastSmartTest}" =~ $re ]] ; then
                     LastSmartTest=$(grep -i -m1 "Extended Offline" "$file" | sed -n '/Extended offline/s/ \+/ /gp' | cut -d " " -f8 )
-                    LastSmartResult=$(grep -i -m1 "Extended Offline" "$file" | sed -n '/Extended offline/s/ \+/ /gp' | cut -d " " -f4-5 )
+                    LastSmartResult=$(grep -i -m1 "Extended Offline" "$file" | sed -n '/Extended offline/s/ \+/ /gp' | cut -d " " -f4-8 )
                     fi
                     if [[ -z "${LastSmartTest}" ]]; then
                     echo -n "never" >> "$sm"
@@ -593,6 +602,7 @@ do
                 then    Dmesg=$DOWNLOAD_DIR/debug_$DATE/$DSM/result/dmesg.result
                         #DS_MEM2=$( grep -i -m1 "Memory: " $Dmesg | sed "s/.*Memory: //" | cut -d " " -f3 )
                         Syno_bios=$( tac "$Dmesg" | grep "synobios: load" -m1 | sed 's/.*load, //' )
+                else    log "dmesg.result not found!"
                 fi
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/free.result" ]]
                 then
@@ -620,6 +630,7 @@ do
                     DS_Cores=$( cat "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/proc/sys/kernel/syno_CPU_info_core )
                     Processor_count=$( grep -i -c "processor" "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/proc/cpuinfo ) #CPU Count
                     DS_SN=$( cat "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/proc/sys/kernel/syno_serial )
+                    Kernel_version=$( grep -m1 "Linux version" $KERN | awk -F 'Linux version ' '{print $2}')
                     #DS_SN=$( grep -i -m1 "serial number" $DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/kern.log | sed "s/.*[Ss]erial [Nn]umber//" )
                 fi
                 date_now=$(date +"%d. %B %H:%M:%S:")
@@ -766,6 +777,7 @@ do
                 #echo "SynoBIOS: " "$Syno_bios"
                 echo "Hardware Version: $DS_HWMODEL and Diskstationmodel: $DS_MODEL"
                 echo "UPNP Model:" "$UpnpModel"
+                echo "Kernel:" "$Kernel_version"
                 echo "CPU from logs:" "$DS_CPU"
                 echo "Threads: $Processor_count , Cores: $DS_Cores"
                 echo "Serialnumber:" "$DS_SN"

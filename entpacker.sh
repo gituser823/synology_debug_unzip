@@ -73,6 +73,7 @@ while getopts ":uvh" opt; do
             for m in "${Models[@]}"
                 do
                 {
+                    #n="${m,,}" #convert to lowercase
                     echo 'echo getting /comp/'"${m}"'_hdds_compatible.json'
                     echo 'get "https://www.synology.com/api/compatibility/findHclList?lang=en-global&search_by=products&model='"${m//+/%2B}"'&category=hdds&usage_id=12&recommend=t" -o "'"${Script_dir}"'/comp/'"${m}"'_hdds_compatible.json"'
                     #stat --printf=", Size: %s" "${Script_dir}/comp/${m}_hdds_compatible.json"
@@ -84,6 +85,7 @@ while getopts ":uvh" opt; do
             echo "bye" >> "${Script_dir}/comp/lftp.cfg"
             lftp -f "${Script_dir}/comp/lftp.cfg"
             echo "done.";
+            sed -e "s/\\\\\///g" -i "${Script_dir}"/comp/*.json #Kingston SSDs: remove "\/"
             #}
         echo "Updating latest package Versions:"
         lftp -c "open https://archive.synology.com/download/Package/spk/; cls" > "${available_packages_pre}"; #download package list
@@ -434,19 +436,22 @@ do
                     echo "Offline_Uncorrectable:" "$OfflineUncorrectable_sum" >> "$sm"
                 fi
 
+                UpnpModelCASE=${UpnpModel/rp/RP}
                 #hdd-compatibility:
-                if [[ -f "${Script_dir}/comp/${UpnpModel}_hdds_compatible.json" ]]; then
-                    comp_list="${Script_dir}/comp/${UpnpModel}_hdds_compatible.json"
+                if [[ -f "${Script_dir}/comp/${UpnpModelCASE}_hdds_compatible.json" ]]; then
+                    comp_list="${Script_dir}/comp/${UpnpModelCASE}_hdds_compatible.json"
                     log "\e[32mCompatibility-list for ${UpnpModel} found and set. ($comp_list)\e[0m"
                 else
-                    echo -e "\e[31mCompatibility-list for ${UpnpModel} not found! should be ${Script_dir}/comp/${UpnpModel}_hdds_compatible.json\e[0m"
+                    echo -e "\e[31mCompatibility-list for ${UpnpModel} not found! should be ${Script_dir}/comp/${UpnpModelCASE}_hdds_compatible.json\e[0m"
+                    echo -e "Compatibility-list for ${UpnpModel} not found! should be ${Script_dir}/comp/${UpnpModelCASE}_hdds_compatible.json\nTHE FOLLOWING COMPATIBILITY RESULTS ARE WRONG:" >> "$sm"
                 fi
 
-                if [[ -f "${Script_dir}/comp/${UpnpModel}_hdds_incompatible.json" ]]; then
-                    incomp_list="${Script_dir}/comp/${UpnpModel}_hdds_incompatible.json"
+                if [[ -f "${Script_dir}/comp/${UpnpModelCASE}_hdds_incompatible.json" ]]; then
+                    incomp_list="${Script_dir}/comp/${UpnpModelCASE}_hdds_incompatible.json"
                     log "\e[32mIncompatibility-list for ${UpnpModel} found and set. ($incomp_list)\e[0m"
                 else
-                    echo -e "\e[31mIncompatibility-list for ${UpnpModel} not found! should be ${Script_dir}/comp/${UpnpModel}_hdds_incompatible.json\e[0m"
+                    echo -e "\e[31mIncompatibility-list for ${UpnpModel} not found! should be ${Script_dir}/comp/${UpnpModelCASE}_hdds_incompatible.json\e[0m"
+                    echo -e "Incompatibility-list for ${UpnpModel} not found! should be ${Script_dir}/comp/${UpnpModelCASE}_hdds_incompatible.json\nTHE FOLLOWING COMPATIBILITY RESULTS ARE WRONG:" >> "$sm"
                 fi
 
                 #declare -a PowerOnHours
@@ -473,7 +478,7 @@ do
 
                     #for SAS in FS2017
                     if [[ -z "${modelname}" ]]; then
-                        modelname=$(grep -i "Product" "$file" | cut -d ":" -f2 | xargs)
+                        modelname=$(grep -i "Product" "$file" | cut -d ":" -f2 | xargs )
                         hddname2=$(grep -i "Vendor:\|Product:" "$file" | cut -d ":" -f2 | xargs )
                     fi
 
@@ -570,8 +575,10 @@ do
                 done
                 SPACE_FILES="$DOWNLOAD_DIR/debug_$DATE/$DSM/space"
 
-                if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/disk_log.xml" ]] && [ "$(stat --printf='%s' "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/disk_log.xml")" -gt 0 ]
+                if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/disk_log.xml" ]] && [[ "$(stat --printf='%s' "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/disk_log.xml")" -gt 0 ]]
                 then    DiskLog="$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/disk_log.xml"
+                elif [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/disk.log" ]] && [[ "$(stat --printf='%s' "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/disk.log")" -gt 0 ]]
+                then    DiskLog="$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/disk.log"
                 fi
 
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/smartgrep" ]]
@@ -637,7 +644,7 @@ do
                 echo "$date_now $UpnpModel" #write to sm after this
                     #Hardware-specific things
                     if [ "$UpnpModel" = "DS216+" ]; then
-                        echo "Possible BIOS-Issue: https://css.synology.com/issue/4334" >> "$sm"
+                        echo "Possible Known Issue BIOS: https://css.synology.com/issue/4334" >> "$sm"
                         echo "Bugged Versions are less than M.616" >> "$sm"
                         echo -e "This Machines BIOS-Version: $BIOS_V_CUT\n" >> "$sm"
                     fi
@@ -650,12 +657,12 @@ do
                     fi
                         grep_hddissue=$( grep -c "core_clear_root_int_from_queue Error Interrupt\|Issued IDENTIFY to non-existent device ?!" "$MESSAGES" )
                         if [ "$grep_hddissue" -gt 0 ]; then
-                            echo "random HDD drops of WD or HGST HDDs, update HDD Firmware: https://css.synology.com/issue/9198" >> "$sm"
+                            echo "Known Issue: random HDD drops of WD or HGST HDDs, update HDD Firmware: https://css.synology.com/issue/9198" >> "$sm"
                             grep -i "core_clear_root_int_from_queue Error Interrupt: PHY Decoding Error\|Issued IDENTIFY to non-existent device ?!" "$MESSAGES" >> "$sm"
                         fi
                     if [ "$UpnpModel" = "DS718+" ] || [ "$UpnpModel" = "DS918+" ] || [ "$UpnpModel" = "DS218+" ] || [ "$UpnpModel" = "DS418play" ] || [ "$UpnpModel" = "DS718+" ] || [ "$UpnpModel" = "DS918+" ] || [ "$UpnpModel" = "DS218+" ] || [ "$UpnpModel" = "DS418play" ]; then
                     {
-                        echo "possible BIOS-Issue: https://css.synology.com/issue/12026"
+                        echo "possible BIOS Known Issue: https://css.synology.com/issue/12026"
                         echo "Update to DSM 6.1.3-15152 Update 7 to update the BIOS."
                         echo "Bug is fixed in: DS718+  M.220, DS918+  M.024, DS218+  M.124, DS418play M.310"
                         echo -e "This Machines BIOS-Version: $UpnpModel $BIOS_V_CUT\n"
@@ -670,7 +677,7 @@ do
 
                     if grep -ia "tn40xx" "$KERN" | grep Link Up 10G &> /dev/null ; then
                     {
-                    echo "Possible known Issue with 10GbE E10G15-F1 Card detected."
+                    echo "Possible Known Issue with 10GbE E10G15-F1 Card detected."
                     echo "If Time are above 600s after Boot, please check SOP."
                     echo "See https://cssnew.synology.com/issue/5206 Issue A"
                     grep -ia "tn40xx" "$KERN" | grep "Link Up 10G\|Link Down" | tail -n20
@@ -882,8 +889,8 @@ do
                 fi
 
                 echo -e "\n\nExt4-/Btrfs-Errors:" >> "$sm"
-                grep -i "btrfs critical\|btrfs error\|btrfs warning" "$KERN"  >> "$sm"
-                grep -i "ext-4" "$KERN"  >> "$sm" #ext4
+                grep -ia "btrfs critical\|btrfs error\|btrfs warning" "$KERN"  >> "$sm"
+                grep -ia "ext-4" "$KERN"  >> "$sm" #ext4
 
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/synolog/synosys.log" ]]; then
                     SYSDB="$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/synolog/synosys.log"
@@ -898,13 +905,13 @@ do
                     SYSDBtac="$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/synolog/synosystac.log"
                     {
                     echo -e "\n\nimproper shutdowns:"
-                    grep -i "improper shutdown" "$SYSDB" #improper shutdown
+                    grep -ia "improper shutdown" "$SYSDB" #improper shutdown
                     echo -e "\n\nVolume crashes:"
-                    grep -i "was crashed" "$SYSDB" #volumecrash
+                    grep -ia "was crashed" "$SYSDB" #volumecrash
                     echo -e "\n\ndegraded volumes:"
-                    grep -i "degrade" "$SYSDB" #volume degraded
+                    grep -ia "degrade" "$SYSDB" #volume degraded
                     echo -e "\n\n$(grep -ia "error" "$SYSDB" | uniq -u | wc -l) times errors:"
-                    grep -i "error" "$SYSDB" | uniq -u #generic Errors
+                    grep -ia "error" "$SYSDB" | uniq -u #generic Errors
                     } >> "$sm"
 
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/messages.log" ]]; then
@@ -961,7 +968,7 @@ do
 
 
                 counter=0
-                allpics=$(find "$DOWNLOAD_DIR/debug_${DATE}/" -maxdepth 1 -type f \( -name "*.jpg" -o -name "*.png" -o -name "*.PNG"-o -name "*.JPG" \) 2>/dev/null)
+                allpics=$(find "$DOWNLOAD_DIR/debug_${DATE}/" -maxdepth 1 -type f \( -name "*.jpg" -o -name "*.png" -o -name "*.PNG" -o -name "*.JPG" \) 2>/dev/null)
                 declare -a PicArray
                 for pic in "${allpics}"
                 do  PicArray["${counter}"]="${pic}"

@@ -835,6 +835,18 @@ do
                 echo "$DS_CPU_TXT"
                 }  >> "$sm"
 
+                if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/usr/syno/etc/iscsi_lun.conf" ]]
+                then    LUNs="$DOWNLOAD_DIR/debug_$DATE/$DSM/usr/syno/etc/iscsi_lun.conf"
+                            if [[ -z "$LUNs" ]]; then
+                                echo -e "\nNo LUN-Config found." >> "$sm"
+                            else
+                                echo -e "\nFound LUNs:" >> "$sm"
+                                cat "$LUNs" >> "$sm"
+                                LUNSize=$(grep "bytes=" $LUNs | cut -d "=" -f2 | sed ':a;N;$!ba;s/\n/+/g' | bc | sed '/$/s/$/\/1000000000/' | bc)
+                                echo -e "\nCombined LUN Size: $LUNSize Gb." >> "$sm"
+                            fi
+                fi
+
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/samba/smb.share.conf" ]]
                 then    SmbShares=$(grep "path=" "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/samba/smb.share.conf")
                             if [[ -z "$SmbShares" ]]; then
@@ -843,6 +855,7 @@ do
                                 echo -e "\nFound Samba-shares:\n$SmbShares" >> "$sm"
                             fi
                 fi
+
                 echo -e "\n" >> "$sm"
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/packages.list" ]]
                 then    PACK=$DOWNLOAD_DIR/debug_$DATE/$DSM/packages.list

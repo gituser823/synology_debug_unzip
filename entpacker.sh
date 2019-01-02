@@ -726,9 +726,9 @@ do
                 fi
 
                 if grep -wi "$UpnpModel" "$srsde" &> /dev/null ; then
-                    echo -e "NAS can be SRSed in DE! ( enabled )" >> "$sm"
+                    echo -e "\nNAS can be SRSed in DE! ( enabled )" >> "$sm"
                 else
-                    echo -e "no DE-SRS possible. ( disabled )" >> "$sm"
+                    echo -e "\nno DE-SRS possible. ( disabled )" >> "$sm"
                 fi
                 if [ "$ipv6_enabled" -gt 0 ]; then
                     echo -e "\nIPv6 enabled" >> "$sm"
@@ -790,7 +790,7 @@ do
                 echo "Serialnumber:" "$DS_SN"
                 echo -e 'Associated Tickets: \nhttps://cssnew.synology.com/ticket?list_type=agent_all&sort_by=update_time&sort_direction=desc&filter=%7B%22search_column%22%3A%5B%22ticket_id%22%2C%22content%22%5D%2C%22sn%22%3A%22'"$DS_SN"'%22%7D'
                 echo -e "\nRAM-modules from logs:\n$DS_MEM3"
-                echo -e "\RAM, calced: $DS_MEM3_calc"
+                echo -e "RAM, calced: $DS_MEM3_calc"
                 echo "RAM free.result: ~$free_mem"
                 } >> "$sm"
 
@@ -830,7 +830,7 @@ do
                 log "${UpnpModel}"
                 log "${UpnpModel/+/\\+}\S"
                 {
-                echo "CPUinfo from txt:"
+                echo -e "\nCPUinfo from txt:"
                 echo "$DS_CPU_TXTINFO"
                 echo "$DS_CPU_TXT"
                 }  >> "$sm"

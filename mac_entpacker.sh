@@ -34,22 +34,22 @@ mkdir -p "${Script_dir}/tmp"
 ProductList="${Script_dir}/comp/ProductList.json"
 
 
-function log() {
-    [[ "$verbose" != 1 ]] && return
-    if read -t0.01; then
-        { echo "$REPLY"; cat; } | sed 's/^/[verbose] /'
-    fi
-    for arg in "$@"; do
-        echo -e "[verbose] $arg"
-    done
-}
+# function log() {
+#     [[ "$verbose" != 1 ]] && return
+#     if read -t0.01; then
+#         { echo "$REPLY"; cat; } | sed 's/^/[verbose] /'
+#     fi
+#     for arg in "$@"; do
+#         echo -e "[verbose] $arg"
+#     done
+# }
 
 #serkan:
-# function log () { #Verbose Logging function, usage: log "Infos"
-#     if [[ "$verbose" -eq 1 ]]; then
-#         echo "$@"
-#     fi
-# }
+function log () { #Verbose Logging function, usage: log "Infos"
+    if [[ "$verbose" -eq 1 ]]; then
+        echo "$@"
+    fi
+}
 
 
 while getopts ":uvh" opt; do

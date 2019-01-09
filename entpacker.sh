@@ -14,7 +14,7 @@ shopt -s nullglob
 #win sub:sudo apt-get  install bc unzip (sqlite3) xmllint jq
 #sudo apt install sqlite3 zenity sublime-text xmllint lftp jq
 
-sleep_scan_dir=2 #Folder rescan time in seconds
+sleep_scan_dir=1 #Folder rescan time in seconds
 sleep_extract_zip=0.5 #rescan time for finishing download
 Script_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 DOWNLOAD_DIR=/home/thomas/Downloads/neu
@@ -597,7 +597,7 @@ do
                     fi
                     log "compatibility check for ${hddname} grepped for ${modelname} , ${modelname//-/ - } and ${modelname%-*} ; HDD Size: ${modelname_hdd_size}"
                     echo -n "$hddname: $hddname2 $HDDComp: PowerOnHours: " >> "$sm"
-                    PoH=$(grep -iE "Power(_|-)on_Hours" "$file" | sed -e "s/ ([^()]*)//g" | rev | cut -d " " -f1 | rev | sed 's/h.*//' )
+                    PoH=$(grep -iE "Power(_|-)on_(Hours|Hour_Count)" "$file" | sed -e "s/ ([^()]*)//g" | rev | cut -d " " -f1 | rev | sed 's/h.*//' )
                     echo "${PoH}" >> "$sm"
                     echo -n "Last Extended SMART-Test: " >> "$sm"
                     LastSmartTest=$(grep -i -m1 "Extended Offline" "$file" | sed -n '/Extended offline/s/ \+/ /gp' | cut -d " " -f9 )

@@ -1,4 +1,4 @@
-#!/usr/bin/env bash4
+#!/bin/bash
 
 #for handling spaces in filenames
 #IFS=$'\n'
@@ -78,7 +78,8 @@ while getopts ":uvh" opt; do
         counter="0"
         for v in $(cat "$ProductList")
         do  Models["${counter}"]="${v//\"}"
-            counter=$((counter + 1))
+            #counter=$((counter + 1))
+            counter=`expr $counter + 1`
         done
         IFS=$' \t\n'
         echo -e "\nModels: ${Models[*]}" #old: echo -e "\nModels: ${Models[@]}"
@@ -166,8 +167,11 @@ echo -e "\nGetting available Models:"
         #declare -a ModelArray
         counter="0"
         for v in $(cat "$ProductList")
-        do  Models["${counter}"]="${v//\"}"
-            counter=$((counter + 1))
+        do
+            Models["${counter}"]="${v//\"}"
+            #$(expr "${PoH}" - "${LastSmartTest}" )
+            #counter=$((counter + 1))
+            counter=`expr $counter + 1`
         done
         IFS=$' \t\n'
         echo -e "\nModels: ${Models[*]}" #old: echo -e "\nModels: ${Models[@]}"
@@ -260,9 +264,8 @@ do
                     echo -e "Synology HA: Detected, this is the PASSIVE Server-log" >> "$sm"
                 else
                     sm="$DOWNLOAD_DIR/debug_$DATE/$DSM/sm.log"
-                    echo -e "No Synology HA detected" >> "$sm"
+                    #echo -e "No Synology HA detected" >> "$sm"
                 fi
-                #sm=$DOWNLOAD_DIR/debug_$DATE/$DSM/sm.log
                 sg=$DOWNLOAD_DIR/debug_$DATE/$DSM/smartgrep
                 hb_debug=$DOWNLOAD_DIR/debug_$DATE/$DSM/hibernation_debug.log
                 DEBUG_DIR=$DOWNLOAD_DIR/debug_$DATE
@@ -307,7 +310,7 @@ do
                         else
                             echo "Mountpoints more than 90% full: (""$full_number"")" >> "$sg"
                             #echo " No full Mountpoints found." >> "$sm"
-                            echo " No full Mountpoints found." >> "$sg"
+                            echo "No full Mountpoints found." >> "$sg"
                         fi
                         echo -e "\n"  >> "$sg"
                 fi
@@ -323,7 +326,7 @@ do
                         echo -e "\nMountpoints:" >> "$sg"
                         cat "$MOUNTS" >> "$sg"
                         echo -e " \n"  >> "$sg"
-                        echo -e "\nMountpoints:" >> "$sm"
+                        echo -e "Mountpoints:" >> "$sm"
                         grepmounts=$(grep -i "volume" "$MOUNTS" | cut -f1 -d",")
                         grepmounts_c=$(grep -i -c "volume" "$MOUNTS" | cut -f1 -d",")
                         if [ "$grepmounts_c" -ne 0 ]
@@ -478,16 +481,29 @@ do
                 fi
 
                 counter=0
+                declare -a BadSectors_HDD_Array
+                declare -a PendingSectors_HDD_Array
+                declare -a OfflineUncorrectable_HDD_Array
                 for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/smart"*.result
                 do
                     [[ -e "$file" ]] || break #no smart-files
-                    counter=$((counter + 1))
+                    #counter=$((counter + 1))
+                    counter=`expr $counter + 1`
                     declare -a BadSectors
                     declare -a PendingSectors
                     declare -a OfflineUncorrectable
                     BadSectors=$(grep -i "Reallocated_Sector_Ct\|Reallocated_Sector_Count" "$file" | awk '{print 0+$10 }')
                     PendingSectors=$(grep -i "Current_Pending_Sector" "$file" | awk '{print 0+$10 }')
                     OfflineUncorrectable=$(grep -i "Offline_Uncorrectable\|Uncorrectable_Error_Count" "$file" | awk '{print 0+$10 }')
+                    if [ "${BadSectors[@]}" -gt 0 ]; then
+                        BadSectors_HDD_Array+=$(basename -- "$file")
+                    fi
+                    if [ "${PendingSectors[@]}" -gt 0 ]; then
+                        PendingSectors_HDD_Array+=$(basename -- "$file")
+                    fi
+                    if [ "${OfflineUncorrectable[@]}" -gt 0 ]; then
+                        OfflineUncorrectable_HDD_Array+=$(basename -- "$file")
+                    fi
                     for i in "${BadSectors[@]}"; do
                         (( BadSector_sum+="$i" )) &> /dev/null
                     done
@@ -503,17 +519,17 @@ do
                 if [ -z "${BadSector_sum+x}" ]; then
                     echo "Reallocated_Sector_Ct: error" >> "$sm"
                     else
-                    echo "Reallocated_Sector_Ct:" "$BadSector_sum" >> "$sm"
+                    echo "Reallocated_Sector_Ct:" "$BadSector_sum in ${BadSectors_HDD_Array[@]}" >> "$sm"
                 fi
                 if [ -z "${PendingSectors_sum+x}" ]; then
                     echo "Current_Pending_Sector: error" >> "$sm"
                     else
-                    echo "Current_Pending_Sector:" "$PendingSectors_sum" >> "$sm"
+                    echo "Current_Pending_Sector:" "$PendingSectors_sum in ${PendingSectors_HDD_Array[@]}" >> "$sm"
                 fi
                 if [ -z "${OfflineUncorrectable_sum+x}" ]; then
                     echo "Offline_Uncorrectable: error" >> "$sm"
                     else
-                    echo "Offline_Uncorrectable:" "$OfflineUncorrectable_sum" >> "$sm"
+                    echo "Offline_Uncorrectable:" "$OfflineUncorrectable_sum in ${OfflineUncorrectable_HDD_Array[@]}" >> "$sm"
                 fi
 
                 UpnpModelCASE=${UpnpModel/rp/RP}
@@ -621,7 +637,7 @@ do
                 done
                 )
                 #mehr smart-kram
-                echo -e "\n" >> "$sm"
+                #echo -e "\n" >> "$sm"
 
                 for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/smart"*.result
                 do
@@ -641,7 +657,7 @@ do
                 } >> "$sg"
                 done
 
-                ls -lh "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/space/space_history_"*.xml >> "$DOWNLOAD_DIR/debug_$DATE/$DSM/space"
+                ls -lh "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/space/space_history_"*.xml >> "$DOWNLOAD_DIR/debug_$DATE/$DSM/space.xml"
 
                 for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/space/space_history_"*.xml
                 do
@@ -649,11 +665,14 @@ do
                     {
                     echo "$file"
                     CountHDDs1=$(awk -F '"' '/dev_path/ {print $4} /raid path/ {print $2} /raid>/ {print $5}' "$file" | grep -v "vg" | grep -v "volume" | tr '\n' ' '  | sed 's#  #\n\n#g' | wc -w)
-                    CountHDDs2=$(($CountHDDs1-1))
-                    echo -e "Number HDDs: $CountHDDs2"
+                    #CountHDDs2="$(($CountHDDs1-1))" //entfernen
+                    echo -e "#HDDs: $(($CountHDDs1-1))"
+                    echo -en '\t\t'
                     awk -F '"' '/dev_path/ {print $4} /raid path/ {print $2} /raid>/ {print $5}' "$file" | grep -v "vg" | grep -v "volume" | tr '\n' ' '  | sed 's#  #\n\n#g'
+                    echo "SerialNumbers:"
+                    awk -F '"' '/dev_path/ {print $8} /raid>/ {print $5}' "$file" | grep -v "vg" | grep -v "volume" | tr '\n' ' '  | sed 's#  #\n\n#g'
                     #cat "$file" | awk -F '"' '/dev_path/ {print $4} /raid path/ {print $2} /raid>/ {print $5}' - | grep -v "vg" | tr '\n' ' '  | sed 's#  #\n\n#g'
-                    } >> "$DOWNLOAD_DIR/debug_$DATE/$DSM/space"
+                    } >> "$DOWNLOAD_DIR/debug_$DATE/$DSM/space.xml"
                 done
 
                 for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/space/space_history_"*.xml
@@ -663,15 +682,15 @@ do
                     echo "$file"
                     cat "$file"
                     CountHDDs1=$(awk -F '"' '/dev_path/ {print $4} /raid path/ {print $2} /raid>/ {print $5}' "$file" | grep -v "vg" | grep -v "volume" | tr '\n' ' '  | sed 's#  #\n\n#g' | wc -w)
-                    CountHDDs2=$(($CountHDDs1-1))
-                    echo -e "Number HDDs: $CountHDDs2"
+                    CountHDDs2="$(($CountHDDs1-1))"
+                    echo -e "#HDDs: $CountHDDs2"
                     awk -F '"' '/dev_path/ {print $4} /raid path/ {print $2} /raid>/ {print $5}' "$file" | grep -v "vg" | grep -v "volume" | tr '\n' ' '  | sed 's#  #\n\n#g'
                     #cat "$file" | awk -F '"' '/dev_path/ {print $4} /raid path/ {print $2} /raid>/ {print $5}' - | grep -v "vg" | tr '\n' ' '  | sed 's#  #\n\n#g'
                     echo -e "\n \n \n \n"
-                    } >> "$DOWNLOAD_DIR/debug_$DATE/$DSM/space"
+                    } >> "$DOWNLOAD_DIR/debug_$DATE/$DSM/space.xml"
                 done
 
-                SPACE_FILES="$DOWNLOAD_DIR/debug_$DATE/$DSM/space"
+                SPACE_FILES="$DOWNLOAD_DIR/debug_$DATE/$DSM/space.xml"
 
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/disk_log.xml" ]] && [[ "$(stat --printf='%s' "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/disk_log.xml")" -gt 0 ]]
                 then    DiskLog="$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/disk_log.xml"
@@ -797,7 +816,7 @@ do
 
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/messages.log" ]]
                 then
-                    echo "Memory Tests: " >> "$sm"
+                    echo -ne "\nMemory Tests: " >> "$sm"
                     Passed_Memtest=$( grep -a "Memtest passed" "$MESSAGES" | sort -u | grep -c "")
                     Failed_Memtest=$( grep -a "Memtest failed" "$MESSAGES" | sort -u | grep -c "")
                     if [ "$Passed_Memtest" -gt 0 ]; then
@@ -818,7 +837,7 @@ do
                 then
                     grep_disktemp=$( grep -c "temperature> is over" "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/var/log/scemd.log )
                         if [ "$grep_disktemp" -gt 0 ]; then
-                        echo "CPU or Disk is overheating:" >> "$sm"
+                        echo -e "\nCPU or Disk is overheating:" >> "$sm"
                         grep -ia "temperature> is over" "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/scemd.log" >> "$sm"
                         fi
                 fi
@@ -948,7 +967,7 @@ do
                 fi
 
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/samba/smb.share.conf" ]]
-                then    SmbShares=$(grep "path=" "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/samba/smb.share.conf")
+                then    SmbShares=$(grep "path=" "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/samba/smb.share.conf" | tr '\n' '\t')
                             if [[ -z "$SmbShares" ]]; then
                                 echo -e "\nNo Samba Shares found." >> "$sm"
                             else
@@ -956,7 +975,7 @@ do
                             fi
                 fi
 
-                echo -e "\n" >> "$sm"
+                #echo -e "\n" >> "$sm"
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/packages.list" ]]
                 then    PACK=$DOWNLOAD_DIR/debug_$DATE/$DSM/packages.list
                         declare -a InstalledPackageArray
@@ -989,21 +1008,42 @@ do
                                 echo -e "${InstalledPackageArray[$counter]}: Installed: $PureVerInstalled vs. available: $PureVerAvailable\e[0m"
                             fi
 
-                            counter=$((counter + 1))
+                            #counter=$((counter + 1))
+                            counter=`expr $counter + 1`
                         done
                         )
-                        echo -e "\nThird Party packages:" >> "$sm"
+                        echo -en "Third Party packages:" >> "$sm"
                         third_packages=$(grep -v "AntiVirus\|AudioStation\|Calendar\|CloudStation\|FileStation\|HyperBackup\|LogCenter\|MediaServer\|NoteStation\|PHP[0-9].[0-9]\|PhotoStation\|ProxyServer\|StorageAnalyzer\|SynoFinder\|SynologyApplicationService\|SynologyDrive\|TextEditor\|USBCopy\|VideoStation\|WebDAVServer\|CloudSync\|DownloadStation\|SurveillanceStation\|WebStation\|VPNCenter\|MariaDB\|Chat\|Git\|Node.js_4\|Perl\|ActiveBackup\|ActiveBackup-Office365\|ActiveDirectoryServer\|Apache[0-9].[0-9]\|CMS\|CardDAVServer\|DNSServer\|DiagnosisTool\|Docker\|MailClient\|MailPlus-Server\|OAuthService\|PetaSpace\|PrestoServer\|PythonModule\|SSOServer\|SnapshotReplication\|Spreadsheet\|SynologyMoments\|Virtualization\|iTunesServer\| enabled\|TimeBackup\|Java7\|Java8\|exFAT\|PDFViewer\|MailStation\|phpMyAdmin\|total [[:digit:]]\{,3\}" "$PACK")
                         if [ -z "$third_packages" ]; then
-                            echo "No Third Party Packages found." >> "$sm"
-                            else
-                            echo "$third_packages" >> "$sm"
+                            echo "\t\tnone" >> "$sm"
+                        else
+                            echo -e "\n$third_packages" >> "$sm"
                         fi
                 fi
 
-                echo -e "\n\nExt4-/Btrfs-Errors:" >> "$sm"
-                grep -ia "btrfs critical\|btrfs error\|btrfs warning" "$KERN"  >> "$sm"
-                grep -ia "ext-4" "$KERN"  >> "$sm" #ext4
+
+                btrfserrkern=$(grep -ia "btrfs critical\|btrfs error\|btrfs warning\|btrfs.*failure\|btrfs.*failed\|BTRFS: superblock checksum mismatch" "$KERN")
+                ext4errkern=$(grep -ia "ext-3\|ext-4" "$KERN" | grep -v "scripts/ext-3.4")
+                btrfserrmsg=$(grep -ia "btrfs critical\|btrfs error\|btrfs warning\|btrfs.*failure\|btrfs.*failed\|BTRFS: superblock checksum mismatch" "$MESSAGES")
+                ext4errmsg=$(grep -ia "ext-3\|ext-4" "$MESSAGES" | grep -v "scripts/ext-3.4" )
+                if [[ -z "$btrfserrkern" ]] && [[ -z "$ext4errkern" ]] && [[ -z "$ext4errmsg" ]] && [[ -z "$ext4errmsg" ]]; then
+                    echo -e "\nExt4-/Btrfs-Errs:\t\tnone" >> "$sm"
+                else
+                    echo -e "\nExt4-/Btrfs-Errors:" >> "$sm"
+                    if [[ -n "$btrfserrkern" ]]; then
+                        echo -e "$btrfserrkern \n" >> "$sm"
+
+                    fi
+                    if [[ -n "$ext4errkern" ]]; then
+                        echo -e "$ext4errkern \n" >> "$sm"
+                    fi
+                    if [[ -n "$btrfserrmsg" ]]; then
+                        echo -e "$btrfserrmsg \n" >> "$sm"
+                    fi
+                    if [[ -n "$ext4errmsg" ]]; then
+                        echo -e "$ext4errmsg \n" >> "$sm"
+                    fi
+                fi
 
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/synolog/synosys.log" ]]; then
                     SYSDB="$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/synolog/synosys.log"
@@ -1016,27 +1056,76 @@ do
 
                     tac "$SYSDB" >> "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/synolog/synosystac.log"
                     SYSDBtac="$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/synolog/synosystac.log"
-                    {
-                    echo -e "\n\nimproper shutdowns:"
-                    grep -ia "improper shutdown" "$SYSDB" #improper shutdown
-                    echo -e "\n\nVolume crashes:"
-                    grep -ia "was crashed" "$SYSDB" #volumecrash
-                    echo -e "\n\ndegraded volumes:"
-                    grep -ia "degrade" "$SYSDB" #volume degraded
-                    echo -e "\n\n$(grep -ia "error" "$SYSDB" | uniq -u | wc -l) times errors:"
-                    grep -ia "error" "$SYSDB" | uniq -u #generic Errors
-                    } >> "$sm"
+
+                    impropershutdown=$(grep -ia "improper shutdown" "$SYSDB")
+                    if [[ -z "$impropershutdown" ]]; then
+                        echo -e "improper shutdowns:\t\tnone" >> "$sm"
+                    else
+                        echo -e "improper shutdowns:" >> "$sm"
+                        echo "$impropershutdown" >> "$sm"
+                        echo -e "\n" >> "$sm"
+                    fi
+
+                    volumecrash=$(grep -ia "was crashed" "$SYSDB") #volumecrash
+                    if [[ -z "$volumecrash" ]]; then
+                        echo -e "Volume crashes:\t\t\tnone" >> "$sm"
+                    else
+                        echo -e "Volume crashes:" >> "$sm"
+                        echo "$volumecrash" >> "$sm"
+                        echo -e "\n" >> "$sm"
+                    fi
+
+                    degradedvolume=$(grep -ia "degrade" "$SYSDB") #volumecrash
+                    if [[ -z "$degradedvolume" ]]; then
+                        echo -e "degraded volumes:\t\tnone" >> "$sm"
+                    else
+                        echo -e "degraded volumes:" >> "$sm"
+                        echo "$degradedvolume" >> "$sm"
+                        echo -e "\n" >> "$sm"
+                    fi
+
+                    generrors=$(grep -ia "error" "$SYSDB" | uniq -u | wc -l) #volumecrash
+                    if [[ "$generrors" -eq 0 ]]; then
+                        echo -e "generic errs:\t\t\tnone" >> "$sm"
+                    else
+                        echo -e "$(grep -ia "error" "$SYSDB" | uniq -u | wc -l) times errors:" >> "$sm"
+                        echo "$(grep -ia "error" "$SYSDB" | uniq -u)" >> "$sm"
+                        echo -e "\n" >> "$sm"
+                    fi
 
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/messages.log" ]]; then
                     {
-                    echo -e "\n\n$(grep -ia "DRDY" "$MESSAGES" | uniq -u | wc -l) times DRDY, showing 20 max:"
-                    tac "$MESSAGES" | grep -ia -B5 -A10 -m 20 "DRDY" | tac
-                    echo -e "\n\n$(grep -iac "database disk image is malformed" "$MESSAGES") times malformed database:"
-                    grep -ia "database disk image is malformed" "$MESSAGES"
-                    echo -e "\n\n$(grep -iac "crash" "$MESSAGES") times crashes:"
-                    grep -ia "crash" "$MESSAGES"
-                    echo -e "\n\n$(grep -iac "Call Trace" "$MESSAGES") times call traces + next 25 lines:"
-                    grep -ia "Call Trace" "$MESSAGES" -A25
+                        DRDYErr=$(grep -ia "DRDY" "$MESSAGES" | uniq -u | wc -l)
+                        if [[ "$DRDYErr" -eq 0 ]]; then
+                            echo -e "DRDY:\t\t\t\t\tnone"
+                        else
+                            echo -e "$(grep -ia "DRDY" "$MESSAGES" | uniq -u | wc -l) times DRDY, showing 20 max:"
+                            tac "$MESSAGES" | grep -ia -B5 -A10 -m 20 "DRDY" | tac
+                        fi
+
+                        database_malformed=$(grep -iac "database disk image is malformed" "$MESSAGES")
+                        if [[ "$database_malformed" -eq 0 ]]; then
+                            echo -e "Database is malformed:\tnone"
+                        else
+                            echo -e "$(grep -iac "database disk image is malformed" "$MESSAGES") times malformed database:"
+                            grep -ia "database disk image is malformed" "$MESSAGES"
+                        fi
+
+                        crashes=$(grep -iac "crash" "$MESSAGES")
+                        if [[ "$crashes" -eq 0 ]]; then
+                            echo -e "generic crashes:\t\tnone"
+                        else
+                            echo -e "$(grep -iac "crash" "$MESSAGES") times crashes:"
+                            grep -ia "crash" "$MESSAGES"
+                        fi
+
+                        CallTraces=$(grep -iac "Call Trace" "$MESSAGES")
+                        if [[ "$CallTraces" -eq 0 ]]; then
+                            echo -e "Call Traces:\t\t\tnone"
+                        else
+                            echo -e "$(grep -iac "Call Trace" "$MESSAGES") times call traces + next 25 lines:"
+                            grep -ia "Call Trace" "$MESSAGES" -A25
+                        fi
                     } >> "$sm"
                 fi
                 #write hibernation info:
@@ -1048,7 +1137,7 @@ do
                         #Drittanbieterpakete, Asterisk, Bittorrent sync, Cloud Fleet, DVBLink-Server, Egnyte, ElephantDrive, Logitech® Medienserver, minimserver, Odoo8, OpenERP6, OpenERP7, OracleDBXE, PACS, Polkast, Symform Cloud Backup, VirtualHere, Webalizer, Wonderbox, xCloud, Zarafa, Andere Drittanbieter-Software oder Optware, z. B. SABnzbd
                         #usb-geraet angeschlossen
                         if [ -z "$third_packages" ]; then
-                            echo "none." >> "$hb_debug"
+                            echo -e "\t\tnone." >> "$hb_debug"
                             else
                             echo "$hb_packages" >> "$hb_debug"
                         fi
@@ -1085,7 +1174,8 @@ do
                 declare -a PicArray
                 for pic in "${allpics}"
                 do  PicArray["${counter}"]="${pic}"
-                    counter=$((counter + 1))
+                    counter=`expr $counter + 1`
+                    #counter=$((counter + 1))
                 done
 
                 sleep 0.1

@@ -234,7 +234,8 @@ do
             time(
             date_now=$(date +"%d. %B %H:%M:%S:")
             echo "$date_now found .dat-file! Timer started now"
-            DATE=$(echo "$(date +"%H%M%S") - ($(date +%S)%10)" | bc)
+            #DATE=$(echo "$(date +"%H%M%S") - ($(date +%S)%10)" | bc)
+            DATE=$(date -d @$(( $(date +%s) / 10 * 10 )) +%H%M%S)
             TIMEFORMAT=$'Extractiontime debug.dat: \t\t\t\t\t\t\e[36m%Rsec\e[39m'
             time(
             unzip -q "$file" -d "$DOWNLOAD_DIR"/debug_"$DATE"
@@ -305,6 +306,7 @@ do
                         then
                             echo -e "\nMountpoints more than 90% full: (""$full_number"")" >> "$sm"
                             awk '0+$5>90 { printf "\n%s",$0 }' "$DF" >> "$sm"
+                            echoe -e "\n" >> "$sm"
                             echo -n "Mountpoints more than 90% full: (""$full_number"")" >> "$sg"
                             awk '0+$5>90 { printf "\n%s",$0 }' "$DF" >> "$sg"
                         else
@@ -314,6 +316,23 @@ do
                         fi
                         echo -e "\n"  >> "$sg"
                 fi
+
+                #check for 16Tb Volume limitation
+                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/tune2fs/dev.vg"*".result"
+                        do
+                            [[ -e "$file" ]] || log "No vg files found."
+                            [[ -e "$file" ]] || break
+                            Volume_Features=$(grep -a "Filesystem features" "$file")
+                                if [ "$Volume_Features" ]; then
+                                    Volume_x64=$(grep -a "Filesystem features" "$file" | grep 64bit)
+                                    if  [ "$Volume_x64" ]; then
+                                        echo -e "$(basename -- "$file") has x64"  #remove?!
+                                    else
+                                        echo -e "$(basename -- "$file") has 16 Terabyte Volume Limitation." >> "$sm"
+                                    fi
+                                fi
+                        done
+
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/proc/mdstat" ]]
                 then    MDSTAT=$DOWNLOAD_DIR/debug_$DATE/$DSM/proc/mdstat
                         cat "$MDSTAT" >> "$sg"
@@ -484,7 +503,7 @@ do
                 declare -a BadSectors_HDD_Array
                 declare -a PendingSectors_HDD_Array
                 declare -a OfflineUncorrectable_HDD_Array
-                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/smart"*.result
+                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/smart_sd"*.result
                 do
                     [[ -e "$file" ]] || break #no smart-files
                     #counter=$((counter + 1))
@@ -495,6 +514,7 @@ do
                     BadSectors=$(grep -i "Reallocated_Sector_Ct\|Reallocated_Sector_Count" "$file" | awk '{print 0+$10 }')
                     PendingSectors=$(grep -i "Current_Pending_Sector" "$file" | awk '{print 0+$10 }')
                     OfflineUncorrectable=$(grep -i "Offline_Uncorrectable\|Uncorrectable_Error_Count" "$file" | awk '{print 0+$10 }')
+
                     if [ "${BadSectors[@]}" -gt 0 ]; then
                         BadSectors_HDD_Array+=$(basename -- "$file")
                     fi
@@ -515,6 +535,18 @@ do
 
                     done
                 done
+                    # if [ "$OfflineUncorrectable_sum" -gt 0 ]; then
+                    #     BadSectors_HDD_Array+=$(basename -- "$file")
+                    #     echo "Reallocated_Sector_Ct:" "$BadSector_sum in $(basename -- "$file")" >> "$sm"
+                    # fi
+                    # if [ "$PendingSectors_sum" -gt 0 ]; then
+                    #     PendingSectors_HDD_Array+=$(basename -- "$file")
+                    #     echo "Current_Pending_Sector:" "$PendingSectors_sum in $(basename -- "$file")" >> "$sm"
+                    # fi
+                    # if [ "$OfflineUncorrectable_sum" -gt 0 ]; then
+                    #     OfflineUncorrectable_HDD_Array+=$(basename -- "$file")
+                    #     echo "Offline_Uncorrectable:" "$OfflineUncorrectable_sum in $(basename -- "$file")" >> "$sm"
+                    # fi
                 echo -e "\nUPNP Model: $UpnpModel\n$counter HDDs:" >> "$sm"
                 if [ -z "${BadSector_sum+x}" ]; then
                     echo "Reallocated_Sector_Ct: error" >> "$sm"
@@ -955,14 +987,14 @@ do
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/usr/syno/etc/iscsi_lun.conf" ]]
                 then    LUNs="$DOWNLOAD_DIR/debug_$DATE/$DSM/usr/syno/etc/iscsi_lun.conf"
                             if [[ -z "$LUNs" ]]; then
-                                echo -e "\nNo LUN-Config found." >> "$sm"
+                                echo -e "\nNo LUN-Config found.\n" >> "$sm"
                             elif [[ $(stat -c%s "$LUNs") -lt 1 ]]; then
-                                echo -e "\nLUN-Config-file is empty." >> "$sm"
+                                echo -e "\nLUN-Config-file is empty.\n" >> "$sm"
                             else
                                 echo -e "\nFound LUNs:" >> "$sm"
                                 cat "$LUNs" >> "$sm"
                                 LUNSize=$(grep "bytes=" $LUNs | cut -d "=" -f2 | sed ':a;N;$!ba;s/\n/+/g' | bc | sed '/$/s/$/\/1000000000/' | bc)
-                                echo -e "\nCombined LUN Size: $LUNSize Gb." >> "$sm"
+                                echo -e "\nCombined LUN Size: $LUNSize Gb.\n" >> "$sm"
                             fi
                 fi
 
@@ -971,7 +1003,7 @@ do
                             if [[ -z "$SmbShares" ]]; then
                                 echo -e "\nNo Samba Shares found." >> "$sm"
                             else
-                                echo -e "\nFound Samba-shares:\n$SmbShares" >> "$sm"
+                                echo -e "\nFound Samba-shares:\n$SmbShares\n" >> "$sm"
                             fi
                 fi
 
@@ -1011,13 +1043,16 @@ do
                             #counter=$((counter + 1))
                             counter=`expr $counter + 1`
                         done
+                        if [[ $counter -gt 0 ]]; then
+                            echo -e "\n" >> "$sm"
+                        fi
                         )
                         echo -en "Third Party packages:" >> "$sm"
                         third_packages=$(grep -v "AntiVirus\|AudioStation\|Calendar\|CloudStation\|FileStation\|HyperBackup\|LogCenter\|MediaServer\|NoteStation\|PHP[0-9].[0-9]\|PhotoStation\|ProxyServer\|StorageAnalyzer\|SynoFinder\|SynologyApplicationService\|SynologyDrive\|TextEditor\|USBCopy\|VideoStation\|WebDAVServer\|CloudSync\|DownloadStation\|SurveillanceStation\|WebStation\|VPNCenter\|MariaDB\|Chat\|Git\|Node.js_4\|Perl\|ActiveBackup\|ActiveBackup-Office365\|ActiveDirectoryServer\|Apache[0-9].[0-9]\|CMS\|CardDAVServer\|DNSServer\|DiagnosisTool\|Docker\|MailClient\|MailPlus-Server\|OAuthService\|PetaSpace\|PrestoServer\|PythonModule\|SSOServer\|SnapshotReplication\|Spreadsheet\|SynologyMoments\|Virtualization\|iTunesServer\| enabled\|TimeBackup\|Java7\|Java8\|exFAT\|PDFViewer\|MailStation\|phpMyAdmin\|total [[:digit:]]\{,3\}" "$PACK")
                         if [ -z "$third_packages" ]; then
-                            echo "\t\tnone" >> "$sm"
+                            echo -e "\tnone" >> "$sm"
                         else
-                            echo -e "\n$third_packages" >> "$sm"
+                            echo -e "\n$third_packages\n" >> "$sm"
                         fi
                 fi
 
@@ -1027,7 +1062,7 @@ do
                 btrfserrmsg=$(grep -ia "btrfs critical\|btrfs error\|btrfs warning\|btrfs.*failure\|btrfs.*failed\|BTRFS: superblock checksum mismatch" "$MESSAGES")
                 ext4errmsg=$(grep -ia "ext-3\|ext-4" "$MESSAGES" | grep -v "scripts/ext-3.4" )
                 if [[ -z "$btrfserrkern" ]] && [[ -z "$ext4errkern" ]] && [[ -z "$ext4errmsg" ]] && [[ -z "$ext4errmsg" ]]; then
-                    echo -e "\nExt4-/Btrfs-Errs:\t\tnone" >> "$sm"
+                    echo -e "Ext4-/Btrfs-Errs:\t\tnone" >> "$sm"
                 else
                     echo -e "\nExt4-/Btrfs-Errors:" >> "$sm"
                     if [[ -n "$btrfserrkern" ]]; then
@@ -1101,6 +1136,7 @@ do
                         else
                             echo -e "$(grep -ia "DRDY" "$MESSAGES" | uniq -u | wc -l) times DRDY, showing 20 max:"
                             tac "$MESSAGES" | grep -ia -B5 -A10 -m 20 "DRDY" | tac
+                            echo -e "\n"
                         fi
 
                         database_malformed=$(grep -iac "database disk image is malformed" "$MESSAGES")
@@ -1109,14 +1145,16 @@ do
                         else
                             echo -e "$(grep -iac "database disk image is malformed" "$MESSAGES") times malformed database:"
                             grep -ia "database disk image is malformed" "$MESSAGES"
+                            echo -e "\n"
                         fi
 
                         crashes=$(grep -iac "crash" "$MESSAGES")
                         if [[ "$crashes" -eq 0 ]]; then
                             echo -e "generic crashes:\t\tnone"
                         else
-                            echo -e "$(grep -iac "crash" "$MESSAGES") times crashes:"
+                            echo -e "$(grep -iac "crash" "$MESSAGES") times generic crashes:"
                             grep -ia "crash" "$MESSAGES"
+                            echo -e "\n"
                         fi
 
                         CallTraces=$(grep -iac "Call Trace" "$MESSAGES")

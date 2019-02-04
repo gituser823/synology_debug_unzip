@@ -306,7 +306,7 @@ do
                         then
                             echo -e "\nMountpoints more than 90% full: (""$full_number"")" >> "$sm"
                             awk '0+$5>90 { printf "\n%s",$0 }' "$DF" >> "$sm"
-                            echoe -e "\n" >> "$sm"
+                            echo -e "\n" >> "$sm"
                             echo -n "Mountpoints more than 90% full: (""$full_number"")" >> "$sg"
                             awk '0+$5>90 { printf "\n%s",$0 }' "$DF" >> "$sg"
                         else
@@ -550,16 +550,22 @@ do
                 echo -e "\nUPNP Model: $UpnpModel\n$counter HDDs:" >> "$sm"
                 if [ -z "${BadSector_sum+x}" ]; then
                     echo "Reallocated_Sector_Ct: error" >> "$sm"
+                    elif [[ "${BadSector_sum}" -eq 0 ]]; then
+                    echo "Reallocated_Sector_Ct: 0" >> "$sm"
                     else
                     echo "Reallocated_Sector_Ct:" "$BadSector_sum in ${BadSectors_HDD_Array[@]}" >> "$sm"
                 fi
                 if [ -z "${PendingSectors_sum+x}" ]; then
                     echo "Current_Pending_Sector: error" >> "$sm"
+                    elif [[ "${PendingSectors_sum}" -eq 0 ]]; then
+                    echo "Current_Pending_Sector: 0" >> "$sm"
                     else
                     echo "Current_Pending_Sector:" "$PendingSectors_sum in ${PendingSectors_HDD_Array[@]}" >> "$sm"
                 fi
                 if [ -z "${OfflineUncorrectable_sum+x}" ]; then
                     echo "Offline_Uncorrectable: error" >> "$sm"
+                    elif [[ "${OfflineUncorrectable_sum}" -eq 0 ]]; then
+                    echo "Offline_Uncorrectable: 0" >> "$sm"
                     else
                     echo "Offline_Uncorrectable:" "$OfflineUncorrectable_sum in ${OfflineUncorrectable_HDD_Array[@]}" >> "$sm"
                 fi
@@ -592,6 +598,7 @@ do
                     hddname2=$(grep -i "Model Family\|Device Model" "$file" | cut -d " " -f7-20 | sed -r 's/\"/Inch/' | xargs )
                     modelname=$(grep -i "Device Model" "$file" | cut -d " " -f8 | sed -r 's/\"/Inch/' | xargs ) #evtl f7-20
                     modelname_hdd_size=$(grep -i "User Capacity" "$file" | awk -F '[][]+' 'NF && !/\[\[/{print $2}' | sed 's/\..* //' | sed 's/\.* //' ) # i.e.: 3TB or 500GB
+                    SectorSize=$(grep -i "Sector Size" "$file" | cut -d ":" -f2 | sed -e 's/^[ \t]*//' | cut -d " " -f1 )
                     if [[ "${modelname}" == "SSD" ]]; then #samsung SSDs!
                         modelname=$(grep -i "Device Model" "$file" | cut -d " " -f9-10 | sed -r 's/\"/Inch/' | xargs)
                         modelname_hdd_size=$(grep -i "Device Model" "$file" | cut -d " " -f11 | xargs)
@@ -665,18 +672,19 @@ do
                         #log "expr: $PoH und $LastSmarttest"
                         echo -n "$LastSmartExpr" "hours ago, $LastSmartResult" >> "$sm"
                     fi
+                    echo -n ", Sectorsize: $SectorSize" >> "$sm"
                     echo ", HDD Size: $modelname_hdd_size" >> "$sm"
                 done
                 )
                 #mehr smart-kram
                 #echo -e "\n" >> "$sm"
 
-                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/smart"*.result
+                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/smart_sd"*.result
                 do
                     [[ -e "$file" ]] || break #no smart-files
                     grep -i "Model Family\|Device Model" "$file" >> "$sg"
                 done
-                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/smart"*.result
+                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/smart_sd"*.result
                 do
                     [[ -e "$file" ]] || break #no smart-files
                 {
@@ -686,6 +694,18 @@ do
                             echo " "
                             awk '/SMART Error Log Version: 1/{f=1;next} /Selective self-test flags/{f=0} f' "$file"
                     echo -e " \n \n"
+                } >> "$sg"
+                done
+
+                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/smart_sas"*.result
+                do
+                    [[ -e "$file" ]] || break #no smart-files
+                {
+                    echo -e "\n"
+                    echo "$file"
+                    grep -i "Vendor\|Product\|User Capacity\|Logical block size\|Physical block size\|Rotation Rate\|Form Factor\|Serial number\|Transport protocol\|SMART support is\|SMART support is" "$file"
+                            echo " "
+                            awk '/=== START OF READ SMART DATA SECTION ===/{f=1;next} /END/{f=0} f' "$file"
                 } >> "$sg"
                 done
 
@@ -898,9 +918,41 @@ do
                 cat "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/resolv.conf" >> "$sm"
                     else echo "/etc/resolv.conf not found." >> "$sm"
                 fi
-                echo -e "\n" >> "$sm"
                 cat "$Route" >> "$IFCONFIG"
                 #echo -e "\n" >> "$sm"
+                smb_enabled_disabled1=$(grep "auto_start" "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/usr/syno/etc/synoservice.override/samba.cfg | cut -d ":" -f2)
+                smb_enabled_disabled2="${smb_enabled_disabled1%\"}"
+                smb_enabled_disabled3="${smb_enabled_disabled2#\"}"
+                if [ "$smb_enabled_disabled3" == "yes" ]
+                    then echo -n "Samba is on. " >> "$sm"
+                elif [ "$smb_enabled_disabled3" == "no" ]
+                    then echo -n "Samba is off." >> "$sm"
+                else
+                         echo -n "Samba: Error" >> "$sm"
+                fi
+                nfs_enabled_disabled1=$(grep "auto_start" "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/usr/syno/etc/synoservice.override/nfsd.cfg | cut -d ":" -f2)
+                nfs_enabled_disabled2="${nfs_enabled_disabled1%\"}"
+                nfs_enabled_disabled3="${nfs_enabled_disabled2#\"}"
+                if [ "$nfs_enabled_disabled3" == "yes" ]
+                    then echo -n "NFS is on.   " >> "$sm"
+                elif [ "$nfs_enabled_disabled3" == "no" ]
+                    then echo -n "NFS is off.  " >> "$sm"
+                else
+                         echo -n "NFS: Error" >> "$sm"
+                fi
+                afp_enabled_disabled1=$(grep "auto_start" "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/usr/syno/etc/synoservice.override/atalk.cfg | cut -d ":" -f2)
+                afp_enabled_disabled2="${afp_enabled_disabled1%\"}"
+                afp_enabled_disabled3="${afp_enabled_disabled2#\"}"
+                if [ "$afp_enabled_disabled3" == "yes" ]
+                    then echo "AFP is on.      " >> "$sm"
+                elif [ "$afp_enabled_disabled3" == "no" ]
+                    then echo "AFP is off.     " >> "$sm"
+                else
+                         echo "AFP: Error   " >> "$sm"
+                fi
+
+                echo -e "\n" >> "$sm"
+
                 DS_upnp_v="${UpnpModel}"
                 DS_upnp_unter="${DS_upnp_v}_"
                 DS_upnp_plus="${DS_upnp_unter//+/%2B}"
@@ -1162,7 +1214,16 @@ do
                             echo -e "Call Traces:\t\t\tnone"
                         else
                             echo -e "$(grep -iac "Call Trace" "$MESSAGES") times call traces + next 25 lines:"
-                            grep -ia "Call Trace" "$MESSAGES" -A25
+                            #grep -ia "Call Trace" "$MESSAGES" -A25
+                            grep -ia "Call Trace" "$MESSAGES" | while read l; do
+                              # Get seconds-since-startup timestamp from Call Trace line
+                              if [[ $l =~ kernel:\ \[\ *([0-9]+)\.[0-9]+\] ]]; then
+                                tsecs="${BASH_REMATCH[1]}"
+                                # Grep again for anything +/- 1 sec from that timestamp
+                                grep -E "kernel: \[($((tsecs-2))|$((tsecs-1))|${tsecs}|$((tsecs+1))|$((tsecs+2)))\.[0-9]+\]" "$MESSAGES"
+                                echo -e "\n"
+                              fi
+                            done
                         fi
                     } >> "$sm"
                 fi

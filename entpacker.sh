@@ -142,25 +142,28 @@ while getopts ":uvh" opt; do
 done
 
 
-if [[ $(find "${Script_dir}"/tmp/ -name genRSS.php -mmin 700) ]] || [[ -z $(find "${Script_dir}"/tmp/ -name genRSS.php) ]]; then  #update genRSS.php after 12 hours or if no file found
+if [[ "$(find "${Script_dir}"/tmp/ -name genRSS.php -mmin +600)" ]] || [[ -z $(find "${Script_dir}"/tmp/ -name genRSS.php) ]]; then  #update, if no file found or older than 10 hours
+        touch "${Script_dir}/tmp/genRSS.php"
         echo "Downloading latest genRSS.php:"
         curl "https://update.synology.com/autoupdate/genRSS.php" -# --output "$rss"
 fi
 
-#if [[ $(find "${Script_dir}"/files/ -name CPU.php -mmin 700) ]] || [[ -z $(find "${Script_dir}"/files/ -name CPU.php) ]]; then  #update genRSS.php after 12 hours or if no file found
+#if [[ $(find "${Script_dir}"/files/ -name CPU.php -mmin 700) ]] || [[ -z $(find "${Script_dir}"/files/ -name CPU.php) ]]; then  #update, if no file found or older than 10 hours
         #echo -e "\nDownloading CPUs:"
         #curl "https://www.synology.com/de-de/knowledgebase/DSM/tutorial/General/What_kind_of_CPU_does_my_NAS_have" -# --output "$cputxt_file"
                 #awk '/<table id="b_4">/{f=1;next} /<\/table>/{f=0} f' "$cputxt_file" > "$cputxt_file2"
 #fi
 
-if [[ $(find "${Script_dir}"/tmp/ -name SRS.php -mmin 700) ]] || [[ -z $(find "${Script_dir}"/tmp/ -name SRS.php) ]]; then  #update, if no file found or older than 12 hours
+if [[ "$(find "${Script_dir}"/tmp/ -name SRS.php -mmin +600)" ]] || [[ -z $(find "${Script_dir}"/tmp/ -name SRS.php) ]]; then  #update, if no file found or older than 10 hours
+        touch "${Script_dir}/tmp/SRS.php"
         echo "Downloading latest SRS-list:"
         curl "https://www.synology.com/de-de/solution/SRS" -# --output "$srs"
         awk '/<div class="selected_country">Deutschland<\/div>/{f=1;next} /<div class="selected_country">Griechenland<\/div>/{f=0} f' "$srs" > "$srsde"
 fi
 
-if [[ $(find "${Script_dir}"/comp/ -name lftp.cfg -mmin 700) ]] || [[ -z $(find "${Script_dir}"/comp/ -name lftp.cfg) ]]; then  #update, if no file found or older than 12 hours
-echo -e "\nGetting available Models:"
+if [[ "$(find "${Script_dir}"/comp/ -name lftp.cfg -mmin +1200)" ]] || [[ -z $(find "${Script_dir}"/comp/ -name lftp.cfg) ]]; then  #update, if no file found or older than 20 hours
+        touch "${Script_dir}/comp/lftp.cfg"
+        echo -e "\nGetting available Models:"
         curl "https://www.synology.com/cgi/misc/?action=getProductList_withOEM" -# | grep -oP '(?<=\[).*(?=\])' > "$ProductList" #get all Models listed in Synology API
         stat --printf="Size: %s" "$ProductList"
         IFS=","
@@ -236,7 +239,7 @@ do
             echo "$date_now found .dat-file! Timer started now"
             #DATE=$(echo "$(date +"%H%M%S") - ($(date +%S)%10)" | bc)
             DATE=$(date -d @$(( $(date +%s) / 10 * 10 )) +%H%M%S)
-            TIMEFORMAT=$'Extractiontime debug.dat: \t\t\t\t\t\t\e[36m%Rsec\e[39m'
+            TIMEFORMAT=$'Extractiontime debug.dat: \t\t\t\t\t\t\t\e[36m%Rsec\e[39m'
             time(
             unzip -q "$file" -d "$DOWNLOAD_DIR"/debug_"$DATE"
             )
@@ -284,14 +287,14 @@ do
                 UpnpModel=$(grep -i "upnpmodelname" "$Synoinfo" | cut -d "\"" -f2)
                 UpnpModel_migrated_from=$(grep -i "upnpmodelname" "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/synoinfo.conf" | cut -d "\"" -f2)
                     #extract .xz packages:
-                            TIMEFORMAT=$'Extractiontime messages.xz: \t\t\t\t\t\t\e[36m%Rsec\e[39m'
+                            TIMEFORMAT=$'Extractiontime messages.xz: \t\t\t\t\t\t\t\e[36m%Rsec\e[39m'
                             time(
                     for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/messages"*.xz
                         do
                             unxz "${file}"
                         done
                                 )
-                            TIMEFORMAT=$'Extractiontime kern.xz: \t\t\t\t\t\t\e[36m%Rsec\e[39m'
+                            TIMEFORMAT=$'Extractiontime kern.xz: \t\t\t\t\t\t\t\e[36m%Rsec\e[39m'
                             time(
                     for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/kern"*.xz
                         do
@@ -326,7 +329,7 @@ do
                                 if [ "$Volume_Features" ]; then
                                     Volume_x64=$(grep -a "Filesystem features" "$file" | grep 64bit)
                                     if  [ "$Volume_x64" ]; then
-                                        echo -e "$(basename -- "$file") has x64"  #remove?!
+                                        log "$(basename -- "$file") has x64"  #remove?!
                                     else
                                         echo -e "$(basename -- "$file") has 16 Terabyte Volume Limitation." >> "$sm"
                                     fi
@@ -379,14 +382,14 @@ do
                         ntp_other=$(grep -c "server " "$ntp")
                         ntp_other_awk=$(grep "server " "$ntp" | awk ' {print $2 }')
                         if [ "$ntp_google" -gt 0 ]
-                            then echo "NTP-Client enabled. Server is time.google.com" >> "$hb_debug"
+                            then echo "NTP-Client on NAS is on. Server is time.google.com" >> "$hb_debug"
                         elif [ "$ntp_pool" -gt 0 ]
-                            then echo "NTP-Client enabled. Server is pool.ntp.org" >> "$hb_debug"
+                            then echo "NTP-Client on NAS is on. Server is pool.ntp.org" >> "$hb_debug"
                         elif [ "$ntp_other" -gt 0 ]
-                            then echo -n "NTP-Client enabled. Server is " >> "$hb_debug"
+                            then echo -n "NTP-Client on NAS is on. Server is " >> "$hb_debug"
                                  echo "$ntp_other_awk" >> "$hb_debug"
                         else
-                            echo "NAS is no NTP-Client, Time set to manual" >> "$hb_debug"
+                            echo "Time set to manual, NTP-Client on NAS is off." >> "$hb_debug"
                         fi
                 fi
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/usr/syno/etc/synoservice.override/ntpd-server.cfg" ]]
@@ -394,9 +397,9 @@ do
                         echo -n "NTP-Server: " >> "$hb_debug"
                         ntp_server_enabled=$(grep -c yes "$ntpd_server_cfg")
                         if [ "$ntp_server_enabled" -gt 0 ]
-                            then echo "NTP-Server on NAS enabled." >> "$hb_debug"
+                            then echo "NTP-Server on NAS is on." >> "$hb_debug"
                         elif [ "$ntp_server_enabled" -eq 0 ]
-                            then echo "NTP-Server on NAS disabled." >> "$hb_debug"
+                            then echo "NTP-Server on NAS is off." >> "$hb_debug"
                         fi
                 fi
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/hostname" ]]
@@ -406,9 +409,9 @@ do
                 then    QuickConnect_alias=$(grep '"alias"' "$DOWNLOAD_DIR/debug_$DATE/$DSM/usr/syno/etc/synorelayd/synorelayd.conf" | sed "s/.*: //" | sed 's/\"//g')
                 if [[ -z "$QuickConnect_alias" ]]; then
                     QuickConnect_echo="No QuickConnect alias is set"
-                    echo "QuickConnect disabled" >> "$hb_debug"
+                    echo "QuickConnect on NAS is off." >> "$hb_debug"
                     else QuickConnect_echo="QuickConnect Hostname: ""$QuickConnect_alias"".quickconnect.to"
-                    echo "QuickConnect enabled" >> "$hb_debug"
+                    echo "QuickConnect on NAS is on." >> "$hb_debug"
                 fi
                 fi
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/messages" ]]
@@ -418,10 +421,10 @@ do
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/ddns.conf" ]]
                 then    ddns=$(grep -c "service=true" "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/etc/ddns.conf)
                     if [[ $ddns = 1 ]]; then
-                        echo "DDNS enabled" >> "$hb_debug"
+                        echo "DDNS on NAS is on." >> "$hb_debug"
                     fi
                     if [[ $ddns = 0 ]]; then
-                        echo "DDNS disabled" >> "$hb_debug"
+                        echo "DDNS on NAS is off." >> "$hb_debug"
                     fi
                 fi
 
@@ -515,13 +518,13 @@ do
                     PendingSectors=$(grep -i "Current_Pending_Sector" "$file" | awk '{print 0+$10 }')
                     OfflineUncorrectable=$(grep -i "Offline_Uncorrectable\|Uncorrectable_Error_Count" "$file" | awk '{print 0+$10 }')
 
-                    if [ "${BadSectors[@]}" -gt 0 ]; then
+                    if [ "${BadSectors[@]}" -gt 0 ] 2>/dev/null; then
                         BadSectors_HDD_Array+=$(basename -- "$file")
                     fi
-                    if [ "${PendingSectors[@]}" -gt 0 ]; then
+                    if [ "${PendingSectors[@]}" -gt 0  ] 2>/dev/null; then
                         PendingSectors_HDD_Array+=$(basename -- "$file")
                     fi
-                    if [ "${OfflineUncorrectable[@]}" -gt 0 ]; then
+                    if [ "${OfflineUncorrectable[@]}" -gt 0 ] 2>/dev/null ; then
                         OfflineUncorrectable_HDD_Array+=$(basename -- "$file")
                     fi
                     for i in "${BadSectors[@]}"; do
@@ -589,7 +592,7 @@ do
                 fi
 
                 #declare -a PowerOnHours
-                TIMEFORMAT=$'hdd-compatibility-check took \t\t\t\t\t\t\e[36m%Rsec\e[39m'
+                TIMEFORMAT=$'hdd-compatibility-check took \t\t\t\t\t\t\t\e[36m%Rsec\e[39m'
                             time(
                 for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/smart"*.result
                 do
@@ -627,28 +630,28 @@ do
 
                     if [[ -z "${modelname}" ]]; then
                         HDDComp=""
-                        echo -e "\e[31mHDD-Comp: Modelname empty!\e[0m"
+                        log "\e[31mHDD-Comp: Modelname empty!\e[0m"
                     elif grep "${modelname}" "${incomp_list}" &> /dev/null; then
                         HDDComp="(incompatible)"
-                        echo -e "HDD-INComp: found \"\e[31m${modelname}\e[0m\""
+                        log "HDD-INComp: found \"\e[31m${modelname}\e[0m\""
                     elif grep "${modelname//-/ - }" "${incomp_list}" &> /dev/null; then
                         HDDComp="(incompatible)"
-                        echo -e "HDD-INComp: found \"\e[31m${modelname//-/ - }\e[0m\""
+                        log "HDD-INComp: found \"\e[31m${modelname//-/ - }\e[0m\""
                     elif grep  "${modelname%-*}" "${incomp_list}" &> /dev/null; then # remove part after "-"; check if two parts first?
                         HDDComp="(incompatible)"
-                        echo -e "HDD-INComp: found \"\e[32m${modelname%-*}\e[0m\""
+                        log "HDD-INComp: found \"\e[32m${modelname%-*}\e[0m\""
                     elif grep  "${modelname}" "${comp_list}" &> /dev/null; then
                         HDDComp="(compatible)"
-                        echo -e "HDD-Comp: found \"\e[32m${modelname}\e[0m\""
+                        log "HDD-Comp: found \"\e[32m${modelname}\e[0m\""
                     elif grep  "${modelname//-/ - }" "${comp_list}" &> /dev/null; then
                         HDDComp="(compatible)"
-                        echo -e "HDD-Comp: found \"\e[32m${modelname//-/ - }\e[0m\""
+                        log "HDD-Comp: found \"\e[32m${modelname//-/ - }\e[0m\""
                     elif grep  "${modelname%-*}" "${comp_list}" &> /dev/null; then # remove part after "-"; check if two parts first?
                         HDDComp="(compatible)"
-                        echo -e "HDD-Comp: found \"\e[32m${modelname%-*}\e[0m\""
+                        log "HDD-Comp: found \"\e[32m${modelname%-*}\e[0m\""
                     else
                         HDDComp="(not listed)"
-                        echo -e "\e[34mHDD-Comp: \"${modelname}\" not found.\e[0m"
+                        log "\e[34mHDD-Comp: \"${modelname}\" not found.\e[0m"
                     fi
                     log "compatibility check for ${hddname} grepped for ${modelname} , ${modelname//-/ - } and ${modelname%-*} ; HDD Size: ${modelname_hdd_size}"
                     echo -n "$hddname: $hddname2 $HDDComp: PowerOnHours: " >> "$sm"
@@ -901,9 +904,9 @@ do
                 fi
                 if [ "$ipv6_enabled" -gt 0 ]; then
                     echo -e "\nIPv6 enabled" >> "$sm"
-                    echo "IPv6 enabled" >> "$hb_debug"
+                    echo "IPv6 on NAS is on." >> "$hb_debug"
                 else echo -e "\nIPv6 disabled" >> "$sm"
-                     echo "IPv6 disabled" >> "$hb_debug"
+                     echo "IPv6 on NAS is off." >> "$hb_debug"
                 fi
                 echo "found ${ifc_dropped_sum} dropped Packages in ifconfig.result." >> "$sm"
                 echo "found ${ifc_error_sum} bugged Packages in ifconfig.result." >> "$sm"
@@ -924,21 +927,21 @@ do
                 smb_enabled_disabled2="${smb_enabled_disabled1%\"}"
                 smb_enabled_disabled3="${smb_enabled_disabled2#\"}"
                 if [ "$smb_enabled_disabled3" == "yes" ]
-                    then echo -n "Samba is on. " >> "$sm"
+                    then echo -ne "Samba is on. \t" >> "$sm"
                 elif [ "$smb_enabled_disabled3" == "no" ]
-                    then echo -n "Samba is off." >> "$sm"
+                    then echo -ne "Samba is off.\t" >> "$sm"
                 else
-                         echo -n "Samba: Error" >> "$sm"
+                         echo -ne "Samba: Error \t" >> "$sm"
                 fi
                 nfs_enabled_disabled1=$(grep "auto_start" "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/usr/syno/etc/synoservice.override/nfsd.cfg | cut -d ":" -f2)
                 nfs_enabled_disabled2="${nfs_enabled_disabled1%\"}"
                 nfs_enabled_disabled3="${nfs_enabled_disabled2#\"}"
                 if [ "$nfs_enabled_disabled3" == "yes" ]
-                    then echo -n "NFS is on.   " >> "$sm"
+                    then echo -ne "NFS is on.   \t" >> "$sm"
                 elif [ "$nfs_enabled_disabled3" == "no" ]
-                    then echo -n "NFS is off.  " >> "$sm"
+                    then echo -ne "NFS is off.  \t" >> "$sm"
                 else
-                         echo -n "NFS: Error" >> "$sm"
+                         echo -ne "NFS: Error   \t" >> "$sm"
                 fi
                 afp_enabled_disabled1=$(grep "auto_start" "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/usr/syno/etc/synoservice.override/atalk.cfg | cut -d ":" -f2)
                 afp_enabled_disabled2="${afp_enabled_disabled1%\"}"
@@ -976,20 +979,16 @@ do
                     echo -n "DDNS " >> "$sm"
                         grep "hostname" "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/ddns.conf" >> "$sm"
                 fi
-                if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/synoinfo.conf" ]]; then
-                    grep -ia "supportrcpower" "$Synoinfo" >> "$hb_debug"
-                    grep -ia "enableRCPower" "$Synoinfo" >> "$hb_debug"
-                fi
                 {
                 echo "BIOS:" "$BIOS_V_CUT"
                 #echo "SynoBIOS: " "$Syno_bios"
                 echo "Hardware Version: $DS_HWMODEL and Diskstationmodel: $DS_MODEL"
                 echo "UPNP Model:" "$UpnpModel"
                 echo "Kernel:" "$Kernel_version"
-                echo "CPU from logs:" "$DS_CPU"
-                echo "Threads: $Processor_count , Cores: $DS_Cores"
+                echo -n "CPU from logs:" "$DS_CPU"
+                echo "; Threads: $Processor_count , Cores: $DS_Cores"
                 echo "Serialnumber:" "$DS_SN"
-                echo -e 'Associated Tickets: \nhttps://cssnew.synology.com/ticket?list_type=agent_all&sort_by=update_time&sort_direction=desc&filter=%7B%22search_column%22%3A%5B%22ticket_id%22%2C%22content%22%5D%2C%22sn%22%3A%22'"$DS_SN"'%22%7D'
+                echo -e 'Associated Tickets: \thttps://cssnew.synology.com/ticket?list_type=agent_all&sort_by=update_time&sort_direction=desc&filter=%7B%22search_column%22%3A%5B%22ticket_id%22%2C%22content%22%5D%2C%22sn%22%3A%22'"$DS_SN"'%22%7D'
                 echo -e "\nRAM-modules from logs:\n$DS_MEM3"
                 echo -e "RAM, calced: $DS_MEM3_calc"
                 echo "RAM free.result: ~$free_mem"
@@ -1039,14 +1038,27 @@ do
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/usr/syno/etc/iscsi_lun.conf" ]]
                 then    LUNs="$DOWNLOAD_DIR/debug_$DATE/$DSM/usr/syno/etc/iscsi_lun.conf"
                             if [[ -z "$LUNs" ]]; then
-                                echo -e "\nNo LUN-Config found.\n" >> "$sm"
+                                echo -e "\nNo LUN-Config found." >> "$sm"
                             elif [[ $(stat -c%s "$LUNs") -lt 1 ]]; then
-                                echo -e "\nLUN-Config-file is empty.\n" >> "$sm"
+                                echo -e "\nLUN-Config-file is empty." >> "$sm"
                             else
                                 echo -e "\nFound LUNs:" >> "$sm"
                                 cat "$LUNs" >> "$sm"
-                                LUNSize=$(grep "bytes=" $LUNs | cut -d "=" -f2 | sed ':a;N;$!ba;s/\n/+/g' | bc | sed '/$/s/$/\/1000000000/' | bc)
-                                echo -e "\nCombined LUN Size: $LUNSize Gb.\n" >> "$sm"
+                                #LUNSize=$(grep "bytes=" $LUNs | cut -d "=" -f2 | sed ':a;N;$!ba;s/\n/+/g' | bc | sed '/$/s/$/\/1000000000/' | bc)
+                                #echo -e "\nCombined LUN Size: $LUNSize Gb.\n" >> "$sm"
+                                LUNSize_byte="$(grep "bytes=" $LUNs | cut -d "=" -f2 | sed ':a;N;$!ba;s/\n/+/g' | bc)"
+                                bytesToHuman() {
+                                    b=${1:-0}; d=''; s=0; S=(Bytes {K,M,G,T,P,E,Z,Y}iB)
+                                    while ((b > 1024)); do
+                                        d="$(printf ".%02d" $((b % 1024 * 100 / 1024)))"
+                                        b=$((b / 1024))
+                                        let s++
+                                    done
+                                    echo "$b$d ${S[$s]}"
+                                }
+                                echo -en "Combined LUN Size: " >> "$sm"
+                                bytesToHuman "$LUNSize_byte" >> "$sm"
+                                echo -e "\n" >> "$sm"
                             fi
                 fi
 
@@ -1064,7 +1076,7 @@ do
                 then    PACK=$DOWNLOAD_DIR/debug_$DATE/$DSM/packages.list
                         declare -a InstalledPackageArray
                         sed '1d' "${PACK}" | awk '{for(i=NF;i>1;i=i-1) printf "%s ", $i; printf "%s\n", $1}' | cut -d " " -f1 > "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/packages_ver.list
-                        TIMEFORMAT=$'Packageversion comparison took: \t\t\t\t\t\e[36m%Rsec\e[39m'
+                        TIMEFORMAT=$'Packageversion comparison took: \t\t\t\t\t\t\e[36m%Rsec\e[39m'
                         time(
                         readarray -t "InstalledPackageArray" < "$DOWNLOAD_DIR/debug_$DATE/$DSM/packages_ver.list"
                         counter=0
@@ -1108,6 +1120,8 @@ do
                         fi
                 fi
 
+                        TIMEFORMAT=$'Errorgrepping etc took: \t\t\t\t\t\t\t\e[36m%Rsec\e[39m'
+                        time(
 
                 btrfserrkern=$(grep -ia "btrfs critical\|btrfs error\|btrfs warning\|btrfs.*failure\|btrfs.*failed\|BTRFS: superblock checksum mismatch" "$KERN")
                 ext4errkern=$(grep -ia "ext-3\|ext-4" "$KERN" | grep -v "scripts/ext-3.4")
@@ -1228,7 +1242,46 @@ do
                     } >> "$sm"
                 fi
                 #write hibernation info:
-                        echo -e "Packages interfering with Hibernation:" >> "$hb_debug"
+                satadeepsleep=$(grep -c "satadeepsleeptimer=\"1\"" "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/etc/synoinfo.conf)
+                if [ "$satadeepsleep" -gt 0 ]
+                        then echo "Hibernation on NAS is on." >> "$hb_debug"
+                        else echo "Hibernation on NAS is off." >> "$hb_debug"
+                fi
+
+                fan_debug_mode=$(grep "enable_fan_debug" "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/etc/synoinfo.conf | cut -d "\"" -f2)
+                let "fan_debug_mode_dec = $fan_debug_mode"
+                if [ "$fan_debug_mode_dec" -gt 0 ]
+                        then echo "Fan debug mode on NAS is on." >> "$hb_debug"
+                elif [ "$fan_debug_mode_dec" -eq 0 ]
+                        then echo "Fan debug mode on NAS is off." >> "$hb_debug"
+                else
+                    echo "Fan debug mode: Error" >> "$hb_debug"
+                fi
+
+                kernel_log_max=$(grep -c "kern_log_max=\"yes\"" "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/etc/synoinfo.conf)
+                if [ "$kernel_log_max" -gt 0 ]
+                        then echo "Extended kernel logging on NAS is on." >> "$hb_debug"
+                        else echo "Extended kernel logging on NAS is off." >> "$hb_debug"
+                fi
+
+                local_master=$(grep "local master" "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/samba/smb.conf" | cut -d "=" -f2)
+                if [ "$local_master" == "yes" ]
+                        then echo "Local Master Browser on NAS is on." >> "$hb_debug"
+                elif [ "$local_master" == "no" ]
+                        then echo "Local Master Browser on NAS is off." >> "$hb_debug"
+                else
+                    echo "Local Master Browser: Error" >> "$hb_debug"
+                fi
+                echo -e "\n" >> "$hb_debug"
+
+                if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/synoinfo.conf" ]]; then
+                    grep -ia "supportrcpower" "$Synoinfo" >> "$hb_debug"
+                    grep -ia "enableRCPower" "$Synoinfo" >> "$hb_debug"
+                fi
+
+                grep "^standbytimer" "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/synoinfo.conf" >> "$hb_debug"
+
+                echo -n "Packages interfering with Hibernation:" >> "$hb_debug"
                         hb_packages=$(grep "ActiveDirectoryServer\|AudioStation\|CloudStation\|MediaServer\|SynologyDrive\|CloudSync\|DownloadStation\|SurveillanceStation\|CMS\|Docker\|MailClient\|MailPlus\|MailPlus-Server\|PetaSpace\|Virtualization\|PDFViewer\|MailStation" "$PACK")
                         #to add: DocumentViewer?, CloudStation Server, CS ShareSync, CMS, DirectoryServer, MailServer?, Plex Media Server, Drittanbieterpakete
                         #to add: AudioStation protokollierung, Directory server
@@ -1238,21 +1291,8 @@ do
                         if [ -z "$third_packages" ]; then
                             echo -e "\t\tnone." >> "$hb_debug"
                             else
-                            echo "$hb_packages" >> "$hb_debug"
+                            echo -e "\n$hb_packages" >> "$hb_debug"
                         fi
-                satadeepsleep=$(grep -c "satadeepsleeptimer=\"1\"" "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/etc/synoinfo.conf)
-                if [ "$satadeepsleep" -gt 0 ]
-                        then echo -e "Hibernation enabled.\n" >> "$hb_debug"
-                        else echo -e "Hibernation is disabled.\n" >> "$hb_debug"
-                fi
-                grep "^standbytimer" "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/synoinfo.conf" >> "$hb_debug"
-                grep "enable_fan_debug" "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/synoinfo.conf" >> "$hb_debug"
-                kernel_log_max=$(grep -c "kern_log_max=\"yes\"" "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/etc/synoinfo.conf)
-                if [ "$kernel_log_max" -gt 0 ]
-                        then echo "Extended kernel logging enabled." >> "$hb_debug"
-                        else echo "Extended kernel logging disabled." >> "$hb_debug"
-                fi
-                grep "local master" "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/samba/smb.conf" >> "$hb_debug"
 
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/power_sched.conf" ]]; then #call power_sched.py
                     echo -e "\n" >> "$hb_debug"
@@ -1276,9 +1316,9 @@ do
                     counter=`expr $counter + 1`
                     #counter=$((counter + 1))
                 done
-
+                )
                 sleep 0.1
-            TIMEFORMAT=$'Opening Sublime took: \t\t\t\t\t\t\t\e[36m%Rsec\e[39m'
+            TIMEFORMAT=$'Opening Sublime took: \t\t\t\t\t\t\t\t\e[36m%Rsec\e[39m'
             time(
                 source "${Script_dir}/files/config.sh" #load OpenFiles[] Array from config.sh
                 #log "Array before unsetting: ${OpenFiles[@]}"
@@ -1301,7 +1341,7 @@ do
                 done
                 echo -e "\n" #??
                 )
-                TIMEFORMAT=$'Executiontime: \t\t\t\t\t\t\t\t\e[36m%Rsec\e[39m'
+                TIMEFORMAT=$'Executiontime: \t\t\t\t\t\t\t\t\t\e[36m%Rsec\e[39m'
                 #log "$subl" "${OpenFiles[@]}"
                 #$subl "$DEBUG_DIR" "$SMART_GREP" "$PACK" "$Bash_history" "$hb_debug" "$HB" "$DF" "$IFCONFIG" "$SPACE_FILES":10000 "$SYSDBtac":100000 "$sm" "$MESSAGES":1000000 "${PicArray[@]}"
                 #"${subl}" "$DEBUG_DIR" "$SMART_GREP" "$PACK" "$Bash_history" "$hb_debug" "$HB" "$DF" "$IFCONFIG" "$SPACE_FILES":10000 "$SYSDBtac":100000 "$sm" "$MESSAGES":1000000 "${PicArray[@]}" #$pics

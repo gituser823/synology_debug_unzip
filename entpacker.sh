@@ -44,6 +44,17 @@ function log() {
     done
 }
 
+bytesToHuman() {
+    b=${1:-0}; d=''; s=0; S=(Bytes {K,M,G,T,P,E,Z,Y}iB)
+    while ((b > 1024)); do
+        d="$(printf ".%02d" $((b % 1024 * 100 / 1024)))"
+        b=$((b / 1024))
+        let s++
+    done
+    echo -n "$b$d ${S[$s]}"
+}
+
+
 #einbauen: Critical Updates: https://archive.synology.com/download/DSM/criticalupdate/update_pack/
 
 while getopts ":uvh" opt; do
@@ -211,7 +222,7 @@ if [[ "$(find "${Script_dir}"/comp/ -name lftp.cfg -mmin +5040)" ]] || [[ -z $(f
             cat "${package_versions}"
         fi
 
-echo -e "\nWaiting for debug-files..."
+echo "Waiting for debug-files..."
 
 log "Verbose logging enabled."
 
@@ -775,13 +786,13 @@ do
                 fi
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/free.result" ]]
                 then
-                        free_mem=$( grep Mem "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/result/free.result | awk '{ print 1000+$2 }' | awk '{ split( "KB MB GB" , v ); s=1; while( $1>1000 ){ $1/=1000; s++ } print int($1) v[s] }' | sed -r 's/B//' | numfmt --from=iec | numfmt --to=iec | sed 's/$/B/' )
+                        free_mem=$( grep Mem "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/result/free.result | awk '{ print $2 0 0 0 }' )
                         free_mem_nocomma=$( grep Mem "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/result/free.result | awk '{ print 1000+$2 }' | awk '{ split( "KB MB GB" , v ); s=1; while( $1>1000 ){ $1/=1000; s++ } print int($1) v[s] }' | sed -r 's/B//' )
                         free_mem_kbyte=$( grep Mem "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/result/free.result | awk '{ print $2 }')
                         swap_total_kbyte=$( grep Swap "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/result/free.result | awk '{ print $2 }')
-                        swap_total=$( grep Swap "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/result/free.result | awk '{ print $2 }' | awk '{ split( "KB MB GB" , v ); s=1; while( $1>1000 ){ $1/=1000; s++ } print int($1) v[s] }' | sed -r 's/B//' | numfmt --from=iec | numfmt --to=iec | sed 's/$/B/' )
+                        swap_total=$( grep Swap "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/result/free.result | awk '{ print $2 0 0 0 }' )
                         swap_used_kbyte=$( grep Swap "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/result/free.result | awk '{ print $3 }')
-                        swap_used=$( grep Swap "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/result/free.result | awk '{ print $3 }' | awk '{ print 1000+$2 }' | awk '{ split( "KB MB GB" , v ); s=1; while( $1>1000 ){ $1/=1000; s++ } print int($1) v[s] }' | sed -r 's/B//' | numfmt --from=iec | numfmt --to=iec | sed 's/$/B/' )
+                        swap_used=$( grep Swap "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/result/free.result | awk '{ print $3 0 0 0 }' )
                 fi
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/route.result" ]]
                 then    Route="$DOWNLOAD_DIR/debug_$DATE/$DSM/result/route.result"
@@ -908,8 +919,15 @@ do
                     fi
 
                 swap_percent_kb=$(awk "BEGIN {printf \"%.2f\n\", $swap_used_kbyte/$swap_total_kbyte*100}")
-                echo -e "\nSwap: used $swap_used of $swap_total ($swap_percent_kb%)" >> "$sm"
-                echo -e "\nSwap: used $swap_used of $swap_total ($swap_percent_kb%)" >> "$hb_debug"
+                #echo -ne "\nSwap: used $swap_used_human of $swap_total_human ($swap_percent_kb%)" >> "$sm"
+                echo -ne "\nSwap: ($swap_percent_kb%) used " >> "$sm"
+                bytesToHuman "$swap_used" >> "$sm"
+                echo -ne " of " >> "$sm"
+                bytesToHuman "$swap_total" >> "$sm"
+                echo -ne "\nSwap: ($swap_percent_kb%) used ">> "$hb_debug"
+                bytesToHuman "$swap_used" >> "$hb_debug"
+                echo -ne " of " >> "$hb_debug"
+                bytesToHuman "$swap_total" >> "$hb_debug"
 
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/messages.log" ]]
                 then
@@ -1034,7 +1052,8 @@ do
                 echo -e 'Associated Tickets: \thttps://cssnew.synology.com/ticket?list_type=agent_all&sort_by=update_time&sort_direction=desc&filter=%7B%22search_column%22%3A%5B%22ticket_id%22%2C%22content%22%5D%2C%22sn%22%3A%22'"$DS_SN"'%22%7D'
                 echo -e "\nInstalled RAM-modules:\n$DS_MEM3"
                 echo -e "RAM, calced: $DS_MEM3_calc"
-                echo "RAM free.result: ~$free_mem"
+                echo -n "RAM free.result: "
+                bytesToHuman "$free_mem"
                 } >> "$sm"
 
                 #log "$DS_MEM3_calc"
@@ -1097,15 +1116,6 @@ do
                                 echo -e "\nFound LUNs:" >> "$sm"
                                 cat "$LUNs" >> "$sm"
                                 LUNSize_byte="$(grep "bytes=" $LUNs | cut -d "=" -f2 | sed ':a;N;$!ba;s/\n/+/g' | bc)"
-                                bytesToHuman() {
-                                    b=${1:-0}; d=''; s=0; S=(Bytes {K,M,G,T,P,E,Z,Y}iB)
-                                    while ((b > 1024)); do
-                                        d="$(printf ".%02d" $((b % 1024 * 100 / 1024)))"
-                                        b=$((b / 1024))
-                                        let s++
-                                    done
-                                    echo "$b$d ${S[$s]}"
-                                }
                                 echo -en "Combined LUN Size: " >> "$sm"
                                 bytesToHuman "$LUNSize_byte" >> "$sm"
                                 echo -e "\n" >> "$sm"
@@ -1118,13 +1128,22 @@ do
                         sed '1d' "${PACK}" | awk '{for(i=NF;i>1;i=i-1) printf "%s ", $i; printf "%s\n", $1}' | cut -d " " -f1 > "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/packages_ver.list
                         TIMEFORMAT=$'Packageversion comparison took: \t\t\t\t\t\t\e[36m%Rsec\e[39m'
                         time(
+
+                        synopkgfile="$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/var/log/synopkg.log
+                        if [[ $(stat -c%s "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/synopkg.log") -lt 1 ]]; then #if synopkg.log is empty
+                            unxz "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/synopkg.log.1.xz"
+                            if [ $? -eq 0 ]; then # if successfully extracted
+                                synopkgfile="$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/var/log/synopkg.log.1
+                            fi
+                        fi
+
                         readarray -t "InstalledPackageArray" < "$DOWNLOAD_DIR/debug_$DATE/$DSM/packages_ver.list"
                         counter=0
                         for i in "${InstalledPackageArray[@]}"
                         do
                             aver=$(grep "^$i " "$package_versions")
                             PureVerAvailable=$(echo "${aver}" | rev | cut -d " " -f1 | rev | sed 's/\-/./g')
-                            PureVerInstalled=$(grep -a "$i " "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/var/log/synopkg.log | tail -n1 | grep -aoP '(?<='$i' )\S*' | sed 's/\-/./g')
+                            PureVerInstalled=$(grep -a "$i " "$synopkgfile" | tail -n1 | grep -aoP '(?<='$i' )\S*' | sed 's/\-/./g')
                             log "${InstalledPackageArray[$counter]}: Installed: $PureVerInstalled vs. available: $PureVerAvailable"
 
                             # "gt" means "greater than"
@@ -1136,7 +1155,11 @@ do
                                 log "\e[31mUpdate for ${InstalledPackageArray[$counter]} from $PureVerInstalled to $PureVerAvailable available!\e[0m"
                                 echo "Update for ${InstalledPackageArray[$counter]} from $PureVerInstalled to $PureVerAvailable available!" >> "$sm"
                             elif version_compare_gt "$PureVerInstalled" "$PureVerAvailable"; then
-                                log "\e[93minstalled Version later than available?!\e[0m"
+                                if [[ -z "$PureVerAvailable" ]]; then
+                                    log "\e[93mNo latest Version found.\e[0m"
+                                else
+                                    log "\e[93minstalled Version later than available?!\e[0m"
+                                fi
                             elif [[ "$PureVerInstalled" == "$PureVerAvailable" ]] ; then
                                 log "\e[32msame Version, package is up to date!\e[0m"
                             else

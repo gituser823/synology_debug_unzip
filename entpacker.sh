@@ -287,21 +287,18 @@ do
 
                 UpnpModel=$(grep -i "upnpmodelname" "$Synoinfo" | cut -d "\"" -f2)
                 UpnpModel_migrated_from=$(grep -i "upnpmodelname" "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/synoinfo.conf" | cut -d "\"" -f2)
-                    #extract .xz packages:
-                            TIMEFORMAT=$'Extractiontime messages.xz: \t\t\t\t\t\t\t\e[36m%Rsec\e[39m'
-                            time(
+                            #TIMEFORMAT=$'Extractiontime messages.xz and kern.xz:\t\t\t\t\t\t\e[36m%Rsec\e[39m'
+                            #time(
                     for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/messages"*.xz
                         do
                             unxz "${file}"
                         done
-                                )
-                            TIMEFORMAT=$'Extractiontime kern.xz: \t\t\t\t\t\t\t\e[36m%Rsec\e[39m'
-                            time(
+
                     for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/kern"*.xz
                         do
                             unxz "${file}"
                         done
-                                )
+                                #)
 
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/df.result" ]]
                 then    DF=$DOWNLOAD_DIR/debug_$DATE/$DSM/result/df.result
@@ -332,7 +329,7 @@ do
                                     if  [ "$Volume_x64" ]; then
                                         log "$(basename -- "$file") has x64"
                                     else
-                                        echo -e "$(basename -- "$file") has 16 Terabyte Volume Limitation." >> "$sm"
+                                        echo -e "$(basename -- "$file" | cut -d '.' -f2) has 16 Terabyte Volume Limitation." >> "$sm"
                                     fi
                                 fi
                         done
@@ -460,6 +457,9 @@ do
 
                 #for i in "${!OpenFiles[@]}"; do #remove empty vars from array [@]
                 #    [ -n "${OpenFiles[$i]}" ] || log "OpenFiles[$i] unset, because empty!"
+
+                #TIMEFORMAT=$'hdd-compatibility-check until opening Sublime took\t\t\t\t\e[36m%Rsec\e[39m'
+                            #time(
 
                 log "Extension all hdds-array: ${ExtensionHddsArray[@]}"
                # if [[ -f $DOWNLOAD_DIR/debug_$DATE/$DSM/etc/private/domain_info ]]
@@ -593,8 +593,6 @@ do
                 fi
 
                 #declare -a PowerOnHours
-                TIMEFORMAT=$'hdd-compatibility-check took \t\t\t\t\t\t\t\e[36m%Rsec\e[39m'
-                            time(
                 for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/smart"*.result
                 do
                     [[ -e "$file" ]] || break #no smart-files
@@ -659,8 +657,8 @@ do
                     PoH=$(grep -iE "Power(_|-)on_(Hours|Hour_Count)" "$file" | sed -e "s/ ([^()]*)//g" | rev | cut -d " " -f1 | rev | sed 's/h.*//' )
                     echo "${PoH}" >> "$sm"
                     echo -n "Last Extended SMART-Test: " >> "$sm"
-                    LastSmartTest=$(grep -i -m1 "Extended Offline" "$file" | sed -n '/Extended offline/s/ \+/ /gp' | cut -d " " -f9 )
-                    LastSmartResult=$(grep -i -m1 "Extended Offline" "$file" | sed -n '/Extended offline/s/ \+/ /gp' | cut -d " " -f5-7 )
+                    LastSmartTest=$(grep -i -m1 "Extended Offline" "$file" | sed -n '/Extended offline/s/ \+/ /gp' | rev | cut -d " " -f2 | rev )
+                    LastSmartResult=$(grep -i -m1 "Extended Offline" "$file" | sed -n '/Extended offline/s/ \+/ /gp' | sed 's/[^0-9]*[0-9] *//' | sed 's/ [0-9].*$//' | sed 's/^Extended offline //' )
                     #old:                     LastSmartResult=$(grep -i -m1 "Extended Offline" "$file" | sed -n '/Extended offline/s/ \+/ /gp' | cut -d " " -f5-7 )
                     re='^[0-9]+$'
                     if ! [[ "${LastSmartTest}" =~ $re ]] ; then
@@ -679,7 +677,6 @@ do
                     echo -n ", Sectorsize: $SectorSize" >> "$sm"
                     echo ", HDD Size: $modelname_hdd_size" >> "$sm"
                 done
-                )
                 #mehr smart-kram
                 #echo -e "\n" >> "$sm"
 
@@ -821,20 +818,20 @@ do
                 echo "$date_now $UpnpModel" #write to sm after this
                     #Hardware-specific things
                     if [ "$UpnpModel" = "DS216+" ]; then
-                        echo "Possible Known Issue: BIOS: https://css.synology.com/issue/4334" >> "$sm"
+                        echo "Possible Known Issue: BIOS: https://cssnew.synology.com/issue/4334" >> "$sm"
                         echo "Bugged Versions are less than M.616" >> "$sm"
                         echo -e "This Machines BIOS-Version: $BIOS_V_CUT\n" >> "$sm"
                     fi
                     if [ "$UpnpModel" = "DS718+" ]; then
                         grep_cputemp=$( grep -c "<cpu_temperature> is over" "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/scemd.log" )
                         if [ "$grep_cputemp" -gt 0 ]; then
-                        echo "CPU is overheating, RMA unit: https://css.synology.com/issue/11124" >> "$sm"
+                        echo "CPU is overheating, RMA unit: https://cssnew.synology.com/issue/11124" >> "$sm"
                         grep -i "<cpu_temperature> is over" "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/scemd.log" >> "$sm"
                         fi
                     fi
                         grep_hddissue=$( grep -c "core_clear_root_int_from_queue Error Interrupt\|Issued IDENTIFY to non-existent device ?!" "$MESSAGES" )
                         if [ "$grep_hddissue" -gt 0 ]; then
-                            echo "Known Issue: random HDD drops of WD or HGST HDDs, update HDD Firmware: https://css.synology.com/issue/9198" >> "$sm"
+                            echo "Known Issue: random HDD drops of WD or HGST HDDs, update HDD Firmware: https://cssnew.synology.com/issue/9198" >> "$sm"
                             grep -i "core_clear_root_int_from_queue Error Interrupt: PHY Decoding Error\|Issued IDENTIFY to non-existent device ?!" "$MESSAGES" >> "$sm"
                         fi
 
@@ -845,7 +842,7 @@ do
                     if [ "$UpnpModel" = "DS918+" ]; then
                         if version_compare_gt "M.024" "$BIOS_V_CUT"; then
                             {
-                                echo -e "\nKnown Issue: BIOS: https://css.synology.com/issue/12026"
+                                echo -e "\nKnown Issue: BIOS: https://cssnew.synology.com/issue/12026"
                                 echo "Update to DSM 6.1.3-15152 Update 7 to update the BIOS."
                                 echo -e "This Machines BIOS-Version: $UpnpModel $BIOS_V_CUT\n"
                             } >> "$sm"
@@ -857,7 +854,7 @@ do
                     if [ "$UpnpModel" = "DS718+" ]; then
                         if version_compare_gt "M.220" "$BIOS_V_CUT"; then
                             {
-                                echo -e "\nKnown Issue: BIOS: https://css.synology.com/issue/12026"
+                                echo -e "\nKnown Issue: BIOS: https://cssnew.synology.com/issue/12026"
                                 echo "Update to DSM 6.1.3-15152 Update 7 to update the BIOS."
                                 echo -e "This Machines BIOS-Version: $UpnpModel $BIOS_V_CUT\n"
                             } >> "$sm"
@@ -869,7 +866,7 @@ do
                     if [ "$UpnpModel" = "DS218+" ]; then
                         if version_compare_gt "M.124" "$BIOS_V_CUT"; then
                             {
-                                echo -e "\nKnown Issue: BIOS: https://css.synology.com/issue/12026"
+                                echo -e "\nKnown Issue: BIOS: https://cssnew.synology.com/issue/12026"
                                 echo "Update to DSM 6.1.3-15152 Update 7 to update the BIOS."
                                 echo -e "This Machines BIOS-Version: $UpnpModel $BIOS_V_CUT\n"
                             } >> "$sm"
@@ -881,7 +878,7 @@ do
                     if [ "$UpnpModel" = "DS418play" ]; then
                         if version_compare_gt "M.310" "$BIOS_V_CUT"; then
                             {
-                                echo -e "\nKnown Issue: BIOS: https://css.synology.com/issue/12026"
+                                echo -e "\nKnown Issue: BIOS: https://cssnew.synology.com/issue/12026"
                                 echo "Update to DSM 6.1.3-15152 Update 7 to update the BIOS."
                                 echo -e "This Machines BIOS-Version: $UpnpModel $BIOS_V_CUT\n"
                             } >> "$sm"
@@ -1052,7 +1049,7 @@ do
                 echo -e 'Associated Tickets: \thttps://cssnew.synology.com/ticket?list_type=agent_all&sort_by=update_time&sort_direction=desc&filter=%7B%22search_column%22%3A%5B%22ticket_id%22%2C%22content%22%5D%2C%22sn%22%3A%22'"$DS_SN"'%22%7D'
                 echo -e "\nInstalled RAM-modules:\n$DS_MEM3"
                 echo -e "RAM, calced: $DS_MEM3_calc"
-                echo -n "RAM free.result: "
+                echo  "RAM free.result: "
                 bytesToHuman "$free_mem"
                 } >> "$sm"
 
@@ -1094,15 +1091,15 @@ do
                 {
                 echo -e "\nCPUinfo from txt:"
                 echo "$DS_CPU_TXTINFO"
-                echo "$DS_CPU_TXT"
+                echo -e "$DS_CPU_TXT\n"
                 }  >> "$sm"
 
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/samba/smb.share.conf" ]]
                 then    SmbShares=$(grep "path=" "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/samba/smb.share.conf" | tr '\n' '\t')
                             if [[ -z "$SmbShares" ]]; then
-                                echo -e "\nNo Samba Shares found." >> "$sm"
+                                echo -e "No Samba Shares found.\n" >> "$sm"
                             else
-                                echo -e "\nFound Samba-shares:\n$SmbShares\n" >> "$sm"
+                                echo -e "Found Samba-shares:\n$SmbShares\n" >> "$sm"
                             fi
                 fi
 
@@ -1126,8 +1123,6 @@ do
                 then    PACK=$DOWNLOAD_DIR/debug_$DATE/$DSM/packages.list
                         declare -a InstalledPackageArray
                         sed '1d' "${PACK}" | awk '{for(i=NF;i>1;i=i-1) printf "%s ", $i; printf "%s\n", $1}' | cut -d " " -f1 > "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/packages_ver.list
-                        TIMEFORMAT=$'Packageversion comparison took: \t\t\t\t\t\t\e[36m%Rsec\e[39m'
-                        time(
 
                         synopkgfile="$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/var/log/synopkg.log
                         if [[ $(stat -c%s "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/synopkg.log") -lt 1 ]]; then #if synopkg.log is empty
@@ -1173,7 +1168,6 @@ do
                         if [[ $counter -gt 0 ]]; then
                             echo -e "\n" >> "$sm"
                         fi
-                        )
                         echo -en "Third Party packages:" >> "$sm"
                         third_packages=$(grep -v "AntiVirus\|AudioStation\|Calendar\|CloudStation\|FileStation\|HyperBackup\|LogCenter\|MediaServer\|NoteStation\|PHP[0-9].[0-9]\|PhotoStation\|ProxyServer\|StorageAnalyzer\|SynoFinder\|SynologyApplicationService\|SynologyDrive\|TextEditor\|USBCopy\|VideoStation\|WebDAVServer\|CloudSync\|DownloadStation\|SurveillanceStation\|WebStation\|VPNCenter\|MariaDB\|Chat\|Git\|Node.js_4\|Perl\|ActiveBackup\|ActiveBackup-Office365\|ActiveDirectoryServer\|Apache[0-9].[0-9]\|CMS\|CardDAVServer\|DNSServer\|DiagnosisTool\|Docker\|MailClient\|MailPlus-Server\|OAuthService\|PetaSpace\|PrestoServer\|PythonModule\|SSOServer\|SnapshotReplication\|Spreadsheet\|SynologyMoments\|Virtualization\|iTunesServer\| enabled\|TimeBackup\|Java7\|Java8\|exFAT\|PDFViewer\|DocumentViewer\|MailServer\|MailStation\|phpMyAdmin\|total [[:digit:]]\{,3\}" "$PACK")
                         if [ -z "$third_packages" ]; then
@@ -1182,7 +1176,6 @@ do
                             echo -e "\n$third_packages\n" >> "$sm"
                         fi
                 fi
-
 
                 btrfserrkern=$(grep -ia "btrfs critical\|btrfs error\|btrfs warning\|btrfs.*failure\|btrfs.*failed\|BTRFS: superblock checksum mismatch" "$KERN")
                 ext4errkern=$(grep -ia "ext-3\|ext-4" "$KERN" | grep -v "scripts/ext-3.4")
@@ -1310,14 +1303,19 @@ do
                         else echo "Hibernation on NAS is off." >> "$hb_debug"
                 fi
 
-                fan_debug_mode=$(grep "enable_fan_debug" "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/etc/synoinfo.conf | cut -d "\"" -f2)
-                let "fan_debug_mode_dec = $fan_debug_mode"
-                if [ "$fan_debug_mode_dec" -gt 0 ]
-                        then echo "Fan debug mode on NAS is on." >> "$hb_debug"
-                elif [ "$fan_debug_mode_dec" -eq 0 ]
-                        then echo "Fan debug mode on NAS is off." >> "$hb_debug"
+                fan_debug_mode=$(grep "enable_fan_debug" "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/etc/synoinfo.conf)
+                if [ "$?" -gt 0 ]
+                    then echo "Fan debug mode on NAS is off." >> "$hb_debug"
                 else
-                    echo "Fan debug mode: Error" >> "$hb_debug"
+                    fan_debug_mode=$(grep "enable_fan_debug" "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/etc/synoinfo.conf | cut -d "\"" -f2)
+                    fan_debug_mode_dec=$(($fan_debug_mode))
+                    if [ "$fan_debug_mode_dec" -gt 0 ]
+                            then echo "Fan debug mode on NAS is on." >> "$hb_debug"
+                    elif [ "$fan_debug_mode_dec" -eq 0 ]
+                            then echo "Fan debug mode on NAS is off." >> "$hb_debug"
+                    else
+                        echo "Fan debug mode: Error" >> "$hb_debug"
+                    fi
                 fi
 
                 kernel_log_max=$(grep -c "kern_log_max=\"yes\"" "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/etc/synoinfo.conf)
@@ -1326,19 +1324,37 @@ do
                         else echo "Extended kernel logging on NAS is off." >> "$hb_debug"
                 fi
 
+                if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/samba/smb.conf" ]]; then
                 local_master=$(grep "local master" "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/samba/smb.conf" | cut -d "=" -f2)
-                if [ "$local_master" == "yes" ]
-                        then echo "Local Master Browser on NAS is on." >> "$hb_debug"
-                elif [ "$local_master" == "no" ]
-                        then echo "Local Master Browser on NAS is off." >> "$hb_debug"
+                    if [ "$local_master" == "yes" ]
+                            then echo "Local Master Browser on NAS is on." >> "$hb_debug"
+                    elif [ "$local_master" == "no" ]
+                            then echo "Local Master Browser on NAS is off." >> "$hb_debug"
+                    else
+                        echo "Local Master Browser: Error" >> "$hb_debug"
+                    fi
                 else
-                    echo "Local Master Browser: Error" >> "$hb_debug"
+                    log "smb.conf not found."
                 fi
                 #echo -e "\n" >> "$hb_debug"
 
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/synoinfo.conf" ]]; then
-                    grep -ia "supportrcpower" "$Synoinfo" >> "$hb_debug"
-                    grep -ia "enableRCPower" "$Synoinfo" >> "$hb_debug"
+                    supportrcpower=$(grep -ia "supportrcpower" "$Synoinfo" | cut -d "\"" -f2)
+                    if [[ "$supportrcpower" == "yes" ]];then
+                        echo "supportrcpower is on." >> "$hb_debug"
+                    elif [[ "$supportrcpower" == "no" ]];then
+                        echo "supportrcpower is off." >> "$hb_debug"
+                    else
+                        log "supportrcpower not yes or no."
+                    fi
+                    enablercpower=$(grep -ia "enableRCPower" "$Synoinfo" | cut -d "\"" -f2)
+                    if [[ "$enablercpower" == "yes" ]];then
+                        echo "enablercpower is on." >> "$hb_debug"
+                    elif [[ "$enablercpower" == "no" ]];then
+                        echo "enablercpower is off." >> "$hb_debug"
+                    else
+                        log "enablercpower not yes or no."
+                    fi
                 fi
 
                 grep "^standbytimer" "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/synoinfo.conf" >> "$hb_debug"
@@ -1378,8 +1394,9 @@ do
                     counter=`expr $counter + 1`
                     #counter=$((counter + 1))
                 done
+
                 sleep 0.1
-            TIMEFORMAT=$'Opening Sublime took: \t\t\t\t\t\t\t\t\e[36m%Rsec\e[39m'
+            TIMEFORMAT=$'\nOpening Sublime took: \t\t\t\t\t\t\t\t\e[36m%Rsec\e[39m'
             time(
                 source "${Script_dir}/files/config.sh" #load OpenFiles[] Array from config.sh
                 #log "Array before unsetting: ${OpenFiles[@]}"
@@ -1399,7 +1416,7 @@ do
                     do echo -n "\"$arg\" "
                        echo -n "\"$arg\" " >> ~/Dokumente/bash/last_debug.sh
                 done
-                echo -e "\n" #??
+                #echo -e "\n" #??
                 )
                 TIMEFORMAT=$'Executiontime: \t\t\t\t\t\t\t\t\t\e[36m%Rsec\e[39m'
                 #log "$subl" "${OpenFiles[@]}"
@@ -1423,7 +1440,7 @@ do
             DSM=dsm
             #sha=0
             )
-            echo -e "\n"
+            echo -ne "\n"
         fi
     done
     sleep $sleep_scan_dir

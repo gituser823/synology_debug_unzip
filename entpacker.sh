@@ -455,9 +455,6 @@ do
                     echo "DSM was possibly migrated from $UpnpModel_migrated_from to $UpnpModel" >> "$sm"
                 fi
 
-                #for i in "${!OpenFiles[@]}"; do #remove empty vars from array [@]
-                #    [ -n "${OpenFiles[$i]}" ] || log "OpenFiles[$i] unset, because empty!"
-
                 #TIMEFORMAT=$'hdd-compatibility-check until opening Sublime took\t\t\t\t\e[36m%Rsec\e[39m'
                             #time(
 
@@ -507,7 +504,9 @@ do
                 declare -a BadSectors_HDD_Array
                 declare -a PendingSectors_HDD_Array
                 declare -a OfflineUncorrectable_HDD_Array
-                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/smart_sd"*.result
+                files="
+                "
+                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/smart_"{sd,nv}*.result
                 do
                     [[ -e "$file" ]] || break #no smart-files
                     #counter=$((counter + 1))
@@ -680,18 +679,18 @@ do
                 #mehr smart-kram
                 #echo -e "\n" >> "$sm"
 
-                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/smart_sd"*.result
+                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/smart_"{sd,nv}*.result
                 do
                     [[ -e "$file" ]] || break #no smart-files
                     grep -i "Model Family\|Device Model" "$file" >> "$sg"
                 done
-                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/smart_sd"*.result
+                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/smart_"{sd,nv}*.result
                 do
                     [[ -e "$file" ]] || break #no smart-files
                 {
                     echo -e "\n"
                     echo "$file"
-                    grep -i "overall-health self-assessment\|Model Family\|Device Model\|Serial Number\|Firmware Version\|User Capacity\|Sector Sizes\|Rotation Rate\|ID\#\|Raw_Read_Error_Rate\|Reallocated_Sector_Ct\|Seek_Error_Rate\|Spin_Retry_Count\|Calibration_Retry_Count\|Reallocated_Event_Count\|Current_Pending_Sector\|Offline_Uncorrectable\|UDMA_CRC_Error_Count\|Multi_Zone_Error_Rate\|Power_On_Hours\|Reallocated_Sector_Count\|Power-on_Hours\|Program_Fail_Count_(total)\|Erase_Fail_Count_(total)\|Runtime_Bad_Count_(total)\|Uncorrectable_Error_Count\|ECC_Error_Rate\|CRC_Error_Count\|POR_Recovery_Count" "$file"
+                    grep -i "overall-health self-assessment\|Model Family\|Device Model\|Serial Number\|Firmware Version\|User Capacity\|Sector Sizes\|Rotation Rate\|ID\#\|Raw_Read_Error_Rate\|Reallocated_Sector_Ct\|Seek_Error_Rate\|Spin_Retry_Count\|Calibration_Retry_Count\|Reallocated_Event_Count\|Current_Pending_Sector\|Offline_Uncorrectable\|UDMA_CRC_Error_Count\|Multi_Zone_Error_Rate\|Power_On_Hours\|Reallocated_Sector_Count\|Power-on_Hours\|Program_Fail_Count_(total)\|Erase_Fail_Count_(total)\|Runtime_Bad_Count_(total)\|Uncorrectable_Error_Count\|ECC_Error_Rate\|CRC_Error_Count\|POR_Recovery_Count\|Percent_Lifetime_Remain" "$file"
                             echo " "
                             awk '/SMART Error Log Version: 1/{f=1;next} /Selective self-test flags/{f=0} f' "$file"
                     echo -e " \n \n"
@@ -772,6 +771,7 @@ do
                             fi
                     else
                         DS_MEM3="dmidecode not found, cannot calculate RAM-Size"
+                        BIOS_V_CUT="Version not detected."
                         log "dmidecode.result not found!"
 
                 fi
@@ -815,116 +815,7 @@ do
                     #DS_SN=$( grep -i -m1 "serial number" $DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/kern.log | sed "s/.*[Ss]erial [Nn]umber//" )
                 fi
                 date_now=$(date +"%d. %B %H:%M:%S:")
-                echo "$date_now $UpnpModel" #write to sm after this
-                    #Hardware-specific things
-                    if [ "$UpnpModel" = "DS216+" ]; then
-                        echo "Possible Known Issue: BIOS: https://cssnew.synology.com/issue/4334" >> "$sm"
-                        echo "Bugged Versions are less than M.616" >> "$sm"
-                        echo -e "This Machines BIOS-Version: $BIOS_V_CUT\n" >> "$sm"
-                    fi
-                    if [ "$UpnpModel" = "DS718+" ]; then
-                        grep_cputemp=$( grep -c "<cpu_temperature> is over" "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/scemd.log" )
-                        if [ "$grep_cputemp" -gt 0 ]; then
-                        echo "CPU is overheating, RMA unit: https://cssnew.synology.com/issue/11124" >> "$sm"
-                        grep -i "<cpu_temperature> is over" "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/scemd.log" >> "$sm"
-                        fi
-                    fi
-                        grep_hddissue=$( grep -c "core_clear_root_int_from_queue Error Interrupt\|Issued IDENTIFY to non-existent device ?!" "$MESSAGES" )
-                        if [ "$grep_hddissue" -gt 0 ]; then
-                            echo "Known Issue: random HDD drops of WD or HGST HDDs, update HDD Firmware: https://cssnew.synology.com/issue/9198" >> "$sm"
-                            grep -i "core_clear_root_int_from_queue Error Interrupt: PHY Decoding Error\|Issued IDENTIFY to non-existent device ?!" "$MESSAGES" >> "$sm"
-                        fi
-
-                            version_compare_gt() {
-                                ! printf "%s\n" "$@" | sort --check --version-sort &> /dev/null
-                            }
-
-                    if [ "$UpnpModel" = "DS918+" ]; then
-                        if version_compare_gt "M.024" "$BIOS_V_CUT"; then
-                            {
-                                echo -e "\nKnown Issue: BIOS: https://cssnew.synology.com/issue/12026"
-                                echo "Update to DSM 6.1.3-15152 Update 7 to update the BIOS."
-                                echo -e "This Machines BIOS-Version: $UpnpModel $BIOS_V_CUT\n"
-                            } >> "$sm"
-                        else
-                                log "installed BIOS bigger than M.024"
-                        fi
-                    fi
-
-                    if [ "$UpnpModel" = "DS718+" ]; then
-                        if version_compare_gt "M.220" "$BIOS_V_CUT"; then
-                            {
-                                echo -e "\nKnown Issue: BIOS: https://cssnew.synology.com/issue/12026"
-                                echo "Update to DSM 6.1.3-15152 Update 7 to update the BIOS."
-                                echo -e "This Machines BIOS-Version: $UpnpModel $BIOS_V_CUT\n"
-                            } >> "$sm"
-                        else
-                                log "installed BIOS bigger than M.220"
-                        fi
-                    fi
-
-                    if [ "$UpnpModel" = "DS218+" ]; then
-                        if version_compare_gt "M.124" "$BIOS_V_CUT"; then
-                            {
-                                echo -e "\nKnown Issue: BIOS: https://cssnew.synology.com/issue/12026"
-                                echo "Update to DSM 6.1.3-15152 Update 7 to update the BIOS."
-                                echo -e "This Machines BIOS-Version: $UpnpModel $BIOS_V_CUT\n"
-                            } >> "$sm"
-                        else
-                                log "installed BIOS bigger than M.124"
-                        fi
-                    fi
-
-                    if [ "$UpnpModel" = "DS418play" ]; then
-                        if version_compare_gt "M.310" "$BIOS_V_CUT"; then
-                            {
-                                echo -e "\nKnown Issue: BIOS: https://cssnew.synology.com/issue/12026"
-                                echo "Update to DSM 6.1.3-15152 Update 7 to update the BIOS."
-                                echo -e "This Machines BIOS-Version: $UpnpModel $BIOS_V_CUT\n"
-                            } >> "$sm"
-                        else
-                                log "installed BIOS bigger than M.310"
-                        fi
-                    fi
-
-                    if grep -ia "tn40xx" "$KERN" | grep memory &> /dev/null ; then
-                    echo "Known Issue: with 10GbE E10G15-F1 Card detected." >> "$sm"
-                    echo "See https://cssnew.synology.com/issue/5206 Issue B" >> "$sm"
-                    grep -ia "tn40xx" "$KERN" | grep memory | tail -n20 >> "$sm"
-                    fi
-
-                    if grep -ia "tn40xx" "$KERN" | grep Link Up 10G &> /dev/null ; then
-                    {
-                    echo "Possible Known Issue: with 10GbE E10G15-F1 Card detected."
-                    echo "If Time are above 600s after Boot, please check SOP."
-                    echo "See https://cssnew.synology.com/issue/5206 Issue A"
-                    grep -ia "tn40xx" "$KERN" | grep "Link Up 10G\|Link Down" | tail -n20
-                    } >> "$sm"
-                    fi
-
-                    #https://cssnew.synology.com/issue/13942
-                    if [ "$UpnpModel" = "DS218j" ] || [ "$UpnpModel" = "RS217" ] || [ "$UpnpModel" = "RS816" ] || [ "$UpnpModel" = "DS416j" ] || [ "$UpnpModel" = "DS416slim" ] || [ "$UpnpModel" = "DS216" ] || [ "$UpnpModel" = "DS216j" ] || [ "$UpnpModel" = "DS116" ]; then
-                        grep_Issue_13942=$( grep -ca "Linux processing - Can't refill, try to allocate again in cleanup timer" "$MESSAGES" )
-                        if [ "$grep_Issue_13942" -gt 0 ]; then
-                        {
-                        echo "Known Issue: https://cssnew.synology.com/issue/13942"
-                        echo "[Cause] The marvell model may suffer from memory allocating issue."
-                        echo "[Workaround]Add the following command to a bootup task:"
-                        echo "/sbin/sysctl -w vm.min_free_kbytes=16384"
-                        } >> "$sm"
-                        fi
-                    fi
-
-                swap_percent_kb=$(awk "BEGIN {printf \"%.2f\n\", $swap_used_kbyte/$swap_total_kbyte*100}")
-                #echo -ne "\nSwap: used $swap_used_human of $swap_total_human ($swap_percent_kb%)" >> "$sm"
-                echo -ne "\nSwap: ($swap_percent_kb%) used " >> "$sm"
-                bytesToHuman "$swap_used" >> "$sm"
-                echo -ne " of " >> "$sm"
-                bytesToHuman "$swap_total" >> "$sm"
-                echo -ne "\nSwap: ($swap_percent_kb%) used ">> "$hb_debug"
-                bytesToHuman "$swap_used" >> "$hb_debug"
-                echo -ne " of " >> "$hb_debug"
-                bytesToHuman "$swap_total" >> "$hb_debug"
+                echo "$date_now $UpnpModel, S/N: $DS_SN" #write to sm after this
 
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/messages.log" ]]
                 then
@@ -946,6 +837,106 @@ do
                     DSM_BuildVERSION=$( cat "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc.defaults/VERSION" | grep "buildnumber" )
                     DSM_smallfixVERSION=$( cat "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc.defaults/VERSION" | grep "smallfixnumber" )
                 fi
+
+                    #Hardware-specific things
+                if [ "$UpnpModel" = "DS216+" ]; then
+                    echo -e "\nPossible Known Issue: BIOS: https://cssnew.synology.com/issue/4334" >> "$sm"
+                    echo "Bugged Versions are less than M.616" >> "$sm"
+                    echo -e "This Machines BIOS-Version: $BIOS_V_CUT" >> "$sm"
+                fi
+                if [ "$UpnpModel" = "DS718+" ]; then
+                    grep_cputemp=$( grep -c "<cpu_temperature> is over" "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/scemd.log" )
+                    if [ "$grep_cputemp" -gt 0 ]; then
+                    echo -e "\nCPU is overheating, RMA unit: https://cssnew.synology.com/issue/11124" >> "$sm"
+                    grep -i "<cpu_temperature> is over" "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/scemd.log" >> "$sm"
+                    fi
+                fi
+                    grep_hddissue=$( grep -c "core_clear_root_int_from_queue Error Interrupt\|Issued IDENTIFY to non-existent device ?!" "$MESSAGES" )
+                    if [ "$grep_hddissue" -gt 0 ]; then
+                        echo -e "\nKnown Issue: random HDD drops of WD or HGST HDDs, update HDD Firmware: https://cssnew.synology.com/issue/9198" >> "$sm"
+                        grep -i "core_clear_root_int_from_queue Error Interrupt: PHY Decoding Error\|Issued IDENTIFY to non-existent device ?!" "$MESSAGES" >> "$sm"
+                    fi
+
+                        version_compare_gt() {
+                            ! printf "%s\n" "$@" | sort --check --version-sort &> /dev/null
+                        }
+
+                if [ "$UpnpModel" = "DS918+" ]; then
+                    if version_compare_gt "M.024" "$BIOS_V_CUT"; then
+                        {
+                            echo -e "\nKnown Issue: BIOS: https://cssnew.synology.com/issue/12026"
+                            echo "Update to DSM 6.1.3-15152 Update 7 to update the BIOS."
+                            echo -e "This Machines BIOS-Version: $UpnpModel $BIOS_V_CUT"
+                        } >> "$sm"
+                    else
+                            log "installed BIOS bigger than M.024"
+                    fi
+                fi
+
+                if [ "$UpnpModel" = "DS718+" ]; then
+                    if version_compare_gt "M.220" "$BIOS_V_CUT"; then
+                        {
+                            echo -e "\nKnown Issue: BIOS: https://cssnew.synology.com/issue/12026"
+                            echo "Update to DSM 6.1.3-15152 Update 7 to update the BIOS."
+                            echo -e "This Machines BIOS-Version: $UpnpModel $BIOS_V_CUT"
+                        } >> "$sm"
+                    else
+                            log "installed BIOS bigger than M.220"
+                    fi
+                fi
+
+                if [ "$UpnpModel" = "DS218+" ]; then
+                    if version_compare_gt "M.124" "$BIOS_V_CUT"; then
+                        {
+                            echo -e "\nKnown Issue: BIOS: https://cssnew.synology.com/issue/12026"
+                            echo "Update to DSM 6.1.3-15152 Update 7 to update the BIOS."
+                            echo -e "This Machines BIOS-Version: $UpnpModel $BIOS_V_CUT"
+                        } >> "$sm"
+                    else
+                            log "installed BIOS bigger than M.124"
+                    fi
+                fi
+
+                if [ "$UpnpModel" = "DS418play" ]; then
+                    if version_compare_gt "M.310" "$BIOS_V_CUT"; then
+                        {
+                            echo -e "\nKnown Issue: BIOS: https://cssnew.synology.com/issue/12026"
+                            echo "Update to DSM 6.1.3-15152 Update 7 to update the BIOS."
+                            echo -e "This Machines BIOS-Version: $UpnpModel $BIOS_V_CUT"
+                        } >> "$sm"
+                    else
+                            log "installed BIOS bigger than M.310"
+                    fi
+                fi
+
+                if grep -ia "tn40xx" "$KERN" | grep memory &> /dev/null ; then
+                echo -e "\nKnown Issue: with 10GbE E10G15-F1 Card detected." >> "$sm"
+                echo "See https://cssnew.synology.com/issue/5206 Issue B" >> "$sm"
+                grep -ia "tn40xx" "$KERN" | grep memory | tail -n20 >> "$sm"
+                fi
+
+                if grep -ia "tn40xx" "$KERN" | grep Link Up 10G &> /dev/null ; then
+                {
+                echo -e "\nPossible Known Issue: with 10GbE E10G15-F1 Card detected."
+                echo "If Time are above 600s after Boot, please check SOP."
+                echo "See https://cssnew.synology.com/issue/5206 Issue A"
+                grep -ia "tn40xx" "$KERN" | grep "Link Up 10G\|Link Down" | tail -n20
+                } >> "$sm"
+                fi
+
+                #https://cssnew.synology.com/issue/13942
+                if [ "$UpnpModel" = "DS218j" ] || [ "$UpnpModel" = "RS217" ] || [ "$UpnpModel" = "RS816" ] || [ "$UpnpModel" = "DS416j" ] || [ "$UpnpModel" = "DS416slim" ] || [ "$UpnpModel" = "DS216" ] || [ "$UpnpModel" = "DS216j" ] || [ "$UpnpModel" = "DS116" ]; then
+                    grep_Issue_13942=$( grep -ca "Linux processing - Can't refill, try to allocate again in cleanup timer" "$MESSAGES" )
+                    if [ "$grep_Issue_13942" -gt 0 ]; then
+                    {
+                        echo -e "\nKnown Issue: https://cssnew.synology.com/issue/13942"
+                        echo "[Cause] The marvell model may suffer from memory allocating issue."
+                        echo "[Workaround]Add the following command to a bootup task:"
+                        echo "/sbin/sysctl -w vm.min_free_kbytes=16384"
+                    } >> "$sm"
+                    fi
+                fi
+
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/scemd.log" ]]
                 then
                     grep_disktemp=$( grep -c "temperature> is over" "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/var/log/scemd.log )
@@ -961,9 +952,9 @@ do
                     echo -e "\nno DE-SRS possible. ( disabled )" >> "$sm"
                 fi
                 if [ "$ipv6_enabled" -gt 0 ]; then
-                    echo -e "\nIPv6 enabled" >> "$sm"
+                    echo "IPv6 enabled" >> "$sm"
                     echo "IPv6 on NAS is on." >> "$hb_debug"
-                else echo -e "\nIPv6 disabled" >> "$sm"
+                else echo "IPv6 disabled" >> "$sm"
                      echo "IPv6 on NAS is off." >> "$hb_debug"
                 fi
                 echo "found ${ifc_dropped_sum} dropped Packages in ifconfig.result." >> "$sm"
@@ -976,7 +967,7 @@ do
                 done
                 echo "DNS Servers:" >> "$sm"
                 if [ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/resolv.conf" ]; then
-                cat "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/resolv.conf" >> "$sm"
+                cat "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/resolv.conf" | sed ':a;N;$!ba;s/\n/, /g' >> "$sm"
                     else echo "/etc/resolv.conf not found." >> "$sm"
                 fi
                 cat "$Route" >> "$IFCONFIG"
@@ -1012,7 +1003,7 @@ do
                          echo "AFP: Error   " >> "$sm"
                 fi
 
-                echo -e "\n" >> "$sm"
+                #echo -e "\n" >> "$sm"
 
                 DS_upnp_v="${UpnpModel}"
                 DS_upnp_unter="${DS_upnp_v}_"
@@ -1029,36 +1020,8 @@ do
                 fi
                 {
                 echo "installed VERSION: " "$DSM_VERSION, $DSM_BuildVERSION, $DSM_smallfixVERSION"
-                echo -e "\nUptime: " "$UPTIME"
-                echo "Hostname: " "$Hostname"
-                echo "$QuickConnect_echo"
-                }  >> "$sm"
-                if [ "$ddns" = 1 ]; then
-                    echo -n "DDNS " >> "$sm"
-                        grep "hostname" "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/ddns.conf" >> "$sm"
-                fi
-                {
-                echo "BIOS:" "$BIOS_V_CUT"
-                #echo "SynoBIOS: " "$Syno_bios"
-                echo "Hardware Version: $DS_HWMODEL and Diskstationmodel: $DS_MODEL"
-                echo "UPNP Model:" "$UpnpModel"
-                echo "Kernel:" "$Kernel_version"
-                echo -n "CPU from logs:" "$DS_CPU"
-                echo "; Threads: $Processor_count , Cores: $DS_Cores"
-                echo "Serialnumber:" "$DS_SN"
-                echo -e 'Associated Tickets: \thttps://cssnew.synology.com/ticket?list_type=agent_all&sort_by=update_time&sort_direction=desc&filter=%7B%22search_column%22%3A%5B%22ticket_id%22%2C%22content%22%5D%2C%22sn%22%3A%22'"$DS_SN"'%22%7D'
-                echo -e "\nInstalled RAM-modules:\n$DS_MEM3"
-                echo -e "RAM, calced: $DS_MEM3_calc"
-                echo  "RAM free.result: "
-                bytesToHuman "$free_mem"
-                } >> "$sm"
 
-                #log "$DS_MEM3_calc"
-                date_now=$(date +"%d. %B %H:%M:%S: ")
-                echo -e $date_now 'Associated Tickets: \nhttps://cssnew.synology.com/ticket?list_type=agent_all&sort_by=update_time&sort_direction=desc&filter=%7B%22search_column%22%3A%5B%22ticket_id%22%2C%22content%22%5D%2C%22sn%22%3A%22'"$DS_SN"'%22%7D'
-
-                if [ -z "${UpnpModel}" ];
-                then
+                if [ -z "${UpnpModel}" ]; then
                     echo "CPUinfo from txt: no model detected." >> "$sm"
                 fi
 
@@ -1093,6 +1056,54 @@ do
                 echo "$DS_CPU_TXTINFO"
                 echo -e "$DS_CPU_TXT\n"
                 }  >> "$sm"
+
+                echo "Uptime: " "$UPTIME"
+                echo "Hostname: " "$Hostname"
+                echo "$QuickConnect_echo"
+                }  >> "$sm"
+                if [ "$ddns" = 1 ]; then
+                    echo -n "DDNS " >> "$sm"
+                        grep "hostname" "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/ddns.conf" >> "$sm"
+                fi
+                {
+                echo "BIOS:" "$BIOS_V_CUT"
+                #echo "SynoBIOS: " "$Syno_bios"
+                echo "Hardware Version: $DS_HWMODEL and Diskstationmodel: $DS_MODEL"
+                echo "UPNP Model:" "$UpnpModel"
+                echo "Kernel:" "$Kernel_version"
+                echo -n "CPU from logs:" "$DS_CPU"
+                echo "; Threads: $Processor_count , Cores: $DS_Cores"
+                echo "Serialnumber:" "$DS_SN"
+                echo -e 'Associated Tickets: \thttps://cssnew.synology.com/ticket?list_type=agent_all&sort_by=update_time&sort_direction=desc&filter=%7B%22search_column%22%3A%5B%22ticket_id%22%2C%22content%22%5D%2C%22sn%22%3A%22'"$DS_SN"'%22%7D'
+
+                swap_percent_kb=$(awk "BEGIN {printf \"%.2f\n\", $swap_used_kbyte/$swap_total_kbyte*100}")
+                echo -ne "\nSwap: ($swap_percent_kb%) used " >> "$sm"
+                bytesToHuman "$swap_used" >> "$sm"
+                echo -ne " of " >> "$sm"
+                bytesToHuman "$swap_total" >> "$sm"
+                echo -ne "Swap: ($swap_percent_kb%) used ">> "$hb_debug"
+                bytesToHuman "$swap_used" >> "$hb_debug"
+                echo -ne " of " >> "$hb_debug"
+                bytesToHuman "$swap_total" >> "$hb_debug"
+
+                if [[ -z "$DS_MEM3" ]]; then
+                    log "$DS_MEM3 is empty."
+                else
+                    echo -e "\nInstalled RAM-modules:\n$DS_MEM3"
+                fi
+                if [[ -z "$DS_MEM3_calc" ]]; then
+                    log "$DS_MEM3_calc is empty."
+                else
+                    echo -e "RAM, calced: $DS_MEM3_calc"
+                fi
+                echo -n "RAM free.result: "
+                bytesToHuman "$free_mem"
+                echo -e " "
+                } >> "$sm"
+
+                #log "$DS_MEM3_calc"
+                date_now=$(date +"%d. %B %H:%M:%S: ")
+                echo -e $date_now 'Associated Tickets: \nhttps://cssnew.synology.com/ticket?list_type=agent_all&sort_by=update_time&sort_direction=desc&filter=%7B%22search_column%22%3A%5B%22ticket_id%22%2C%22content%22%5D%2C%22sn%22%3A%22'"$DS_SN"'%22%7D'
 
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/samba/smb.share.conf" ]]
                 then    SmbShares=$(grep "path=" "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/samba/smb.share.conf" | tr '\n' '\t')
@@ -1299,8 +1310,8 @@ do
                 #write hibernation info:
                 satadeepsleep=$(grep -c "satadeepsleeptimer=\"1\"" "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/etc/synoinfo.conf)
                 if [ "$satadeepsleep" -gt 0 ]
-                        then echo "Hibernation on NAS is on." >> "$hb_debug"
-                        else echo "Hibernation on NAS is off." >> "$hb_debug"
+                        then echo -e "\nHibernation on NAS is on." >> "$hb_debug"
+                        else echo -e "\nHibernation on NAS is off." >> "$hb_debug"
                 fi
 
                 fan_debug_mode=$(grep "enable_fan_debug" "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/etc/synoinfo.conf)
@@ -1318,10 +1329,25 @@ do
                     fi
                 fi
 
+                if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/synoinfo.conf" ]]; then
                 kernel_log_max=$(grep -c "kern_log_max=\"yes\"" "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/etc/synoinfo.conf)
-                if [ "$kernel_log_max" -gt 0 ]
-                        then echo "Extended kernel logging on NAS is on." >> "$hb_debug"
-                        else echo "Extended kernel logging on NAS is off." >> "$hb_debug"
+                    if [ "$kernel_log_max" -gt 0 ]
+                            then echo "Extended kernel logging on NAS is on." >> "$hb_debug"
+                            else echo "Extended kernel logging on NAS is off." >> "$hb_debug"
+                    fi
+                fi
+
+                if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/synoinfo.conf" ]]; then
+                sys_stat_dump=$(grep "sys_stat_dump" "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/synoinfo.conf" | cut -d "=" -f2)
+                    if [ "$sys_stat_dump" == "yes" ]
+                            then echo "Log system status periodically on NAS is on." >> "$hb_debug"
+                    elif [ "$sys_stat_dump" == "no" ]
+                            then echo "Log system status periodically on NAS is off." >> "$hb_debug"
+                    else
+                        echo "Log system status periodically: Error" >> "$hb_debug"
+                    fi
+                else
+                    log "smb.conf not found."
                 fi
 
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/samba/smb.conf" ]]; then
@@ -1341,17 +1367,17 @@ do
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/synoinfo.conf" ]]; then
                     supportrcpower=$(grep -ia "supportrcpower" "$Synoinfo" | cut -d "\"" -f2)
                     if [[ "$supportrcpower" == "yes" ]];then
-                        echo "supportrcpower is on." >> "$hb_debug"
+                        echo "supportrcpower on NAS is on." >> "$hb_debug"
                     elif [[ "$supportrcpower" == "no" ]];then
-                        echo "supportrcpower is off." >> "$hb_debug"
+                        echo "supportrcpower on NAS is off." >> "$hb_debug"
                     else
                         log "supportrcpower not yes or no."
                     fi
                     enablercpower=$(grep -ia "enableRCPower" "$Synoinfo" | cut -d "\"" -f2)
                     if [[ "$enablercpower" == "yes" ]];then
-                        echo "enablercpower is on." >> "$hb_debug"
+                        echo "enablercpower on NAS is on." >> "$hb_debug"
                     elif [[ "$enablercpower" == "no" ]];then
-                        echo "enablercpower is off." >> "$hb_debug"
+                        echo "enablercpower on NAS is off." >> "$hb_debug"
                     else
                         log "enablercpower not yes or no."
                     fi

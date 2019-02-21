@@ -506,7 +506,7 @@ do
                 declare -a OfflineUncorrectable_HDD_Array
                 files="
                 "
-                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/smart_"{sd,nv}*.result
+                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/smart_"{sd,nv,sas}*.result
                 do
                     [[ -e "$file" ]] || break #no smart-files
                     #counter=$((counter + 1))
@@ -519,13 +519,13 @@ do
                     OfflineUncorrectable=$(grep -i "Offline_Uncorrectable\|Uncorrectable_Error_Count" "$file" | awk '{print 0+$10 }')
 
                     if [ "${BadSectors[@]}" -gt 0 ] 2>/dev/null; then
-                        BadSectors_HDD_Array+=$(basename -- "$file")
+                        BadSectors_HDD_Array+=$(basename -- "$file ")
                     fi
                     if [ "${PendingSectors[@]}" -gt 0  ] 2>/dev/null; then
-                        PendingSectors_HDD_Array+=$(basename -- "$file")
+                        PendingSectors_HDD_Array+=$(basename -- "$file ")
                     fi
                     if [ "${OfflineUncorrectable[@]}" -gt 0 ] 2>/dev/null ; then
-                        OfflineUncorrectable_HDD_Array+=$(basename -- "$file")
+                        OfflineUncorrectable_HDD_Array+=$(basename -- "$file ")
                     fi
                     for i in "${BadSectors[@]}"; do
                         (( BadSector_sum+="$i" )) &> /dev/null
@@ -679,7 +679,7 @@ do
                 #mehr smart-kram
                 #echo -e "\n" >> "$sm"
 
-                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/smart_"{sd,nv}*.result
+                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/smart_"{sd,nv,sas}*.result
                 do
                     [[ -e "$file" ]] || break #no smart-files
                     grep -i "Model Family\|Device Model" "$file" >> "$sg"
@@ -703,9 +703,10 @@ do
                 {
                     echo -e "\n"
                     echo "$file"
-                    grep -i "Vendor\|Product\|User Capacity\|Logical block size\|Physical block size\|Rotation Rate\|Form Factor\|Serial number\|Transport protocol\|SMART support is\|SMART support is" "$file"
+                    grep -i "overall-health self-assessment\|Model Family\|Device Model\|Serial Number\|Firmware Version\|Vendor\|Product\|User Capacity\|Sector Sizes\|Rotation Rate\|Logical block size\|Physical block size\|Rotation Rate\|Form Factor\|Transport protocol\|SMART support is\|SMART support is\|Raw_Read_Error_Rate\|Reallocated_Sector_Ct\|Seek_Error_Rate\|Spin_Retry_Count\|Calibration_Retry_Count\|Reallocated_Event_Count\|Current_Pending_Sector\|Offline_Uncorrectable\|UDMA_CRC_Error_Count\|Multi_Zone_Error_Rate\|Power_On_Hours\|Reallocated_Sector_Count\|Power-on_Hours\|Program_Fail_Count_(total)\|Erase_Fail_Count_(total)\|Runtime_Bad_Count_(total)\|Uncorrectable_Error_Count\|ECC_Error_Rate\|CRC_Error_Count\|POR_Recovery_Count\|Percent_Lifetime_Remain" "$file"
                             echo " "
                             awk '/=== START OF READ SMART DATA SECTION ===/{f=1;next} /END/{f=0} f' "$file"
+                            awk '/SMART Error Log Version: 1/{f=1;next} /Selective self-test flags/{f=0} f' "$file"
                 } >> "$sg"
                 done
 

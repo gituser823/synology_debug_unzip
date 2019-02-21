@@ -337,6 +337,7 @@ do
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/proc/mdstat" ]]
                 then    MDSTAT=$DOWNLOAD_DIR/debug_$DATE/$DSM/proc/mdstat
                         cat "$MDSTAT" >> "$sg"
+                        cat "$MDSTAT" | egrep 'md[^01]' -A2 | sed -r '/^\s*$/d' >> "$sm"
                 fi
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/bash_history.log" ]]
                 then    Bash_history=$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/bash_history.log
@@ -550,7 +551,21 @@ do
                     #     OfflineUncorrectable_HDD_Array+=$(basename -- "$file")
                     #     echo "Offline_Uncorrectable:" "$OfflineUncorrectable_sum in $(basename -- "$file")" >> "$sm"
                     # fi
-                echo -e "\nUPNP Model: $UpnpModel\n$counter HDDs:" >> "$sm"
+
+
+                if [ -z "${UpnpModel}" ]; then
+                    echo "CPUinfo from txt: no model detected." >> "$sm"
+                fi
+
+                log "${UpnpModel}"
+                log "${UpnpModel/+/\\+}\S"
+                {
+                echo -e "\nCPUinfo from txt:"
+                echo "$DS_CPU_TXTINFO"
+                echo -e "$DS_CPU_TXT\n"
+                }  >> "$sm"
+
+                #echo -e "\nUPNP Model: $UpnpModel\n$counter HDDs:" >> "$sm"
                 if [ -z "${BadSector_sum+x}" ]; then
                     echo "Reallocated_Sector_Ct: error" >> "$sm"
                     elif [[ "${BadSector_sum}" -eq 0 ]]; then
@@ -690,7 +705,7 @@ do
                 {
                     echo -e "\n"
                     echo "$file"
-                    grep -i "overall-health self-assessment\|Model Family\|Device Model\|Serial Number\|Firmware Version\|User Capacity\|Sector Sizes\|Rotation Rate\|ID\#\|Raw_Read_Error_Rate\|Reallocated_Sector_Ct\|Seek_Error_Rate\|Spin_Retry_Count\|Calibration_Retry_Count\|Reallocated_Event_Count\|Current_Pending_Sector\|Offline_Uncorrectable\|UDMA_CRC_Error_Count\|Multi_Zone_Error_Rate\|Power_On_Hours\|Reallocated_Sector_Count\|Power-on_Hours\|Program_Fail_Count_(total)\|Erase_Fail_Count_(total)\|Runtime_Bad_Count_(total)\|Uncorrectable_Error_Count\|ECC_Error_Rate\|CRC_Error_Count\|POR_Recovery_Count\|Percent_Lifetime_Remain" "$file"
+                    grep -i "overall-health self-assessment\|Model Family\|Device Model\|Serial Number\|Firmware Version\|User Capacity\|Sector Sizes\|Rotation Rate\|ID\#\|Raw_Read_Error_Rate\|Reallocated_Sector_Ct\|Seek_Error_Rate\|Spin_Retry_Count\|Calibration_Retry_Count\|Reallocated_Event_Count\|Current_Pending_Sector\|Offline_Uncorrectable\|UDMA_CRC_Error_Count\|Multi_Zone_Error_Rate\|Power_On_Hours\|Reallocated_Sector_Count\|Power-on_Hours\|Program_Fail_Count_(total)\|Erase_Fail_Count_(total)\|Runtime_Bad_Count_(total)\|Uncorrectable_Error_Count\|Uncorrectable_Error_Cnt\|Airflow_Temperature_Cel\|ECC_Error_Rate\|CRC_Error_Count\|POR_Recovery_Count\|Percent_Lifetime_Remain" "$file"
                             echo " "
                             awk '/SMART Error Log Version: 1/{f=1;next} /Selective self-test flags/{f=0} f' "$file"
                     echo -e " \n \n"
@@ -1004,11 +1019,10 @@ do
                          echo "AFP: Error   " >> "$sm"
                 fi
 
-                #echo -e "\n" >> "$sm"
-
                 DS_upnp_v="${UpnpModel}"
                 DS_upnp_unter="${DS_upnp_v}_"
                 DS_upnp_plus="${DS_upnp_unter//+/%2B}"
+
                 LatestBuildNumber=$( grep -i "$DS_upnp_plus" "$rss" | sed -e 's/<[^>]*>//g' | head -n 1 | cut -d "_" -f3 | cut -d "." -f1 ) #_plus
                 DSMBuildNumber=$( grep buildnumber "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/etc.defaults/VERSION | cut -d "\"" -f2 )
                 if [ "$LatestBuildNumber" -gt "$DSMBuildNumber" ]; then
@@ -1021,10 +1035,6 @@ do
                 fi
                 {
                 echo "installed VERSION: " "$DSM_VERSION, $DSM_BuildVERSION, $DSM_smallfixVERSION"
-
-                if [ -z "${UpnpModel}" ]; then
-                    echo "CPUinfo from txt: no model detected." >> "$sm"
-                fi
 
                 DS_CPU_TXTINFO=$( grep -m1 "CPU-Modell" "$CPU_FILE" )
                 DS_CPU_TXT=$( grep "${UpnpModel}[[:space:]]" "$CPU_FILE" )
@@ -1049,14 +1059,6 @@ do
                         echo "error comparing RAM-Size"  >> "$sm"
                     fi
                 fi
-
-                log "${UpnpModel}"
-                log "${UpnpModel/+/\\+}\S"
-                {
-                echo -e "\nCPUinfo from txt:"
-                echo "$DS_CPU_TXTINFO"
-                echo -e "$DS_CPU_TXT\n"
-                }  >> "$sm"
 
                 echo "Uptime: " "$UPTIME"
                 echo "Hostname: " "$Hostname"
@@ -1301,7 +1303,7 @@ do
                               if [[ $l =~ kernel:\ \[\ *([0-9]+)\.[0-9]+\] ]]; then
                                 tsecs="${BASH_REMATCH[1]}"
                                 # Grep again for anything +/- 1 sec from that timestamp
-                                grep -E "kernel: \[($((tsecs-2))|$((tsecs-1))|${tsecs}|$((tsecs+1))|$((tsecs+2)))\.[0-9]+\]" "$MESSAGES"
+                                grep -aE "kernel: \[($((tsecs-2))|$((tsecs-1))|${tsecs}|$((tsecs+1))|$((tsecs+2)))\.[0-9]+\]" "$MESSAGES"
                                 echo -e "\n"
                               fi
                             done

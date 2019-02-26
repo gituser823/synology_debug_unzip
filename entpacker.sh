@@ -559,6 +559,8 @@ do
 
                 log "${UpnpModel}"
                 log "${UpnpModel/+/\\+}\S"
+                DS_CPU_TXTINFO=$( grep -m1 "CPU-Modell" "$CPU_FILE" )
+                DS_CPU_TXT=$( grep "${UpnpModel}[[:space:]]" "$CPU_FILE" )
                 {
                 echo -e "\nCPUinfo from txt:"
                 echo "$DS_CPU_TXTINFO"
@@ -1036,8 +1038,6 @@ do
                 {
                 echo "installed VERSION: " "$DSM_VERSION, $DSM_BuildVERSION, $DSM_smallfixVERSION"
 
-                DS_CPU_TXTINFO=$( grep -m1 "CPU-Modell" "$CPU_FILE" )
-                DS_CPU_TXT=$( grep "${UpnpModel}[[:space:]]" "$CPU_FILE" )
                 DS_MEM_TXT=$( grep "${UpnpModel}[[:space:]]" "$CPU_FILE" | rev | cut -d ' ' -f1,2 |rev ) #todo: if realRAM > preinstalled then echo
                 DS_MEM_TXT_byte=$( grep "${UpnpModel}[[:space:]]" "$CPU_FILE" | rev | cut -d ' ' -f1,2 |rev | tr -d ' B' | numfmt --from=iec)
                 DS_MEM_TXT_kbyte=$( grep "${UpnpModel}[[:space:]]" "$CPU_FILE" | rev | cut -d ' ' -f1,2 |rev | tr -d ' B' | numfmt --from=iec | awk '{ number = $1 / 1024; print number }' )

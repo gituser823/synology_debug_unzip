@@ -74,7 +74,6 @@ while getopts ":uvh" opt; do
         curl "https://www.synology.com/de-de/solution/SRS" -# --output "$srs"
         stat --printf="Size: %s" "$srs"
         awk '/<div class="selected_country">Deutschland<\/div>/{f=1;next} /<div class="selected_country">Griechenland<\/div>/{f=0} f' "$srs" > "$srsde"
-        #CommentedOut() { #uncomment this and line 86 to stop downloading hdd-comp on -u
         echo -e "\nGetting available Models:"
         curl "https://www.synology.com/cgi/misc/?action=getProductList_withOEM" -# | grep -oP '(?<=\[).*(?=\])' > "$ProductList" #get all Models listed in Synology API
         stat --printf="Size: %s" "$ProductList"
@@ -105,7 +104,6 @@ while getopts ":uvh" opt; do
             lftp -f "${Script_dir}/comp/lftp.cfg"
             echo "done.";
             sed -e "s/\\\\\///g" -i "${Script_dir}"/comp/*.json #Kingston SSDs: remove "\/"
-            #}
         echo "Updating latest package Versions:"
         lftp -c "open https://archive.synology.com/download/Package/spk/; cls" > "${available_packages_pre}"; #download package list
         sed -i '/^enabled$/d' "${available_packages_pre}"
@@ -259,14 +257,14 @@ do
                     if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/ha/passive_debug.dat" ]]
                     then
                         sm="$DOWNLOAD_DIR/debug_$DATE/$DSM/sm.log"
-                        echo -e "Synology HA: Detected, this is the ACTIVE Server-log" >> "$sm"
+                        echo -e "Synology HA: Detected, this is the ACTIVE Server-log\n" >> "$sm"
                         mv "$DOWNLOAD_DIR/debug_$DATE/$DSM/ha/passive_debug.dat" "$DOWNLOAD_DIR/passive_debugfile.dat"
                     fi
                 elif [[ "$file" = "$DOWNLOAD_DIR/passive_debugfile.dat" ]]; then
                     DSM=$(ls "$DOWNLOAD_DIR/debug_$DATE/tmp" )
                     DSM="tmp/${DSM}"
                     sm="$DOWNLOAD_DIR/debug_$DATE/$DSM/sm.log"
-                    echo -e "Synology HA: Detected, this is the PASSIVE Server-log" >> "$sm"
+                    echo -e "Synology HA: Detected, this is the PASSIVE Server-log\n" >> "$sm"
                 else
                     sm="$DOWNLOAD_DIR/debug_$DATE/$DSM/sm.log"
                     #echo -e "No Synology HA detected" >> "$sm"
@@ -287,8 +285,6 @@ do
 
                 UpnpModel=$(grep -i "upnpmodelname" "$Synoinfo" | cut -d "\"" -f2)
                 UpnpModel_migrated_from=$(grep -i "upnpmodelname" "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/synoinfo.conf" | cut -d "\"" -f2)
-                            #TIMEFORMAT=$'Extractiontime messages.xz and kern.xz:\t\t\t\t\t\t\e[36m%Rsec\e[39m'
-                            #time(
                     for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/messages"*.xz
                         do
                             unxz "${file}"
@@ -298,16 +294,15 @@ do
                         do
                             unxz "${file}"
                         done
-                                #)
 
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/df.result" ]]
                 then    DF=$DOWNLOAD_DIR/debug_$DATE/$DSM/result/df.result
                         full_number=$(awk '0+$5 >= 90 { count++ } END{print 0+count}' "$DF")
                         if [[ "$full_number" -gt 0 ]]
                         then
-                            echo -e "\nMountpoints more than 90% full: (""$full_number"")" >> "$sm"
-                            awk '0+$5>90 { printf "\n%s",$0 }' "$DF" >> "$sm"
-                            echo -e "\n" >> "$sm"
+                            echo -e "Mountpoints more than 90% full: (""$full_number"")" >> "$sm"
+                            awk '0+$5>90 { printf "%s\n",$0 }' "$DF" >> "$sm"
+                            #echo -e "\n" >> "$sm"
                             echo -n "Mountpoints more than 90% full: (""$full_number"")" >> "$sg"
                             awk '0+$5>90 { printf "\n%s",$0 }' "$DF" >> "$sg"
                         else
@@ -329,7 +324,7 @@ do
                                     if  [ "$Volume_x64" ]; then
                                         log "$(basename -- "$file") has x64"
                                     else
-                                        echo -e "$(basename -- "$file" | cut -d '.' -f2) has 16 Terabyte Volume Limitation." >> "$sm"
+                                        echo -e "$(basename -- "$file" | cut -d '.' -f2) has 16 Terabyte Volume Limitation.\n" >> "$sm"
                                     fi
                                 fi
                         done
@@ -517,7 +512,7 @@ do
                     declare -a OfflineUncorrectable
                     BadSectors=$(grep -i "Reallocated_Sector_Ct\|Reallocated_Sector_Count" "$file" | awk '{print 0+$10 }')
                     PendingSectors=$(grep -i "Current_Pending_Sector" "$file" | awk '{print 0+$10 }')
-                    OfflineUncorrectable=$(grep -i "Offline_Uncorrectable\|Uncorrectable_Error_Count" "$file" | awk '{print 0+$10 }')
+                    OfflineUncorrectable=$(grep -i "Offline_Uncorrectable\|Uncorrectable_Error_Count\|Off-Line_Scan_Uncorrectable_Sector_Count" "$file" | awk '{print 0+$10 }')
 
                     if [ "${BadSectors[@]}" -gt 0 ] 2>/dev/null; then
                         BadSectors_HDD_Array+=$(basename -- "$file ")
@@ -652,15 +647,15 @@ do
                     elif grep "${modelname//-/ - }" "${incomp_list}" &> /dev/null; then
                         HDDComp="(incompatible)"
                         log "HDD-INComp: found \"\e[31m${modelname//-/ - }\e[0m\""
-                    elif grep  "${modelname%-*}" "${incomp_list}" &> /dev/null; then # remove part after "-"; check if two parts first?
-                        HDDComp="(incompatible)"
-                        log "HDD-INComp: found \"\e[32m${modelname%-*}\e[0m\""
                     elif grep  "${modelname}" "${comp_list}" &> /dev/null; then
                         HDDComp="(compatible)"
                         log "HDD-Comp: found \"\e[32m${modelname}\e[0m\""
                     elif grep  "${modelname//-/ - }" "${comp_list}" &> /dev/null; then
                         HDDComp="(compatible)"
                         log "HDD-Comp: found \"\e[32m${modelname//-/ - }\e[0m\""
+                    elif grep  "${modelname%-*}" "${incomp_list}" &> /dev/null; then # remove part after "-"; check if two parts first?
+                        HDDComp="(incompatible)"
+                        log "HDD-INComp: found \"\e[32m${modelname%-*}\e[0m\""
                     elif grep  "${modelname%-*}" "${comp_list}" &> /dev/null; then # remove part after "-"; check if two parts first?
                         HDDComp="(compatible)"
                         log "HDD-Comp: found \"\e[32m${modelname%-*}\e[0m\""
@@ -669,30 +664,28 @@ do
                         log "\e[34mHDD-Comp: \"${modelname}\" not found.\e[0m"
                     fi
                     log "compatibility check for ${hddname} grepped for ${modelname} , ${modelname//-/ - } and ${modelname%-*} ; HDD Size: ${modelname_hdd_size}"
-                    echo -n "$hddname: $hddname2 $HDDComp: PowerOnHours: " >> "$sm"
                     PoH=$(grep -iE "Power(_|-)on_(Hours|Hour_Count)" "$file" | sed -e "s/ ([^()]*)//g" | rev | cut -d " " -f1 | rev | sed 's/h.*//' )
-                    echo "${PoH}" >> "$sm"
-                    echo -n "Last Extended SMART-Test: " >> "$sm"
+                    echo -e "$hddname: $hddname2 $HDDComp:\tPowerOnHours: ${PoH}" #>> "$sm"
+                    echo -n "Last Extended SMART-Test: " #>> "$sm"
                     LastSmartTest=$(grep -i -m1 "Extended Offline" "$file" | sed -n '/Extended offline/s/ \+/ /gp' | rev | cut -d " " -f2 | rev )
                     LastSmartResult=$(grep -i -m1 "Extended Offline" "$file" | sed -n '/Extended offline/s/ \+/ /gp' | sed 's/[^0-9]*[0-9] *//' | sed 's/ [0-9].*$//' | sed 's/^Extended offline //' )
-                    #old:                     LastSmartResult=$(grep -i -m1 "Extended Offline" "$file" | sed -n '/Extended offline/s/ \+/ /gp' | cut -d " " -f5-7 )
                     re='^[0-9]+$'
                     if ! [[ "${LastSmartTest}" =~ $re ]] ; then
                     LastSmartTest=$(grep -i -m1 "Extended Offline" "$file" | sed -n '/Extended offline/s/ \+/ /gp' | cut -d " " -f8 )
                     LastSmartResult=$(grep -i -m1 "Extended Offline" "$file" | sed -n '/Extended offline/s/ \+/ /gp' | cut -d " " -f4-8 )
                     fi
                     if [[ -z "${LastSmartTest}" ]]; then
-                    echo -n "never" >> "$sm"
+                    echo -n "never" #>> "$sm"
                     elif [[ -z "${LastSmartTest+x}" ]]; then
-                    echo "error"
+                    echo -n "error" #>> "$sm"
                         else
                         LastSmartExpr=$(expr "${PoH}" - "${LastSmartTest}" )
                         #log "expr: $PoH und $LastSmarttest"
-                        echo -n "$LastSmartExpr" "hours ago, $LastSmartResult" >> "$sm"
+                        echo -n "$LastSmartExpr" "hours ago, $LastSmartResult" #>> "$sm"
                     fi
-                    echo -n ", Sectorsize: $SectorSize" >> "$sm"
-                    echo ", HDD Size: $modelname_hdd_size" >> "$sm"
-                done
+                    echo -ne ", Sectorsize: $SectorSize" #>> "$sm"
+                    echo ", HDD Size: $modelname_hdd_size" #>> "$sm"
+                done | column -t -s$'\t' >> "$sm"
                 #mehr smart-kram
                 #echo -e "\n" >> "$sm"
 
@@ -707,7 +700,7 @@ do
                 {
                     echo -e "\n"
                     echo "$file"
-                    grep -i "overall-health self-assessment\|Model Family\|Device Model\|Serial Number\|Firmware Version\|User Capacity\|Sector Sizes\|Rotation Rate\|ID\#\|Raw_Read_Error_Rate\|Reallocated_Sector_Ct\|Seek_Error_Rate\|Spin_Retry_Count\|Calibration_Retry_Count\|Reallocated_Event_Count\|Current_Pending_Sector\|Offline_Uncorrectable\|UDMA_CRC_Error_Count\|Multi_Zone_Error_Rate\|Power_On_Hours\|Reallocated_Sector_Count\|Power-on_Hours\|Program_Fail_Count_(total)\|Erase_Fail_Count_(total)\|Runtime_Bad_Count_(total)\|Uncorrectable_Error_Count\|Uncorrectable_Error_Cnt\|Airflow_Temperature_Cel\|ECC_Error_Rate\|CRC_Error_Count\|POR_Recovery_Count\|Percent_Lifetime_Remain" "$file"
+                    grep -i "overall-health self-assessment\|Model Family\|Device Model\|Serial Number\|Firmware Version\|User Capacity\|Sector Sizes\|Rotation Rate\|ID\#\|Raw_Read_Error_Rate\|Reallocated_Sector_Ct\|Seek_Error_Rate\|Spin_Retry_Count\|Calibration_Retry_Count\|Reallocated_Event_Count\|Current_Pending_Sector\|Offline_Uncorrectable\|UDMA_CRC_Error_Count\|Multi_Zone_Error_Rate\|Power_On_Hours\|Reallocated_Sector_Count\|Power-on_Hours\|Program_Fail_Count_(total)\|Erase_Fail_Count_(total)\|Runtime_Bad_Count_(total)\|Uncorrectable_Error_Count\|Uncorrectable_Error_Cnt\|Off-Line_Scan_Uncorrectable_Sector_Count\|Airflow_Temperature_Cel\|ECC_Error_Rate\|CRC_Error_Count\|POR_Recovery_Count\|Percent_Lifetime_Remain" "$file"
                             echo " "
                             awk '/SMART Error Log Version: 1/{f=1;next} /Selective self-test flags/{f=0} f' "$file"
                     echo -e " \n \n"
@@ -1451,9 +1444,6 @@ do
                 #log "$subl" "${OpenFiles[@]}"
                 #$subl "$DEBUG_DIR" "$SMART_GREP" "$PACK" "$Bash_history" "$hb_debug" "$HB" "$DF" "$IFCONFIG" "$SPACE_FILES":10000 "$SYSDBtac":100000 "$sm" "$MESSAGES":1000000 "${PicArray[@]}"
                 #"${subl}" "$DEBUG_DIR" "$SMART_GREP" "$PACK" "$Bash_history" "$hb_debug" "$HB" "$DF" "$IFCONFIG" "$SPACE_FILES":10000 "$SYSDBtac":100000 "$sm" "$MESSAGES":1000000 "${PicArray[@]}" #$pics
-                #echo "subl \"$DEBUG_DIR\" \"$SMART_GREP\" \"$PACK\" \"$Bash_history\" \"$hb_debug\" \"$HB\" \"$DF\" \"$IFCONFIG\" \"$SPACE_FILES:10000\" \"$SYSDBtac:100000\" \"$sm\" \"$MESSAGES:1000000\" \"${PicArray[@]}\""
-                #echo "subl \"$DEBUG_DIR\" \"$SMART_GREP\" \"$PACK\" \"$Bash_history\" \"$hb_debug\" \"$HB\" \"$DF\" \"$IFCONFIG\" \"$SPACE_FILES:10000\" \"$SYSDBtac:100000\" \"$sm\" \"$MESSAGES:1000000\" \"${PicArray[@]}\"" > ~/last_debug.sh
-                #echo "Array: ${OpenFiles[@]}"
                 # for smart-files: ${SMART_FILES[@]}  $MDSTAT
             else
                 mkdir -p "${DOWNLOAD_DIR}/kapott"

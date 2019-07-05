@@ -2,9 +2,11 @@ System Modell	CPU-Modell			Kerne		Threads	FPU	Paket-Architektur RAM
 x19-Reihe
 RS1619xs+   Intel Xeon D-1527       Quad Core   4   Ja  Broadwell   DDR4-2133 ECC UDIMM 8 GB
 RS1219+     Intel Atom C2538        Quad Core   4   Ja  Avoton  DDR3 2 GB
+RS819       Realtek rtd1296         Quad Core   4   Ja  rtd1296     DDR4 2 GB
 DS2419+     Intel Atom C3538        Quad Core   4   Ja  Denverton   DDR4 Non-ECC SO-DIMM 4 GB
 DS1819+     Intel Atom C3538        Quad Core   4   Ja  Denverton   DDR4-2133 Non-ECC SO-DIMM 4 GB
 DS1019+     Intel Celeron J3455     Quad Core   4   Ja  Apollolake  DDR3L SO-DIMM 8GB
+DS419slim   Marvell Armada 385 88F6820  Dual Core   2   Ja  armada38xx  DDR3L 512MB
 DS119j      Marvell A3720           Dual Core   2   Ja  armada37xx  DDR3L 256MB
 x18-Reihe
 FS1018 		Intel Pentium D1508 	Dual Core 	4 	Yes 	Broadwellnk 	DDR4 SO-DIMM 8 GB
@@ -37,8 +39,8 @@ RS3617RPxs	Intel Xeon D-1521		Quad Core	8	Ja	Broadwell	DDR4 ECC UDIMM 8 GB
 RS3617xs	Intel Xeon E3-1230 v2		Quad Core	8	Ja	Bromolow	DDR3 ECC 4 GB
 RS217		Marvell Armada 385 88F6820	Dual Core	2	Ja	Armada38x	DDR3 512 MB
 DS3617xs	Intel Xeon D-1527		Quad Core	8	Ja	Broadwell	DDR4 ECC SO-DIMM 16 GB
-DS1817+		Intel Atom C2538		Quad Core	4	Ja	Avoton		DDR3 2/8 GB
-DS1517+		Intel Atom C2538		Quad Core	4	Ja	Avoton		DDR3 2/8 GB
+DS1817+		Intel Atom C2538		Quad Core	4	Ja	Avoton		DDR3 8 GB
+DS1517+		Intel Atom C2538		Quad Core	4	Ja	Avoton		DDR3 8 GB
 DS1817		Annapurna Labs Alpine AL-314	Quad Core	4	Ja	Alpine		DDR3L 4 GB
 DS1517		Annapurna Labs Alpine AL-314	Quad Core	4	Ja	Alpine		DDR3L 2 GB
 x16-Reihe
@@ -47,7 +49,7 @@ RS18016xs+	Intel Xeon E3-1230 v2		Quad Core	8	Ja	Bromolow	DDR3 ECC 8 GB
 RS2416+     Intel Atom C2538	Quad Core	4	Ja	Avoton	DDR3 2 GB
 RS2416RP+   Intel Atom C2538   Quad Core   4   Ja  Avoton  DDR3 2 GB
 RS816		Marvell Armada 385 88F6820	Dual Core	2	Ja	Armada38x	DDR3 1 GB
-DS916+		Intel Pentium N3710		Quad Core	4	Ja	Braswell	DDR3 2 / 8 GB
+DS916+		Intel Pentium N3710		Quad Core	4	Ja	Braswell	DDR3 8 GB
 DS716+II	Intel Celeron N3160		Quad Core	4	Ja	Braswell	DDR3 2 GB
 DS716+		Intel Celeron N3150		Quad Core	4	Ja	Braswell	DDR3 2 GB
 DS416play	Intel Celeron N3060		Dual Core	2	Ja	Braswell	DDR3 1 GB

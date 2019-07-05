@@ -302,7 +302,7 @@ do
                         then
                             echo -e "Mountpoints more than 90% full: (""$full_number"")" >> "$sm"
                             awk '0+$5>90 { printf "%s\n",$0 }' "$DF" >> "$sm"
-                            #echo -e "\n" >> "$sm"
+                            echo -e "\n" >> "$sm"
                             echo -n "Mountpoints more than 90% full: (""$full_number"")" >> "$sg"
                             awk '0+$5>90 { printf "\n%s",$0 }' "$DF" >> "$sg"
                         else
@@ -470,7 +470,14 @@ do
                 fi
 
                 declare -a SMART_FILES
-                SMART_FILES=( "${DOWNLOAD_DIR}/debug_${DATE}/${DSM}/result/smart"*.result )
+                SMART_FILES=( "${DOWNLOAD_DIR}/debug_${DATE}/${DSM}/result/sd"* )
+
+                #declare -a SMART_FILES
+                #SMART_FILES=( "${DOWNLOAD_DIR}/debug_${DATE}/${DSM}/result/smart"*.result )
+
+                #if [ "${#SMART_FILES[@]}" -eq "0" ]; then
+                #SMART_FILES=( "${DOWNLOAD_DIR}/debug_${DATE}/${DSM}/result/sd"* )
+                #fi
 
                 declare -a SMART_neu
                 SMART_neu=( "${DOWNLOAD_DIR}/debug_${DATE}/${DSM}/var/log/smart_result/"*.txz )
@@ -483,14 +490,15 @@ do
                         tar xf "${SMART_neu[*]: -1}" -C "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/"
                         #oder: tar xf "${SMART_neu[*]: -2:1}" -C "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/"
                         #tar xf "${SMART_neu[-1]}" -C "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/" #geht!
-                        smarttar=$(ls "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/result/var/log/smart_result/ )
+                        smarttar=$(ls "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/result/var/log/smart_result/ 2>/dev/null)
                         for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/var/log/smart_result/$smarttar/"*
                         do
                             [[ -e "$file" ]] || break #no smart-files
                             filename=$(basename -- "$file")
-                            mv "$file" "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/smart_$filename".result
+                            mv "$file" "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/sd_$filename".result
+                            #mv "$file" "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/sd_$filename".result
                         done
-                        SMART_FILES=( "${DOWNLOAD_DIR}/debug_${DATE}/${DSM}/result/smart"*.result )
+                        SMART_FILES=( "${DOWNLOAD_DIR}/debug_${DATE}/${DSM}/result/sd"*.result )
                         log "neusmart#: ${#SMART_FILES[@]}"
                 else
                     log "No new Smart-files found."
@@ -502,7 +510,8 @@ do
                 declare -a OfflineUncorrectable_HDD_Array
                 files="
                 "
-                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/smart_"{sd,nv,sas}*.result
+                #for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/smart"{sd,nv,sas}*
+                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/"{sd,nv,sas}*
                 do
                     [[ -e "$file" ]] || break #no smart-files
                     #counter=$((counter + 1))
@@ -604,7 +613,7 @@ do
                 fi
 
                 #declare -a PowerOnHours
-                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/smart"*.result
+                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/sd"*
                 do
                     [[ -e "$file" ]] || break #no smart-files
                     hddname=$(basename -- "$file")
@@ -665,11 +674,7 @@ do
                     fi
                     log "compatibility check for ${hddname} grepped for ${modelname} , ${modelname//-/ - } and ${modelname%-*} ; HDD Size: ${modelname_hdd_size}"
                     PoH=$(grep -iE "Power(_|-)on_(Hours|Hour_Count)" "$file" | sed -e "s/ ([^()]*)//g" | rev | cut -d " " -f1 | rev | sed 's/h.*//' )
-<<<<<<< HEAD
                     echo -e "$hddname: $hddname2\t$HDDComp: PowerOnHours: ${PoH}" #>> "$sm"
-=======
-                    echo -e "$hddname: $hddname2 $HDDComp:\tPowerOnHours: ${PoH}" #>> "$sm"
->>>>>>> origin/master
                     echo -n "Last Extended SMART-Test: " #>> "$sm"
                     LastSmartTest=$(grep -i -m1 "Extended Offline" "$file" | sed -n '/Extended offline/s/ \+/ /gp' | rev | cut -d " " -f2 | rev )
                     LastSmartResult=$(grep -i -m1 "Extended Offline" "$file" | sed -n '/Extended offline/s/ \+/ /gp' | sed 's/[^0-9]*[0-9] *//' | sed 's/ [0-9].*$//' | sed 's/^Extended offline //' )
@@ -693,12 +698,12 @@ do
                 #mehr smart-kram
                 #echo -e "\n" >> "$sm"
 
-                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/smart_"{sd,nv,sas}*.result
+                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/"{sd,nv,sas}*
                 do
                     [[ -e "$file" ]] || break #no smart-files
                     grep -i "Model Family\|Device Model" "$file" >> "$sg"
                 done
-                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/smart_"{sd,nv}*.result
+                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/"{sd,nv}*
                 do
                     [[ -e "$file" ]] || break #no smart-files
                 {
@@ -869,7 +874,7 @@ do
                     grep_hddissue=$( grep -c "core_clear_root_int_from_queue Error Interrupt\|Issued IDENTIFY to non-existent device ?!" "$MESSAGES" )
                     if [ "$grep_hddissue" -gt 0 ]; then
                         echo -e "\nKnown Issue: random HDD drops of WD or HGST HDDs, update HDD Firmware: https://cssnew.synology.com/issue/9198" >> "$sm"
-                        grep -i "core_clear_root_int_from_queue Error Interrupt: PHY Decoding Error\|Issued IDENTIFY to non-existent device ?!" "$MESSAGES" >> "$sm"
+                        grep -ia "core_clear_root_int_from_queue Error Interrupt: PHY Decoding Error\|Issued IDENTIFY to non-existent device ?!" "$MESSAGES" >> "$sm"
                     fi
 
                         version_compare_gt() {
@@ -1027,8 +1032,9 @@ do
                 if [ "$LatestBuildNumber" -gt "$DSMBuildNumber" ]; then
                     {
                     echo "More current DSM Version available."
-                    echo "available Updates (grep ""$DS_MODEL_plus"") :"
+                    echo "available Updates (grep ""$DS_MODEL_plus""):"
                     grep -i "$DS_MODEL_plus" "$rss" | sed -e 's/<[^>]*>//g'
+                    echo -e " "
                     } >> "$sm"
                 else echo "DSM Version is latest!" >> "$sm"
                 fi
@@ -1179,8 +1185,89 @@ do
                         if [[ $counter -gt 0 ]]; then
                             echo -e "\n" >> "$sm"
                         fi
+
+                        echo -e "Overview:" >> "$sm"
                         echo -en "Third Party packages:" >> "$sm"
-                        third_packages=$(grep -v "AntiVirus\|AudioStation\|Calendar\|CloudStation\|FileStation\|HyperBackup\|LogCenter\|MediaServer\|NoteStation\|PHP[0-9].[0-9]\|PhotoStation\|ProxyServer\|StorageAnalyzer\|SynoFinder\|SynologyApplicationService\|SynologyDrive\|TextEditor\|USBCopy\|VideoStation\|WebDAVServer\|CloudSync\|DownloadStation\|SurveillanceStation\|WebStation\|VPNCenter\|MariaDB\|Chat\|Git\|Node.js_4\|Perl\|ActiveBackup\|ActiveBackup-Office365\|ActiveDirectoryServer\|Apache[0-9].[0-9]\|CMS\|CardDAVServer\|DNSServer\|DiagnosisTool\|Docker\|MailClient\|MailPlus-Server\|OAuthService\|PetaSpace\|PrestoServer\|PythonModule\|SSOServer\|SnapshotReplication\|Spreadsheet\|SynologyMoments\|Virtualization\|iTunesServer\| enabled\|TimeBackup\|Java7\|Java8\|exFAT\|PDFViewer\|DocumentViewer\|MailServer\|MailStation\|phpMyAdmin\|total [[:digit:]]\{,3\}" "$PACK")
+                        third_packages=$(grep -v "AntiVirus\|AudioStation\|Calendar\|CloudStation\|FileStation\|HyperBackup\|LogCenter\|MediaServer\|NoteStation\|PHP[0-9].[0-9]\|PhotoStation\|ProxyServer\|StorageAnalyzer\|SynoFinder\|SynologyApplicationService\|SynologyDrive\|TextEditor\|USBCopy\|VideoStation\|WebDAVServer\|CloudSync\|DownloadStation\|SurveillanceStation\|WebStation\|VPNCenter\|MariaDB\|Chat\|Git\|Node.js_4\|Perl\|ActiveBackup\|ActiveBackup-Office365\|ActiveDirectoryServer\|Apache[0-9].[0-9]\|CMS\|CardDAVServer\|DNSServer\|DiagnosisTool\|Docker\|MailClient\|MailPlus-Server\|OAuthService\|PetaSpace\|PrestoServer\|PythonModule\|SSOServer\|SnapshotReplication\|Spreadsheet\|SynologyMoments\|Virtualization\|iTunesServer\| enabled\|TimeBackup\|Java7\|Java8\|exFAT\|PDFViewer\|DocumentViewer\|HighAvailability\|MailServer\|MailStation\|phpMyAdmin\|total [[:digit:]]\{,3\}" "$PACK")
+                        if [ -z "$third_packages" ]; then
+                            echo -e "\tnone" >> "$sm"
+                        else
+                            third_packages_count="$third_packages" | uniq -u | wc -l  &> /dev/null
+                            echo -e "\t$third_packages_count" >> "$sm"
+                        fi
+                        if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/synolog/synosys.log" ]]; then
+                            SYSDB="$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/synolog/synosys.log"
+                        elif [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/synolog/.SYNOSYSDB" ]]; then
+                            sqlite3 "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/synolog/.SYNOSYSDB" "select id, datetime(time,'unixepoch','localtime'), username, msg from logs;" >> "$DOWNLOAD_DIR/debug_$DATE/$DSM/SYSDB.log"
+                            SYSDB="$DOWNLOAD_DIR/debug_$DATE/$DSM/SYSDB.log"
+                            else
+                                log "No SYSDB found."
+                        fi
+                        impropershutdown=$(grep -ia "improper shutdown" "$SYSDB")
+                        if [[ -z "$impropershutdown" ]]; then
+                            echo -e "improper shutdowns:\t\tnone" >> "$sm"
+                        else
+                            echo -ne "improper shutdowns:\t\t" >> "$sm"
+                            grep -iac "improper shutdown" "$SYSDB" >> "$sm"
+                        fi
+                        volumecrash=$(grep -ia "was crashed" "$SYSDB") #volumecrash
+                        if [[ -z "$volumecrash" ]]; then
+                            echo -e "Volume crashes:\t\t\tnone" >> "$sm"
+                        else
+                            echo -ne "Volume crashes found: " >> "$sm"
+                            grep -iac "was crashed" "$SYSDB" >> "$sm"
+                        fi
+
+                        degradedvolume=$(grep -ia "degrade" "$SYSDB") #volumecrash
+                        if [[ -z "$degradedvolume" ]]; then
+                            echo -e "degraded volumes:\t\tnone" >> "$sm"
+                        else
+                            echo -ne "degraded volumes:\t\t" >> "$sm"
+                            grep -iac "degrade" "$SYSDB" >> "$sm"
+                        fi
+
+                        generrors=$(grep -ia "error" "$SYSDB" | uniq -u | wc -l) #volumecrash
+                        if [[ "$generrors" -eq 0 ]]; then
+                            echo -e "generic errs:\t\t\tnone" >> "$sm"
+                        else
+                            echo -e "generic errs:\t\t\t$(grep -ia "error" "$SYSDB" | uniq -u | wc -l)" >> "$sm"
+                        fi
+
+                        DRDYErr=$(grep -ia "DRDY" "$MESSAGES" | uniq -u | wc -l)
+                        if [[ "$DRDYErr" -eq 0 ]]; then
+                            echo -e "DRDY:\t\t\t\t\tnone" >> "$sm"
+                        else
+                            echo -e "DRDY:\t\t\t\t\t$(grep -ia "DRDY" "$MESSAGES" | uniq -u | wc -l)" >> "$sm"
+                        fi
+                        database_malformed=$(grep -iac "database disk image is malformed" "$MESSAGES")
+                        if [[ "$database_malformed" -eq 0 ]]; then
+                            echo -e "Database is malformed:\tnone" >> "$sm"
+                        else
+                            echo -e "Database is malformed:\t$(grep -iac "database disk image is malformed" "$MESSAGES")"  >> "$sm"
+                        fi
+
+                        oom_kills=$(grep -iac "out_of_memory" "$MESSAGES")
+                        if [[ "$oom_kills" -eq 0 ]]; then
+                            echo -e "Out of Memory kills:\tnone"  >> "$sm"
+                        else
+                            echo -e "Out of Memory kills:\t$(grep -iac "out_of_memory" "$MESSAGES")" >> "$sm"
+                        fi
+
+                        crashes=$(grep -iac "crash" "$MESSAGES")
+                        if [[ "$crashes" -eq 0 ]]; then
+                            echo -e "generic crashes:\t\tnone" >> "$sm"
+                        else
+                            echo -e "generic crashes:\t\t$(grep -iac "crash" "$MESSAGES")" >> "$sm"
+                        fi
+                        CallTraces=$(grep -iac "Call Trace" "$MESSAGES")
+                        if [[ "$CallTraces" -eq 0 ]]; then
+                            echo -e "Call Traces:\t\t\tnone" >> "$sm"
+                        else
+                            echo -e "Call Traces:\t\t\t$(grep -iac "Call Trace" "$MESSAGES")" >> "$sm"
+                        fi
+
+                        echo -e "\n" >> "$sm"
+                        echo -e "Third Party packages:" >> "$sm"
                         if [ -z "$third_packages" ]; then
                             echo -e "\tnone" >> "$sm"
                         else
@@ -1211,16 +1298,6 @@ do
                     fi
                 fi
 
-                if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/synolog/synosys.log" ]]; then
-                    SYSDB="$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/synolog/synosys.log"
-                elif [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/synolog/.SYNOSYSDB" ]]; then
-                    sqlite3 "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/synolog/.SYNOSYSDB" "select id, datetime(time,'unixepoch','localtime'), username, msg from logs;" >> "$DOWNLOAD_DIR/debug_$DATE/$DSM/SYSDB.log"
-                    SYSDB="$DOWNLOAD_DIR/debug_$DATE/$DSM/SYSDB.log"
-                    else
-                        log "No SYSDB found."
-                fi
-
-
                     tac "$SYSDB" >> "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/synolog/synosystac.log"
                     SYSDBtac="$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/synolog/synosystac.log"
 
@@ -1232,7 +1309,6 @@ do
                         echo "$impropershutdown" >> "$sm"
                         echo -e "\n" >> "$sm"
                     fi
-
                     volumecrash=$(grep -ia "was crashed" "$SYSDB") #volumecrash
                     if [[ -z "$volumecrash" ]]; then
                         echo -e "Volume crashes:\t\t\tnone" >> "$sm"
@@ -1280,6 +1356,14 @@ do
                             echo -e "\n"
                         fi
 
+                        oom_kills=$(grep -iac "out_of_memory" "$MESSAGES")
+                        if [[ "$oom_kills" -eq 0 ]]; then
+                            echo -e "Out of Memory kills:\tnone"
+                        else
+                            echo -e "$(grep -iac "out_of_memory" "$MESSAGES") times Out of Memory kills:"
+                            grep -ia "out_of_memory" "$MESSAGES"
+                            echo -e "\n"
+                        fi
                         crashes=$(grep -iac "crash" "$MESSAGES")
                         if [[ "$crashes" -eq 0 ]]; then
                             echo -e "generic crashes:\t\tnone"
@@ -1336,7 +1420,6 @@ do
                             else echo "Extended kernel logging on NAS is off." >> "$hb_debug"
                     fi
                 fi
-
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/synoinfo.conf" ]]; then
                 sys_stat_dump=$(grep "sys_stat_dump" "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/synoinfo.conf" | cut -d "=" -f2)
                     if [ "$sys_stat_dump" == "yes" ]

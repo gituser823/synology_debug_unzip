@@ -11,8 +11,8 @@
 # unmatched patterns expand as result values
 shopt -s nullglob
 
-#win sub:sudo apt-get  install bc unzip (sqlite3) xmllint jq
-#sudo apt install sqlite3 zenity sublime-text xmllint lftp jq
+#win sub:sudo apt-get  install bc unzip (sqlite3)
+#sudo apt install sqlite3 zenity sublime-text lftp
 
 sleep_scan_dir=1 #Folder rescan time in seconds
 sleep_extract_zip=0.5 #rescan time for finishing download
@@ -430,7 +430,7 @@ do
                         do
                             [[ -e "$file" ]] || log "$file not found."
                             [[ -e "$file" ]] || break
-                            ExtensionHdds=$(grep -a "syno_device_list" "$file" | cut -d "\"" -f2 | sed 's/\/dev\///g')
+                            ExtensionHdds=$(grep -a "syno_device_list" "$file" | cut -d "\"" -f2 | sed 's/\/dev\///g' 2>/dev/null) #Warnung: Befehlsersetzung: Null Byte Eingabe ignoriert
                             ExtensionHddsLoopArray=("$ExtensionHdds")
                             for ((i=0; i<${#ExtensionHddsLoopArray[@]}; ++i))
                             do
@@ -944,6 +944,14 @@ do
                 } >> "$sm"
                 fi
 
+                if grep -ia "btrfs_wait_pending_ordered" "$MESSAGES" &> /dev/null; then
+                {
+                echo -e "\nPossible Known Issue: https://cssnew.synology.com/issue/25294"
+                echo "After updating to DSM6.2.2, the volume might get stuck and with the specific hung task."
+                grep -ia "btrfs_wait_pending_ordered" "$MESSAGES"
+                } >> "$sm"
+                fi
+
                 #https://cssnew.synology.com/issue/13942
                 if [ "$UpnpModel" = "DS218j" ] || [ "$UpnpModel" = "RS217" ] || [ "$UpnpModel" = "RS816" ] || [ "$UpnpModel" = "DS416j" ] || [ "$UpnpModel" = "DS416slim" ] || [ "$UpnpModel" = "DS216" ] || [ "$UpnpModel" = "DS216j" ] || [ "$UpnpModel" = "DS116" ]; then
                     grep_Issue_13942=$( grep -ca "Linux processing - Can't refill, try to allocate again in cleanup timer" "$MESSAGES" )
@@ -956,6 +964,20 @@ do
                     } >> "$sm"
                     fi
                 fi
+
+                #https://cssnew.synology.com/issue/8898
+                if [ "$UpnpModel" = "DS715" ] || [ "$UpnpModel" = "DS1515" ] || [ "$UpnpModel" = "DS1517" ] || [ "$UpnpModel" = "DS2015xs" ] || [ "$UpnpModel" = "DS416" ] || [ "$UpnpModel" = "DS215+" ]; then
+                    grep_Issue_13942=$( grep -ca "failed to alloc buffer for rx queue 2" "$MESSAGES" )
+                    if [ "$grep_Issue_13942" -gt 0 ]; then
+                    {
+                        echo -e "\nKnown Issue: https://cssnew.synology.com/issue/8898"
+                        echo "[Cause] The marvell model may suffer from memory allocating issue."
+                        echo "[Workaround]Add the following command to a bootup task:"
+                        echo "/sbin/sysctl -w vm.min_free_kbytes=131072"
+                    } >> "$sm"
+                    fi
+                fi
+
 
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/scemd.log" ]]
                 then
@@ -1192,7 +1214,7 @@ do
                         if [ -z "$third_packages" ]; then
                             echo -e "\tnone" >> "$sm"
                         else
-                            third_packages_count="$third_packages" | uniq -u | wc -l  &> /dev/null
+                            third_packages_count="$third_packages" | uniq -u | wc -l  &>/dev/null
                             echo -e "\t$third_packages_count" >> "$sm"
                         fi
                         if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/synolog/synosys.log" ]]; then
@@ -1214,7 +1236,7 @@ do
                         if [[ -z "$volumecrash" ]]; then
                             echo -e "Volume crashes:\t\t\tnone" >> "$sm"
                         else
-                            echo -ne "Volume crashes found: " >> "$sm"
+                            echo -ne "Volume crashes found: \t" >> "$sm"
                             grep -iac "was crashed" "$SYSDB" >> "$sm"
                         fi
 
@@ -1267,7 +1289,7 @@ do
                         fi
 
                         echo -e "\n" >> "$sm"
-                        echo -e "Third Party packages:" >> "$sm"
+                        echo -en "Third Party packages:" >> "$sm"
                         if [ -z "$third_packages" ]; then
                             echo -e "\tnone" >> "$sm"
                         else
@@ -1469,7 +1491,7 @@ do
                 grep "^standbytimer" "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/synoinfo.conf" >> "$hb_debug"
 
                 echo -n "Packages interfering with Hibernation:" >> "$hb_debug"
-                        hb_packages=$(grep "ActiveDirectoryServer\|AudioStation\|CloudStation\|MediaServer\|SynologyDrive\|CloudSync\|DownloadStation\|SurveillanceStation\|CMS\|Docker\|MailClient\|MailPlus\|MailPlus-Server\|PetaSpace\|Virtualization\|PDFViewer\|MailStation" "$PACK")
+                        hb_packages=$(grep "ActiveDirectoryServer\|AudioStation\|CloudStation\|MediaServer\|SynologyDrive\|CloudSync\|DownloadStation\|SurveillanceStation\|CMS\|Docker\|MailClient\|MailPlus\|MailPlus-Server\|PetaSpace\|Virtualization\|MailStation" "$PACK")
                         #to add: DocumentViewer?, CloudStation Server, CS ShareSync, CMS, DirectoryServer, MailServer?, Plex Media Server, Drittanbieterpakete
                         #to add: AudioStation protokollierung, Directory server
                         #DownloadStation: emule, Docker-Discourse, Docker-GitLab, Docker-LXQt, Docker-Redmine, Docker-Spree, Document Viewer

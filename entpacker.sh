@@ -11,10 +11,10 @@
 # unmatched patterns expand as result values
 shopt -s nullglob
 
-#win sub:sudo apt-get  install bc unzip (sqlite3)
+#win sub:sudo apt-get  install bc libarchive-tools (sqlite3)
 #sudo apt install sqlite3 zenity sublime-text lftp
 
-sleep_scan_dir=1 #Folder rescan time in seconds
+sleep_scan_dir=6 #Folder rescan time in seconds
 sleep_extract_zip=0.5 #rescan time for finishing download
 Script_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 DOWNLOAD_DIR=/home/thomas/Downloads/neu
@@ -242,13 +242,24 @@ do
             DATE=$(date -d @$(( $(date +%s) / 10 * 10 )) +%H%M%S)
             TIMEFORMAT=$'Extractiontime debug.dat: \t\t\t\t\t\t\t\e[36m%Rsec\e[39m'
             time(
-            unzip -q "$file" -d "$DOWNLOAD_DIR"/debug_"$DATE"
+            filetype=$(file "$file")
+            echo "$filetype" | grep gzip
+            if [ $? -eq 0 ]
+            then
+                mkdir -p "$DOWNLOAD_DIR"/debug_"$DATE"
+                bsdtar xf "$file" -C "$DOWNLOAD_DIR"/debug_"$DATE"
+            else
+                unzip -q "$file" -d "$DOWNLOAD_DIR"/debug_"$DATE"
+            fi
             )
             if [ $? -eq 0 ] # if successfully extracted
             then
                 mv "$file" "$DOWNLOAD_DIR"/debug_"$DATE"
                 date_now=$(date +"%d. %B %H:%M:%S:")
                 echo "$date_now debug extracted to $DOWNLOAD_DIR/debug_$DATE"
+                if [[ -d "$DOWNLOAD_DIR/debug_$DATE/root" ]]
+                    then mv "$DOWNLOAD_DIR/debug_$DATE/root/@tmp/Support"*"/"* "$DOWNLOAD_DIR/debug_$DATE/"
+                fi
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/packages.list" ]]
                 then    DSM=""
                 fi
@@ -260,9 +271,16 @@ do
                         echo -e "Synology HA: Detected, this is the ACTIVE Server-log\n" >> "$sm"
                         mv "$DOWNLOAD_DIR/debug_$DATE/$DSM/ha/passive_debug.dat" "$DOWNLOAD_DIR/passive_debugfile.dat"
                     fi
+                elif [[ -f "$DOWNLOAD_DIR/debug_$DATE/HighAvailability/ha.conf" ]]
+                then
+                    if [[ -f "$DOWNLOAD_DIR/debug_$DATE/HighAvailability/passive_debug.dat" ]]
+                    then
+                        sm="$DOWNLOAD_DIR/debug_$DATE/$DSM/sm.log"
+                        echo -e "Synology HA: Detected, this is the ACTIVE Server-log\n" >> "$sm"
+                        mv "$DOWNLOAD_DIR/debug_$DATE/HighAvailability/passive_debug.dat" "$DOWNLOAD_DIR/passive_debugfile.dat"
+                    fi
                 elif [[ "$file" = "$DOWNLOAD_DIR/passive_debugfile.dat" ]]; then
-                    DSM=$(ls "$DOWNLOAD_DIR/debug_$DATE/tmp" )
-                    DSM="tmp/${DSM}"
+                    DSM=dsm
                     sm="$DOWNLOAD_DIR/debug_$DATE/$DSM/sm.log"
                     echo -e "Synology HA: Detected, this is the PASSIVE Server-log\n" >> "$sm"
                 else
@@ -1171,10 +1189,14 @@ do
                             fi
                         fi
 
+
+                        cat "$DOWNLOAD_DIR/debug_$DATE/$DSM/packages_ver.list" > "$DOWNLOAD_DIR/debug_$DATE/$DSM/packages_onoff.list"
                         readarray -t "InstalledPackageArray" < "$DOWNLOAD_DIR/debug_$DATE/$DSM/packages_ver.list"
                         counter=0
                         for i in "${InstalledPackageArray[@]}"
                         do
+                            tac "$synopkgfile" | grep -ia "${InstalledPackageArray[$counter]}:" | grep -ia "start version\|stop version" | grep -ia -m1 "successfully" >> "$DOWNLOAD_DIR/debug_$DATE/$DSM/packages_onoff.list"
+                            PACK_ONOFF="$DOWNLOAD_DIR/debug_$DATE/$DSM/packages_onoff.list"
                             aver=$(grep "^$i " "$package_versions")
                             PureVerAvailable=$(echo "${aver}" | rev | cut -d " " -f1 | rev | sed 's/\-/./g')
                             PureVerInstalled=$(grep -a "$i " "$synopkgfile" | tail -n1 | grep -aoP '(?<='$i' )\S*' | sed 's/\-/./g')
@@ -1554,13 +1576,13 @@ do
                 #$subl "$DEBUG_DIR" "$SMART_GREP" "$PACK" "$Bash_history" "$hb_debug" "$HB" "$DF" "$IFCONFIG" "$SPACE_FILES":10000 "$SYSDBtac":100000 "$sm" "$MESSAGES":1000000 "${PicArray[@]}"
                 #"${subl}" "$DEBUG_DIR" "$SMART_GREP" "$PACK" "$Bash_history" "$hb_debug" "$HB" "$DF" "$IFCONFIG" "$SPACE_FILES":10000 "$SYSDBtac":100000 "$sm" "$MESSAGES":1000000 "${PicArray[@]}" #$pics
                 # for smart-files: ${SMART_FILES[@]}  $MDSTAT
-            else
-                mkdir -p "${DOWNLOAD_DIR}/kapott"
-                mv "$file" "${DOWNLOAD_DIR}/kapott/debug_$DATE.dat"
-                echo "$file" "konnte nicht entpackt werden."
-                if [[ "$os" = "win" ]]; then
-                    echo "" #maybe add things here
-                elif [[ "$os" = "other" ]]; then
+                else
+                    mkdir -p "${DOWNLOAD_DIR}/kapott"
+                    mv "$file" "${DOWNLOAD_DIR}/kapott/debug_$DATE.dat"
+                    echo "$file" "konnte nicht entpackt werden."
+                    if [[ "$os" = "win" ]]; then
+                        echo "" #maybe add things here
+                    elif [[ "$os" = "other" ]]; then
                     #statements
                     zenity --error --text="Debug konnte nicht entpackt werden\!" --title="Achtung!" 2> /dev/null
                 fi

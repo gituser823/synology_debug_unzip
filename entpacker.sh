@@ -595,21 +595,21 @@ do
                     elif [[ "${BadSector_sum}" -eq 0 ]]; then
                     echo "Reallocated_Sector_Ct: 0" >> "$sm"
                     else
-                    echo "Reallocated_Sector_Ct:" "$BadSector_sum in ${BadSectors_HDD_Array[@]}" >> "$sm"
+                    echo "Reallocated_Sector_Ct:" "$BadSector_sum on ${BadSectors_HDD_Array[@]}" >> "$sm"
                 fi
                 if [ -z "${PendingSectors_sum+x}" ]; then
                     echo "Current_Pending_Sector: error" >> "$sm"
                     elif [[ "${PendingSectors_sum}" -eq 0 ]]; then
                     echo "Current_Pending_Sector: 0" >> "$sm"
                     else
-                    echo "Current_Pending_Sector:" "$PendingSectors_sum in ${PendingSectors_HDD_Array[@]}" >> "$sm"
+                    echo "Current_Pending_Sector:" "$PendingSectors_sum on ${PendingSectors_HDD_Array[@]}" >> "$sm"
                 fi
                 if [ -z "${OfflineUncorrectable_sum+x}" ]; then
                     echo "Offline_Uncorrectable: error" >> "$sm"
                     elif [[ "${OfflineUncorrectable_sum}" -eq 0 ]]; then
                     echo "Offline_Uncorrectable: 0" >> "$sm"
                     else
-                    echo "Offline_Uncorrectable:" "$OfflineUncorrectable_sum in ${OfflineUncorrectable_HDD_Array[@]}" >> "$sm"
+                    echo "Offline_Uncorrectable:" "$OfflineUncorrectable_sum on ${OfflineUncorrectable_HDD_Array[@]}" >> "$sm"
                 fi
 
                 UpnpModelCASE=${UpnpModel/rp/RP}
@@ -960,6 +960,12 @@ do
                 echo "See https://cssnew.synology.com/issue/5206 Issue A"
                 grep -ia "tn40xx" "$KERN" | grep "Link Up 10G\|Link Down" | tail -n20
                 } >> "$sm"
+                fi
+
+                if grep -ia '"faulty_communication":true' "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/var/log/ha.log; then
+                echo -e "\nKnown Issue: Lots of error messages 'High system usage detected' show up under HA Manager." >> "$sm"
+                echo "See https://cssnew.synology.com/issue/25154" >> "$sm"
+                grep -ia '"faulty_communication":true' "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/var/log/ha.log >> "$sm" | tail -n20
                 fi
 
                 if grep -ia "btrfs_wait_pending_ordered" "$MESSAGES" &> /dev/null; then

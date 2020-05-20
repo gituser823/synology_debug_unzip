@@ -86,7 +86,7 @@ while getopts ":uvh" opt; do
         IFS=$' \t\n'
         echo -e "\nModels: ${Models[*]}" #old: echo -e "\nModels: ${Models[@]}"
         echo "Downloading In-/Compatibility-lists:"
-            echo "set net:connection-limit 20" > "${Script_dir}/comp/lftp.cfg"
+            echo "set net:connection-limit 40" > "${Script_dir}/comp/lftp.cfg"
             echo "set xfer:clobber yes" >> "${Script_dir}/comp/lftp.cfg"
             for m in "${Models[@]}"
                 do
@@ -260,6 +260,14 @@ do
                 if [[ -d "$DOWNLOAD_DIR/debug_$DATE/root" ]]
                     then mv "$DOWNLOAD_DIR/debug_$DATE/root/@tmp/Support"*"/"* "$DOWNLOAD_DIR/debug_$DATE/"
                 fi
+                echo "$DOWNLOAD_DIR/debug_$DATE/volume1/@tmp/"*"/dsm"
+                if [[ -d "$DOWNLOAD_DIR/debug_$DATE/volume1/@tmp/"*"/dsm" ]]
+                    then mv "$DOWNLOAD_DIR/debug_$DATE/volume1/@tmp/"*"/dsm/"* "$DOWNLOAD_DIR/debug_$DATE/"
+                echo "$DOWNLOAD_DIR/debug_$DATE/volume1/@tmp/"*"/dsm/" "$DOWNLOAD_DIR/debug_$DATE/"
+                else
+                echo "$DOWNLOAD_DIR/debug_$DATE/volume1/@tmp/"*"/dsm does not exist!"
+                fi
+
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/packages.list" ]]
                 then    DSM=""
                 fi
@@ -269,7 +277,8 @@ do
                     then
                         sm="$DOWNLOAD_DIR/debug_$DATE/$DSM/sm.log"
                         echo -e "Synology HA: Detected, this is the ACTIVE Server-log\n" >> "$sm"
-                        mv "$DOWNLOAD_DIR/debug_$DATE/$DSM/ha/passive_debug.dat" "$DOWNLOAD_DIR/passive_debugfile.dat"
+                        mv "$DOWNLOAD_DIR/debug_$DATE/$DSM/ha/passive_debug.dat" "$DOWNLOAD_DIR/testdebug1.dat" #"$DOWNLOAD_DIR/passive_debugfile.dat"
+                        sleep 2
                     fi
                 elif [[ -f "$DOWNLOAD_DIR/debug_$DATE/HighAvailability/ha.conf" ]]
                 then
@@ -277,9 +286,11 @@ do
                     then
                         sm="$DOWNLOAD_DIR/debug_$DATE/$DSM/sm.log"
                         echo -e "Synology HA: Detected, this is the ACTIVE Server-log\n" >> "$sm"
-                        mv "$DOWNLOAD_DIR/debug_$DATE/HighAvailability/passive_debug.dat" "$DOWNLOAD_DIR/passive_debugfile.dat"
+                        mv "$DOWNLOAD_DIR/debug_$DATE/HighAvailability/passive_debug.dat" "$DOWNLOAD_DIR/passive_debugfile.dat" #"$DOWNLOAD_DIR/passive_debugfile.dat"
+                        sleep 2
                     fi
-                elif [[ "$file" = "$DOWNLOAD_DIR/passive_debugfile.dat" ]]; then
+                fi
+                if [[ "$file" = "$DOWNLOAD_DIR/passive_debugfile.dat" ]]; then
                     DSM=dsm
                     sm="$DOWNLOAD_DIR/debug_$DATE/$DSM/sm.log"
                     echo -e "Synology HA: Detected, this is the PASSIVE Server-log\n" >> "$sm"
@@ -306,11 +317,23 @@ do
                     for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/messages"*.xz
                         do
                             unxz "${file}"
+                            cat "${file%.*}" "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/messages" 2> /dev/null > "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/messages_temp" 2> /dev/null
+                            mv "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/messages_temp" "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/messages"
                         done
 
                     for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/kern"*.xz
                         do
                             unxz "${file}"
+                            cat "${file%.*}" "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/kern.log" 2> /dev/null > "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/kern_temp" 2> /dev/null
+                            mv "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/kern_temp" "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/kern.log"
+                        done
+                    cat "${file%.*}" >> "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/kern.log"
+
+                        for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/dmesg"*.xz
+                        do
+                            unxz "${file}"
+                            cat "${file%.*}" "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/dmesg" 2> /dev/null > "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/dmesg_temp" 2> /dev/null
+                            mv "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/dmesg_temp" "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/dmesg"
                         done
 
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/df.result" ]]
@@ -448,7 +471,7 @@ do
                         do
                             [[ -e "$file" ]] || log "$file not found."
                             [[ -e "$file" ]] || break
-                            ExtensionHdds=$(grep -a "syno_device_list" "$file" | cut -d "\"" -f2 | sed 's/\/dev\///g' 2>/dev/null) #Warnung: Befehlsersetzung: Null Byte Eingabe ignoriert
+                            ExtensionHdds=$(grep -a "syno_device_list" "$file" 2>/dev/null| cut -d "\"" -f2 2>/dev/null| sed 's/\/dev\///g' 2>/dev/null) #Warnung: Befehlsersetzung: Null Byte Eingabe ignoriert
                             ExtensionHddsLoopArray=("$ExtensionHdds")
                             for ((i=0; i<${#ExtensionHddsLoopArray[@]}; ++i))
                             do
@@ -529,7 +552,7 @@ do
                 files="
                 "
                 #for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/smart"{sd,nv,sas}*
-                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/"{sd,nv,sas}*
+                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/"{sd,smart,nv,sas[0-9]}*
                 do
                     [[ -e "$file" ]] || break #no smart-files
                     #counter=$((counter + 1))
@@ -581,8 +604,8 @@ do
 
                 log "${UpnpModel}"
                 log "${UpnpModel/+/\\+}\S"
-                DS_CPU_TXTINFO=$( grep -m1 "CPU-Modell" "$CPU_FILE" )
-                DS_CPU_TXT=$( grep "${UpnpModel}[[:space:]]" "$CPU_FILE" )
+                DS_CPU_TXTINFO=$( grep -m1 "CPU-Model" "$CPU_FILE" )
+                DS_CPU_TXT=$( grep -i "${UpnpModel}[[:space:]]" "$CPU_FILE" )
                 {
                 echo -e "\nCPUinfo from txt:"
                 echo "$DS_CPU_TXTINFO"
@@ -631,13 +654,14 @@ do
                 fi
 
                 #declare -a PowerOnHours
-                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/sd"*
+                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/"{sd,nv,smart,sas[0-9]}*
                 do
                     [[ -e "$file" ]] || break #no smart-files
                     hddname=$(basename -- "$file")
                     hddname2=$(grep -i "Model Family\|Device Model" "$file" | cut -d " " -f7-20 | sed -r 's/\"/Inch/' | xargs )
                     modelname=$(grep -i "Device Model" "$file" | cut -d " " -f8 | sed -r 's/\"/Inch/' | xargs ) #evtl f7-20
-                    modelname_hdd_size=$(grep -i "User Capacity" "$file" | awk -F '[][]+' 'NF && !/\[\[/{print $2}' | sed 's/\..* //' | sed 's/\.* //' ) # i.e.: 3TB or 500GB
+                    modelname_hdd_size=$(grep -i "User Capacity" "$file" | awk -F '[][]+' 'NF && !/\[\[/{print $2}' ) # i.e.: 3.00TB or 500.00GB
+                    # modelname_hdd_size=$(grep -i "User Capacity" "$file" | awk -F '[][]+' 'NF && !/\[\[/{print $2}' | sed 's/\..* //' | sed 's/\.* //' ) #alt: i.e.: 3TB or 500GB
                     SectorSize=$(grep -i "Sector Size" "$file" | cut -d ":" -f2 | sed -e 's/^[ \t]*//' | cut -d " " -f1 )
                     if [[ "${modelname}" == "SSD" ]]; then #samsung SSDs!
                         modelname=$(grep -i "Device Model" "$file" | cut -d " " -f9-10 | sed -r 's/\"/Inch/' | xargs)
@@ -716,12 +740,12 @@ do
                 #mehr smart-kram
                 #echo -e "\n" >> "$sm"
 
-                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/"{sd,nv,sas}*
+                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/"{sd,nv,sas,smart}*
                 do
                     [[ -e "$file" ]] || break #no smart-files
-                    grep -i "Model Family\|Device Model" "$file" >> "$sg"
+                    grep -i "Model Family\|Device Model\|User Capacity" "$file" >> "$sg"
                 done
-                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/"{sd,nv}*
+                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/"{sd,nv,smart}*
                 do
                     [[ -e "$file" ]] || break #no smart-files
                 {
@@ -962,10 +986,10 @@ do
                 } >> "$sm"
                 fi
 
-                if grep -ia '"faulty_communication":true' "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/var/log/ha.log; then
+                if grep -ia '"faulty_communication":true' "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/var/log/ha.log &> /dev/null ; then
                 echo -e "\nKnown Issue: Lots of error messages 'High system usage detected' show up under HA Manager." >> "$sm"
                 echo "See https://cssnew.synology.com/issue/25154" >> "$sm"
-                grep -ia '"faulty_communication":true' "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/var/log/ha.log >> "$sm" | tail -n20
+                grep -ia '"faulty_communication":true' "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/var/log/ha.log >> "$sm" | tail -n1
                 fi
 
                 if grep -ia "btrfs_wait_pending_ordered" "$MESSAGES" &> /dev/null; then
@@ -1565,7 +1589,7 @@ do
                 done
                 for i in "${OpenFiles[@]}"; do # open single files
                     "$subl" "$i" #"$subl" "$(wslpath -w $i)"
-                    sleep 0.12
+                    sleep 0.10
                 done
                 #"$subl" "${OpenFiles[@]}" #open files defined in config.sh with editor
 

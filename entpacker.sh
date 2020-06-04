@@ -22,8 +22,6 @@ DSM=dsm
 CPU_FILE="${Script_dir}/files/CPU.txt"
 PShedPy="${Script_dir}/files/power_shed.py"
 rss="${Script_dir}/tmp/genRSS.php"
-#cputxt_file="${Script_dir}/files/CPU.php"
-#cputxt_file2="${Script_dir}/files/CPU2.php"
 srs="${Script_dir}/tmp/SRS.php"
 srsde="${Script_dir}/tmp/SRS-de.php"
 available_packages_pre="${Script_dir}/tmp/available_packages_pre.txt"
@@ -257,15 +255,20 @@ do
                 mv "$file" "$DOWNLOAD_DIR"/debug_"$DATE"
                 date_now=$(date +"%d. %B %H:%M:%S:")
                 echo "$date_now debug extracted to $DOWNLOAD_DIR/debug_$DATE"
+                TemporaryWorkaround=0
                 if [[ -d "$DOWNLOAD_DIR/debug_$DATE/root" ]]
-                    then mv "$DOWNLOAD_DIR/debug_$DATE/root/@tmp/Support"*"/"* "$DOWNLOAD_DIR/debug_$DATE/"
+                    then SupportFormVar=$(find $DOWNLOAD_DIR/debug_$DATE/volume1/@tmp/ -maxdepth 1 -mindepth 1 -exec basename {} ';')
+                         mv "$DOWNLOAD_DIR/debug_$DATE/root/@tmp/$SupportFormVar/"* "$DOWNLOAD_DIR/debug_$DATE/"
+                    log "testroot, Var is: $SupportFormVar"
                 fi
-                echo "$DOWNLOAD_DIR/debug_$DATE/volume1/@tmp/"*"/dsm"
-                if [[ -d "$DOWNLOAD_DIR/debug_$DATE/volume1/@tmp/"*"/dsm" ]]
-                    then mv "$DOWNLOAD_DIR/debug_$DATE/volume1/@tmp/"*"/dsm/"* "$DOWNLOAD_DIR/debug_$DATE/"
-                echo "$DOWNLOAD_DIR/debug_$DATE/volume1/@tmp/"*"/dsm/" "$DOWNLOAD_DIR/debug_$DATE/"
+                if [[ -d "$DOWNLOAD_DIR/debug_$DATE/volume1/@tmp/" ]]
+                    then SupportFormVar=$(find $DOWNLOAD_DIR/debug_$DATE/volume1/@tmp/ -maxdepth 1 -mindepth 1 -exec basename {} ';')
+                         mv "$DOWNLOAD_DIR/debug_$DATE/volume1/@tmp/$SupportFormVar/dsm/"* "$DOWNLOAD_DIR/debug_$DATE/"
+                    log "testtmp, Var is: $SupportFormVar"
+                    TemporaryWorkaround=1
+                    echo -e "\e[31mWarning! This is an old DSM-Versions debug. Data after 'Overview' may not be reliable.\e[0m"
                 else
-                echo "$DOWNLOAD_DIR/debug_$DATE/volume1/@tmp/"*"/dsm does not exist!"
+                log "test4"
                 fi
 
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/packages.list" ]]
@@ -311,7 +314,6 @@ do
                     log "Synoinfo.conf not found."
                 fi
 
-
                 UpnpModel=$(grep -i "upnpmodelname" "$Synoinfo" | cut -d "\"" -f2)
                 UpnpModel_migrated_from=$(grep -i "upnpmodelname" "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/synoinfo.conf" | cut -d "\"" -f2)
                     for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/messages"*.xz
@@ -327,8 +329,9 @@ do
                             cat "${file%.*}" "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/kern.log" 2> /dev/null > "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/kern_temp" 2> /dev/null
                             mv "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/kern_temp" "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/kern.log"
                         done
-                    cat "${file%.*}" >> "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/kern.log"
-
+                        log "334"
+                    #cat "${file%.*}" >> "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/kern.log" #überflüssig??
+                    log "335"
                         for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/dmesg"*.xz
                         do
                             unxz "${file}"
@@ -352,6 +355,10 @@ do
                             echo "No full Mountpoints found." >> "$sg"
                         fi
                         echo -e "\n"  >> "$sg"
+                fi
+
+                if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/du-h-d1-rootmnt.result" ]]
+                then    DU=$DOWNLOAD_DIR/debug_$DATE/$DSM/result/du-h-d1-rootmnt.result
                 fi
 
                 #check for 16Tb Volume limitation
@@ -471,7 +478,7 @@ do
                         do
                             [[ -e "$file" ]] || log "$file not found."
                             [[ -e "$file" ]] || break
-                            ExtensionHdds=$(grep -a "syno_device_list" "$file" 2>/dev/null| cut -d "\"" -f2 2>/dev/null| sed 's/\/dev\///g' 2>/dev/null) #Warnung: Befehlsersetzung: Null Byte Eingabe ignoriert
+                            ExtensionHdds=$(grep "syno_device_list" "$file" | cut -d "\"" -f2 | sed 's/\/dev\///g' ) #add grep "-a" ?!
                             ExtensionHddsLoopArray=("$ExtensionHdds")
                             for ((i=0; i<${#ExtensionHddsLoopArray[@]}; ++i))
                             do
@@ -715,7 +722,7 @@ do
                         log "\e[34mHDD-Comp: \"${modelname}\" not found.\e[0m"
                     fi
                     log "compatibility check for ${hddname} grepped for ${modelname} , ${modelname//-/ - } and ${modelname%-*} ; HDD Size: ${modelname_hdd_size}"
-                    PoH=$(grep -iE "Power(_|-)on_(Hours|Hour_Count)" "$file" | sed -e "s/ ([^()]*)//g" | rev | cut -d " " -f1 | rev | sed 's/h.*//' )
+                    PoH=$(grep -iE "Power(_|-)on(_|-)(Hours|Hour_Count)" "$file" | sed -e "s/ ([^()]*)//g" | rev | cut -d " " -f1 | rev | sed 's/h.*//' )
                     echo -e "$hddname: $hddname2\t$HDDComp: PowerOnHours: ${PoH}" #>> "$sm"
                     echo -n "Last Extended SMART-Test: " #>> "$sm"
                     LastSmartTest=$(grep -i -m1 "Extended Offline" "$file" | sed -n '/Extended offline/s/ \+/ /gp' | rev | cut -d " " -f2 | rev )
@@ -1211,14 +1218,16 @@ do
                         declare -a InstalledPackageArray
                         sed '1d' "${PACK}" | awk '{for(i=NF;i>1;i=i-1) printf "%s ", $i; printf "%s\n", $1}' | cut -d " " -f1 > "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/packages_ver.list
 
-                        synopkgfile="$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/var/log/synopkg.log
-                        if [[ $(stat -c%s "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/synopkg.log") -lt 1 ]]; then #if synopkg.log is empty
-                            unxz "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/synopkg.log.1.xz"
-                            if [ $? -eq 0 ]; then # if successfully extracted
-                                synopkgfile="$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/var/log/synopkg.log.1
+                        #synopkgfile="$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/var/log/synopkg.log
+                        if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/synopkg.log" ]]; then
+                            synopkgfile="$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/var/log/synopkg.log
+                            if [[ $(stat -c%s "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/synopkg.log") -lt 1 ]]; then #if synopkg.log is empty
+                                unxz "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/synopkg.log.1.xz"
+                                if [ $? -eq 0 ]; then # if successfully extracted
+                                    synopkgfile="$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/var/log/synopkg.log.1
+                                fi
                             fi
                         fi
-
 
                         cat "$DOWNLOAD_DIR/debug_$DATE/$DSM/packages_ver.list" > "$DOWNLOAD_DIR/debug_$DATE/$DSM/packages_onoff.list"
                         readarray -t "InstalledPackageArray" < "$DOWNLOAD_DIR/debug_$DATE/$DSM/packages_ver.list"
@@ -1261,6 +1270,9 @@ do
                         fi
 
                         echo -e "Overview:" >> "$sm"
+                        if [[ "$TemporaryWorkaround" = 1 ]]; then
+                            echo -e "(Data may be unreliable, because of old DSM Version)" >> "$sm"
+                        fi
                         echo -en "Third Party packages:" >> "$sm"
                         third_packages=$(grep -v "AntiVirus\|AudioStation\|Calendar\|CloudStation\|FileStation\|HyperBackup\|LogCenter\|MediaServer\|NoteStation\|PHP[0-9].[0-9]\|PhotoStation\|ProxyServer\|StorageAnalyzer\|SynoFinder\|SynologyApplicationService\|SynologyDrive\|TextEditor\|USBCopy\|VideoStation\|WebDAVServer\|CloudSync\|DownloadStation\|SurveillanceStation\|WebStation\|VPNCenter\|MariaDB\|Chat\|Git\|Node.js_4\|Perl\|ActiveBackup\|ActiveBackup-Office365\|ActiveDirectoryServer\|Apache[0-9].[0-9]\|CMS\|CardDAVServer\|DNSServer\|DiagnosisTool\|Docker\|MailClient\|MailPlus-Server\|OAuthService\|PetaSpace\|PrestoServer\|PythonModule\|SSOServer\|SnapshotReplication\|Spreadsheet\|SynologyMoments\|Virtualization\|iTunesServer\| enabled\|TimeBackup\|Java7\|Java8\|exFAT\|PDFViewer\|DocumentViewer\|HighAvailability\|MailServer\|MailStation\|phpMyAdmin\|total [[:digit:]]\{,3\}" "$PACK")
                         if [ -z "$third_packages" ]; then
@@ -1410,61 +1422,66 @@ do
                         echo -e "\n" >> "$sm"
                     fi
 
-                if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/messages.log" ]]; then
-                    {
-                        DRDYErr=$(grep -ia "DRDY" "$MESSAGES" | uniq -u | wc -l)
-                        if [[ "$DRDYErr" -eq 0 ]]; then
-                            echo -e "DRDY:\t\t\t\t\tnone"
-                        else
-                            echo -e "$(grep -ia "DRDY" "$MESSAGES" | uniq -u | wc -l) times DRDY, showing 20 max:"
-                            tac "$MESSAGES" | grep -ia -B5 -A10 -m 20 "DRDY" | tac
-                            echo -e "\n"
-                        fi
-
-                        database_malformed=$(grep -iac "database disk image is malformed" "$MESSAGES")
-                        if [[ "$database_malformed" -eq 0 ]]; then
-                            echo -e "Database is malformed:\tnone"
-                        else
-                            echo -e "$(grep -iac "database disk image is malformed" "$MESSAGES") times malformed database:"
-                            grep -ia "database disk image is malformed" "$MESSAGES"
-                            echo -e "\n"
-                        fi
-
-                        oom_kills=$(grep -iac "out_of_memory" "$MESSAGES")
-                        if [[ "$oom_kills" -eq 0 ]]; then
-                            echo -e "Out of Memory kills:\tnone"
-                        else
-                            echo -e "$(grep -iac "out_of_memory" "$MESSAGES") times Out of Memory kills:"
-                            grep -ia "out_of_memory" "$MESSAGES"
-                            echo -e "\n"
-                        fi
-                        crashes=$(grep -iac "crash" "$MESSAGES")
-                        if [[ "$crashes" -eq 0 ]]; then
-                            echo -e "generic crashes:\t\tnone"
-                        else
-                            echo -e "$(grep -iac "crash" "$MESSAGES") times generic crashes:"
-                            grep -ia "crash" "$MESSAGES"
-                            echo -e "\n"
-                        fi
-
-                        CallTraces=$(grep -iac "Call Trace" "$MESSAGES")
-                        if [[ "$CallTraces" -eq 0 ]]; then
-                            echo -e "Call Traces:\t\t\tnone"
-                        else
-                            echo -e "$(grep -iac "Call Trace" "$MESSAGES") times call traces + next 25 lines:"
-                            #grep -ia "Call Trace" "$MESSAGES" -A25
-                            grep -ia "Call Trace" "$MESSAGES" | while read l; do
-                              # Get seconds-since-startup timestamp from Call Trace line
-                              if [[ $l =~ kernel:\ \[\ *([0-9]+)\.[0-9]+\] ]]; then
-                                tsecs="${BASH_REMATCH[1]}"
-                                # Grep again for anything +/- 1 sec from that timestamp
-                                grep -aE "kernel: \[($((tsecs-2))|$((tsecs-1))|${tsecs}|$((tsecs+1))|$((tsecs+2)))\.[0-9]+\]" "$MESSAGES"
+                log "todo: fix old debugs here"
+                #todo: FOLGENDES IRGENDWANN FIXEN (stoppt bei /volume1/@tmp/SupportformAttach)
+                if [[ "$TemporaryWorkaround" = 0 ]]; then
+                    if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/messages.log" ]]; then
+                        {
+                            DRDYErr=$(grep -ia "DRDY" "$MESSAGES" | uniq -u | wc -l)
+                            if [[ "$DRDYErr" -eq 0 ]]; then
+                                echo -e "DRDY:\t\t\t\t\tnone"
+                            else
+                                echo -e "$(grep -ia "DRDY" "$MESSAGES" | uniq -u | wc -l) times DRDY, showing 20 max:"
+                                tac "$MESSAGES" | grep -ia -B5 -A10 -m 20 "DRDY" | tac
                                 echo -e "\n"
-                              fi
-                            done
-                        fi
-                    } >> "$sm"
+                            fi
+
+                            database_malformed=$(grep -iac "database disk image is malformed" "$MESSAGES")
+                            if [[ "$database_malformed" -eq 0 ]]; then
+                                echo -e "Database is malformed:\tnone"
+                            else
+                                echo -e "$(grep -iac "database disk image is malformed" "$MESSAGES") times malformed database:"
+                                grep -ia "database disk image is malformed" "$MESSAGES"
+                                echo -e "\n"
+                            fi
+
+                            oom_kills=$(grep -iac "out_of_memory" "$MESSAGES")
+                            if [[ "$oom_kills" -eq 0 ]]; then
+                                echo -e "Out of Memory kills:\tnone"
+                            else
+                                echo -e "$(grep -iac "out_of_memory" "$MESSAGES") times Out of Memory kills:"
+                                grep -ia "out_of_memory" "$MESSAGES"
+                                echo -e "\n"
+                            fi
+                            crashes=$(grep -iac "crash" "$MESSAGES")
+                            if [[ "$crashes" -eq 0 ]]; then
+                                echo -e "generic crashes:\t\tnone"
+                            else
+                                echo -e "$(grep -iac "crash" "$MESSAGES") times generic crashes:"
+                                grep -ia "crash" "$MESSAGES"
+                                echo -e "\n"
+                            fi
+
+                            CallTraces=$(grep -iac "Call Trace" "$MESSAGES")
+                            if [[ "$CallTraces" -eq 0 ]]; then
+                                echo -e "Call Traces:\t\t\tnone"
+                            else
+                                echo -e "$(grep -iac "Call Trace" "$MESSAGES") times call traces + next 25 lines:"
+                                #grep -ia "Call Trace" "$MESSAGES" -A25
+                                grep -ia "Call Trace" "$MESSAGES" | while read l; do
+                                  # Get seconds-since-startup timestamp from Call Trace line
+                                  if [[ $l =~ kernel:\ \[\ *([0-9]+)\.[0-9]+\] ]]; then
+                                    tsecs="${BASH_REMATCH[1]}"
+                                    # Grep again for anything +/- 1 sec from that timestamp
+                                    grep -aE "kernel: \[($((tsecs-2))|$((tsecs-1))|${tsecs}|$((tsecs+1))|$((tsecs+2)))\.[0-9]+\]" "$MESSAGES"
+                                    echo -e "\n"
+                                  fi
+                                done
+                            fi
+                        } >> "$sm"
+                    fi
                 fi
+
                 #write hibernation info:
                 satadeepsleep=$(grep -c "satadeepsleeptimer=\"1\"" "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/etc/synoinfo.conf)
                 if [ "$satadeepsleep" -gt 0 ]
@@ -1519,7 +1536,6 @@ do
                 else
                     log "smb.conf not found."
                 fi
-                #echo -e "\n" >> "$hb_debug"
 
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/synoinfo.conf" ]]; then
                     supportrcpower=$(grep -ia "supportrcpower" "$Synoinfo" | cut -d "\"" -f2)
@@ -1567,7 +1583,6 @@ do
                     else
                      echo "power_sched.conf not found." >> "$hb_debug"
                 fi
-
 
                 counter=0
                 allpics=$(find "$DOWNLOAD_DIR/debug_${DATE}/" -maxdepth 1 -type f \( -name "*.jpg" -o -name "*.png" -o -name "*.PNG" -o -name "*.JPG" \) 2>/dev/null)

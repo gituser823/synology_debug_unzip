@@ -482,7 +482,11 @@ do
                         do
                             [[ -e "$file" ]] || log "$file not found."
                             [[ -e "$file" ]] || break
+<<<<<<< HEAD
                             ExtensionHdds=$(grep -a "syno_device_list" "$file" | tr '\0' '\n' | cut -d "\"" -f2 | sed 's/\/dev\///g' )
+=======
+                            ExtensionHdds=$(grep "syno_device_list" "$file" | cut -d "\"" -f2 | sed 's/\/dev\///g' ) #add grep "-a" ?!
+>>>>>>> origin/master
                             ExtensionHddsLoopArray=("$ExtensionHdds")
                             for ((i=0; i<${#ExtensionHddsLoopArray[@]}; ++i))
                             do

@@ -9,7 +9,7 @@ FS1018      Intel Pentium D1508     Dual Core  			4   	Ja  Broadwellnk DDR4 SO-D
 SA-Serie
 SA3600      Intel Xeon D-1567       12-Core     24  Ja  Broadwellnk DDR4 ECC RDIMM 16 GB
 SA3400      Intel Xeon D-1541       Eight Core  16  Ja  Broadwellnk DDR4 ECC RDIMM 16 GB
-SA3200    	Intel Xeon D-1521 x 2   Quad-Core x 2   8 x 2   Ja  Broadwellntbap  DDR4 ECC UDIMM 2x8 GB
+SA3200D    	Intel Xeon D-1521 x 2   Quad-Core x 2   8 x 2   Ja  Broadwellntbap  DDR4 ECC UDIMM 2x 8 GB
 x20-Reihe
 RS820RP+    Intel Atom C3538        Quad Core   4   Ja  Denverton   DDR4 Non-ECC 2GB
 RS820+      Intel Atom C3538        Quad Core   4   Ja  Denverton   DDR4 Non-ECC 2GB

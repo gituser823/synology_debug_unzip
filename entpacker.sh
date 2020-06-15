@@ -1,7 +1,12 @@
 #!/bin/bash
 
-#for handling spaces in filenames
-#IFS=$'\n'
+required_packages="bc bsdtar unzip sqlite3 lftp"
+for package in $required_packages; do
+    command -v $package > /dev/null || {
+        echo "Must install $package to proceed."
+        exit 1
+    }
+done
 
 #debugging with times:
 #N=`date +%s%N`
@@ -10,9 +15,6 @@
 # set bash option to avoid
 # unmatched patterns expand as result values
 shopt -s nullglob
-
-#win sub:sudo apt-get  install bc libarchive-tools lftp (sqlite3)
-#sudo apt install sqlite3 zenity sublime-text lftp
 
 sleep_scan_dir=6 #Folder rescan time in seconds
 sleep_extract_zip=0.5 #rescan time for finishing download
@@ -30,7 +32,7 @@ package_versions="${Script_dir}/tmp/package_versions.txt"
 mkdir -p "${Script_dir}/comp"
 mkdir -p "${Script_dir}/tmp"
 ProductList="${Script_dir}/comp/ProductList.json"
-
+sleep_scan_dir_backup=$sleep_scan_dir
 
 function log() {
     [[ "$verbose" != 1 ]] && return
@@ -84,9 +86,9 @@ while getopts ":uvh" opt; do
         IFS=$' \t\n'
         echo -e "\nModels: ${Models[*]}" #old: echo -e "\nModels: ${Models[@]}"
         echo "Downloading In-/Compatibility-lists:"
-        	echo "set ssl:verify-certificate false" > "${Script_dir}/files/lftp.cfg"
-            echo "set net:connection-limit 40" >> "${Script_dir}/files/lftp.cfg"
-            echo "set xfer:clobber yes" >> "${Script_dir}/files/lftp.cfg"
+        	echo "set ssl:verify-certificate false" > "${Script_dir}/tmp/lftp.cfg"
+            echo "set net:connection-limit 40" >> "${Script_dir}/tmp/lftp.cfg"
+            echo "set xfer:clobber yes" >> "${Script_dir}/tmp/lftp.cfg"
             for m in "${Models[@]}"
                 do
                 {
@@ -97,31 +99,31 @@ while getopts ":uvh" opt; do
                     echo 'echo getting /comp/'"${m}"'_hdds_incompatible.json'
                     echo 'get "https://www.synology.com/api/compatibility/findHclList?lang=en-global&search_by=products&model='"${m//+/%2B}"'&category=hdds&usage_id=12&recommend=f" -o "'"${Script_dir}"'/comp/'"${m}"'_hdds_incompatible.json"'
                     #stat --printf=", Size: %s" "${Script_dir}/comp/${m}_hdds_compatible.json"
-                } >> "${Script_dir}/files/lftp.cfg"
+                } >> "${Script_dir}/tmp/lftp.cfg"
                 done
-            echo "bye" >> "${Script_dir}/files/lftp.cfg"
-            lftp -f "${Script_dir}/files/lftp.cfg"
+            echo "bye" >> "${Script_dir}/tmp/lftp.cfg"
+            lftp -f "${Script_dir}/tmp/lftp.cfg"
             echo "done.";
             sed -e "s/\\\\\///g" -i "${Script_dir}"/comp/*.json #Kingston SSDs: remove "\/"
         echo "Updating latest package Versions:"
         lftp -c "open https://archive.synology.com/download/Package/spk/; cls" > "${available_packages_pre}"; #download package list
         sed -i '/^enabled$/d' "${available_packages_pre}"
         echo "Number of available Packages: $(cat "${available_packages_pre}" | wc -w)"
-        	echo "set ssl:verify-certificate false" > "${Script_dir}/files/lftp2.cfg"
-        	echo "set net:connection-limit 20" >> "${Script_dir}/files/lftp2.cfg"
-        	echo "set xfer:clobber yes" >> "${Script_dir}/files/lftp2.cfg"
+        	echo "set ssl:verify-certificate false" > "${Script_dir}/tmp/lftp2.cfg"
+        	echo "set net:connection-limit 20" >> "${Script_dir}/tmp/lftp2.cfg"
+        	echo "set xfer:clobber yes" >> "${Script_dir}/tmp/lftp2.cfg"
             cat "${available_packages_pre}" | awk -v OFS="\\\ " '$1=$1' > "${available_packages}"
             declare -a "PackageArray" #??
         	readarray -t "PackageArray" < "${available_packages}"
             #echo "Array: ${PackageArray[@]}" #package array, i.e. Java7/
         	echo "" > "${package_versions}"
-            echo "open https://archive.synology.com/download/Package/spk/" >> "${Script_dir}/files/lftp2.cfg"
+            echo "open https://archive.synology.com/download/Package/spk/" >> "${Script_dir}/tmp/lftp2.cfg"
         	for v in "${PackageArray[@]}"
         	do
                 echo "echo -n "\""${v//\/}" \""; cd ${v}; dir | tail -n1 | cut -d \' \'  -f18; cd .." >> "${Script_dir}/files/lftp2.cfg"
         	done
-        	echo "bye" >> "${Script_dir}/files/lftp2.cfg"
-            lftp -f "${Script_dir}/files/lftp2.cfg" | tee "${package_versions}"
+        	echo "bye" >> "${Script_dir}/tmp/lftp2.cfg"
+            lftp -f "${Script_dir}/tmp/lftp2.cfg" | tee "${package_versions}"
         	cat "${package_versions}"
       ;;
     h)
@@ -162,8 +164,8 @@ if [[ "$(find "${Script_dir}"/tmp/ -name SRS.php -mmin +600)" ]] || [[ -z $(find
         awk '/<div class="selected_country">Deutschland<\/div>/{f=1;next} /<div class="selected_country">Griechenland<\/div>/{f=0} f' "$srs" > "$srsde"
 fi
 
-if [[ "$(find "${Script_dir}"/files/ -name lftp.cfg -mmin +5040)" ]] || [[ -z $(find "${Script_dir}"/files/ -name lftp.cfg) ]]; then  #update, if no file found or older than 20 hours
-        touch "${Script_dir}/files/lftp.cfg"
+if [[ "$(find "${Script_dir}"/tmp/ -name lftp.cfg -mmin +10040)" ]] || [[ -z $(find "${Script_dir}"/tmp/ -name lftp.cfg) ]]; then  #update, if no file found or older than 20 hours
+        touch "${Script_dir}/tmp/lftp.cfg"
         echo -e "\nGetting available Models:"
         curl "https://www.synology.com/cgi/misc/?action=getProductList_withOEM" -# | grep -oP '(?<=\[).*(?=\])' > "$ProductList" #get all Models listed in Synology API
         stat --printf="Size: %s" "$ProductList"
@@ -180,9 +182,9 @@ if [[ "$(find "${Script_dir}"/files/ -name lftp.cfg -mmin +5040)" ]] || [[ -z $(
         IFS=$' \t\n'
         echo -e "\nModels: ${Models[*]}" #old: echo -e "\nModels: ${Models[@]}"
         echo "Downloading In-/Compatibility-lists:"
-        	echo "set ssl:verify-certificate false" > "${Script_dir}/files/lftp.cfg"
-            echo "set net:connection-limit 20" >> "${Script_dir}/files/lftp.cfg"
-            echo "set xfer:clobber yes" >> "${Script_dir}/files/lftp.cfg"
+        	echo "set ssl:verify-certificate false" > "${Script_dir}/tmp/lftp.cfg"
+            echo "set net:connection-limit 20" >> "${Script_dir}/tmp/lftp.cfg"
+            echo "set xfer:clobber yes" >> "${Script_dir}/tmp/lftp.cfg"
             for m in "${Models[@]}"
                 do
                 {
@@ -193,10 +195,10 @@ if [[ "$(find "${Script_dir}"/files/ -name lftp.cfg -mmin +5040)" ]] || [[ -z $(
                     echo 'echo getting /comp/'"${m}"'_hdds_incompatible.json'
                     echo 'get "https://www.synology.com/api/compatibility/findHclList?lang=en-global&search_by=products&model='"${m//+/%2B}"'&category=hdds&usage_id=12&recommend=f" -o "'"${Script_dir}"'/comp/'"${m}"'_hdds_incompatible.json"'
                     #stat --printf=", Size: %s" "${Script_dir}/comp/${m}_hdds_compatible.json"
-                } >> "${Script_dir}/files/lftp.cfg"
+                } >> "${Script_dir}/tmp/lftp.cfg"
                 done
-            echo "bye" >> "${Script_dir}/files/lftp.cfg"
-            lftp -f "${Script_dir}/files/lftp.cfg"
+            echo "bye" >> "${Script_dir}/tmp/lftp.cfg"
+            lftp -f "${Script_dir}/tmp/lftp.cfg"
             echo "done.";
             sed -e "s/\\\\\///g" -i "${Script_dir}"/comp/*.json #Kingston SSDs: remove "\/"
             #}
@@ -204,21 +206,21 @@ if [[ "$(find "${Script_dir}"/files/ -name lftp.cfg -mmin +5040)" ]] || [[ -z $(
         lftp -c "open https://archive.synology.com/download/Package/spk/; cls" > "${available_packages_pre}"; #download package list
         sed -i '/^enabled$/d' "${available_packages_pre}"
         echo "Number of available Packages: $(cat "${available_packages_pre}" | wc -w)"
-        	echo "set ssl:verify-certificate false" > "${Script_dir}/files/lftp2.cfg"
-            echo "set net:connection-limit 20" >> "${Script_dir}/files/lftp2.cfg"
-            echo "set xfer:clobber yes" >> "${Script_dir}/files/lftp2.cfg"
+        	echo "set ssl:verify-certificate false" > "${Script_dir}/tmp/lftp2.cfg"
+            echo "set net:connection-limit 20" >> "${Script_dir}/tmp/lftp2.cfg"
+            echo "set xfer:clobber yes" >> "${Script_dir}/tmp/lftp2.cfg"
             cat "${available_packages_pre}" | awk -v OFS="\\\ " '$1=$1' > "${available_packages}"
             declare -a "PackageArray" #??
             readarray -t "PackageArray" < "${available_packages}"
             #echo "Array: ${PackageArray[@]}" #package array, i.e. Java7/
             echo "" > "${package_versions}"
-            echo "open https://archive.synology.com/download/Package/spk/" >> "${Script_dir}/files/lftp2.cfg"
+            echo "open https://archive.synology.com/download/Package/spk/" >> "${Script_dir}/tmp/lftp2.cfg"
             for v in "${PackageArray[@]}"
             do
-                echo "echo -n "\""${v//\/}" \""; cd ${v}; dir | tail -n1 | cut -d \' \'  -f18; cd .." >> "${Script_dir}/files/lftp2.cfg"
+                echo "echo -n "\""${v//\/}" \""; cd ${v}; dir | tail -n1 | cut -d \' \'  -f18; cd .." >> "${Script_dir}/tmp/lftp2.cfg"
             done
-            echo "bye" >> "${Script_dir}/files/lftp2.cfg"
-            lftp -f "${Script_dir}/files/lftp2.cfg" | tee "${package_versions}"
+            echo "bye" >> "${Script_dir}/tmp/lftp2.cfg"
+            lftp -f "${Script_dir}/tmp/lftp2.cfg" | tee "${package_versions}"
             cat "${package_versions}"
         fi
 
@@ -261,19 +263,60 @@ do
                 echo "$date_now debug extracted to $DOWNLOAD_DIR/debug_$DATE"
                 TemporaryWorkaround=0
                 if [[ -d "$DOWNLOAD_DIR/debug_$DATE/root" ]]
-                    then SupportFormVar=$(find $DOWNLOAD_DIR/debug_$DATE/volume1/@tmp/ -maxdepth 1 -mindepth 1 -exec basename {} ';')
-                         mv "$DOWNLOAD_DIR/debug_$DATE/root/@tmp/$SupportFormVar/"* "$DOWNLOAD_DIR/debug_$DATE/"
-                    log "testroot, Var is: $SupportFormVar"
+                    then SupportFormVar=$(find $DOWNLOAD_DIR/debug_$DATE/root/@tmp/ -maxdepth 1 -mindepth 1 -exec basename {} ';')
+                        DatPresent=$(ls -l "$DOWNLOAD_DIR/debug_$DATE/root/@tmp/$SupportFormVar/"*.dat 2>/dev/null | wc -l)
+                		if [[ "$DatPresent" != 0 ]]
+                		then
+                			mv "$DOWNLOAD_DIR/debug_$DATE/root/@tmp/$SupportFormVar/"*.dat "$DOWNLOAD_DIR/"
+                            log "rootpath, moved *.dat-file"
+                		else
+                        	mv "$DOWNLOAD_DIR/debug_$DATE/root/@tmp/$SupportFormVar/"* "$DOWNLOAD_DIR/debug_$DATE/"
+                            log "rootpath, moved all files"
+                     	fi
+                    log "rootpath, Var is: $SupportFormVar"
+                fi
+                if [[ -d "$DOWNLOAD_DIR/debug_$DATE/volumeUSB1" ]]
+                    then RouterUSBShareVar=$(find $DOWNLOAD_DIR/debug_$DATE/volumeUSB1/ -maxdepth 1 -mindepth 1 -exec basename {} ';')
+                         SupportFormVar=$(find $DOWNLOAD_DIR/debug_$DATE/volumeUSB1/$RouterUSBShareVar/@tmp/ -maxdepth 1 -mindepth 1 -exec basename {} ';')
+                        if [[ "$SupportFormVar" == *"SupportFormAttach"* ]]
+                		then
+                            mv "$DOWNLOAD_DIR/debug_$DATE/volumeUSB1/$RouterUSBShareVar/@tmp/$SupportFormVar/"* "$DOWNLOAD_DIR/debug_$DATE/"
+                			log "not breaking loop"
+                			log "$DOWNLOAD_DIR/debug_$DATE"
+                			sleep 6
+                			sleep_scan_dir=12
+                		else
+                			log "dsmdir: $DOWNLOAD_DIR/debug_$DATE/volumeUSB1/dsm"
+                		 for file in "$DOWNLOAD_DIR/debug_$DATE/volumeUSB1/$RouterUSBShareVar/@tmp/$SupportFormVar/"*.dat
+    					 	do 	mv "$file" "$DOWNLOAD_DIR"
+                            log "file: $file, dir: $DOWNLOAD_DIR"
+    					 		sleep 2
+    					 		#break 2 #break out of 2 levels of loops
+    					 	done
+                         	mv "$DOWNLOAD_DIR/debug_$DATE/volumeUSB1/$RouterUSBShareVar/@tmp/$SupportFormVar/"* "$DOWNLOAD_DIR/debug_$DATE/"*
+                         	rm -rf "$DOWNLOAD_DIR/debug_$DATE/volumeUSB1"
+                    		log "Routerpath, Vars are: $RouterUSBShareVar and $SupportFormVar"
+                    		#log "breaking out of loop..."
+                    		sleep 6
+                    		break
+                    	fi
+                    else
+                    	sleep_scan_dir=$sleep_scan_dir_backup
                 fi
                 if [[ -d "$DOWNLOAD_DIR/debug_$DATE/volume1/@tmp/" ]]
                     then SupportFormVar=$(find $DOWNLOAD_DIR/debug_$DATE/volume1/@tmp/ -maxdepth 1 -mindepth 1 -exec basename {} ';')
                          mv "$DOWNLOAD_DIR/debug_$DATE/volume1/@tmp/$SupportFormVar/dsm/"* "$DOWNLOAD_DIR/debug_$DATE/"
-                    log "testtmp, Var is: $SupportFormVar"
+                    log "tmppath, Var is: $SupportFormVar"
                     TemporaryWorkaround=1
                     echo -e "\e[31mWarning! This is an old DSM-Versions debug. Data after 'Overview' may not be reliable.\e[0m"
                 else
                 log "test4"
                 fi
+
+				#PackVar=$(find $DOWNLOAD_DIR/debug_$DATE/ -iname "packages.list" -printf '%h\n')
+				#if [[ PackVar != 0 ]]
+                #then    DSM=${PackVar}
+                #fi
 
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/packages.list" ]]
                 then    DSM=""
@@ -303,8 +346,29 @@ do
                     echo -e "Synology HA: Detected, this is the PASSIVE Server-log\n" >> "$sm"
                 else
                     sm="$DOWNLOAD_DIR/debug_$DATE/$DSM/sm.log"
-                    #echo -e "No Synology HA detected" >> "$sm"
                 fi
+
+
+                if [[ -f "$DOWNLOAD_DIR/debug_$DATE/remote.debug.dat" ]]
+                then
+                    if [[ -f "$DOWNLOAD_DIR/debug_$DATE/remote.debug.dat" ]]
+                    then
+                        sm="$DOWNLOAD_DIR/debug_$DATE/$DSM/sm.log"
+                        echo -e "Synology UC: Detected, this is the ACTIVE Server-log\n" >> "$sm"
+                        mv "$DOWNLOAD_DIR/debug_$DATE/remote.debug.dat" "$DOWNLOAD_DIR/passive_UC.dat"
+                        sleep 2
+                    fi
+                fi
+
+                if [[ "$file" = "$DOWNLOAD_DIR/passive_UC.dat" ]]; then
+                    DSM=dsm
+                    sm="$DOWNLOAD_DIR/debug_$DATE/$DSM/sm.log"
+                    echo -e "Synology UC: Detected, this is the PASSIVE Server-log\n" >> "$sm"
+                else
+                    sm="$DOWNLOAD_DIR/debug_$DATE/$DSM/sm.log"
+                fi
+
+
                 sg=$DOWNLOAD_DIR/debug_$DATE/$DSM/smartgrep
                 hb_debug=$DOWNLOAD_DIR/debug_$DATE/$DSM/hibernation_debug.log
                 DEBUG_DIR=$DOWNLOAD_DIR/debug_$DATE
@@ -482,11 +546,7 @@ do
                         do
                             [[ -e "$file" ]] || log "$file not found."
                             [[ -e "$file" ]] || break
-<<<<<<< HEAD
                             ExtensionHdds=$(grep -a "syno_device_list" "$file" | tr '\0' '\n' | cut -d "\"" -f2 | sed 's/\/dev\///g' )
-=======
-                            ExtensionHdds=$(grep "syno_device_list" "$file" | cut -d "\"" -f2 | sed 's/\/dev\///g' ) #add grep "-a" ?!
->>>>>>> origin/master
                             ExtensionHddsLoopArray=("$ExtensionHdds")
                             for ((i=0; i<${#ExtensionHddsLoopArray[@]}; ++i))
                             do
@@ -786,7 +846,8 @@ do
                 } >> "$sg"
                 done
 
-                ls -lh "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/space/space_history_"*.xml >> "$DOWNLOAD_DIR/debug_$DATE/$DSM/space.xml"
+                if [[ -d "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/space" ]]
+                then ls -lh "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/space/space_history_"*.xml >> "$DOWNLOAD_DIR/debug_$DATE/$DSM/space.xml"
 
                 for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/space/space_history_"*.xml
                 do
@@ -820,6 +881,7 @@ do
                 done
 
                 SPACE_FILES="$DOWNLOAD_DIR/debug_$DATE/$DSM/space.xml"
+                fi
 
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/disk_log.xml" ]] && [[ "$(stat --printf='%s' "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/disk_log.xml")" -gt 0 ]]
                 then    DiskLog="$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/disk_log.xml"
@@ -1251,7 +1313,6 @@ do
                             PureVerInstalled=$(grep -a "$i " "$synopkgfile" | tail -n1 | grep -aoP '(?<='$i' )\S*' | sed 's/\-/./g')
                             log "${InstalledPackageArray[$counter]}: Installed: $PureVerInstalled vs. available: $PureVerAvailable"
 
-                            # "gt" means "greater than"
                             version_compare_gt() {
                                 ! printf "%s\n" "$@" | sort --check --version-sort &> /dev/null
                             }
@@ -1603,6 +1664,18 @@ do
                     #counter=$((counter + 1))
                 done
 
+                #if file does not exist, unset var (lazy fix):
+                if [ ! -f "$sm" ]; then
+                    sm=""
+                fi
+                if [ ! -f "$hb_debug" ]; then
+                    hb_debug=""
+                fi
+                if [ ! -d "$DOWNLOAD_DIR/debug_$DATE" ]; then
+                    DEBUG_DIR=""
+                fi
+
+
                 sleep 0.1
             TIMEFORMAT=$'\nOpening Sublime took: \t\t\t\t\t\t\t\t\e[36m%Rsec\e[39m'
             time(
@@ -1628,8 +1701,6 @@ do
                 )
                 TIMEFORMAT=$'Executiontime: \t\t\t\t\t\t\t\t\t\e[36m%Rsec\e[39m'
                 #log "$subl" "${OpenFiles[@]}"
-                #$subl "$DEBUG_DIR" "$SMART_GREP" "$PACK" "$Bash_history" "$hb_debug" "$HB" "$DF" "$IFCONFIG" "$SPACE_FILES":10000 "$SYSDBtac":100000 "$sm" "$MESSAGES":1000000 "${PicArray[@]}"
-                #"${subl}" "$DEBUG_DIR" "$SMART_GREP" "$PACK" "$Bash_history" "$hb_debug" "$HB" "$DF" "$IFCONFIG" "$SPACE_FILES":10000 "$SYSDBtac":100000 "$sm" "$MESSAGES":1000000 "${PicArray[@]}" #$pics
                 # for smart-files: ${SMART_FILES[@]}  $MDSTAT
                 else
                     mkdir -p "${DOWNLOAD_DIR}/kapott"
@@ -1638,8 +1709,8 @@ do
                     if [[ "$os" = "win" ]]; then
                         echo "" #maybe add things here
                     elif [[ "$os" = "other" ]]; then
-                    #statements
-                    zenity --error --text="Debug konnte nicht entpackt werden\!" --title="Achtung!" 2> /dev/null
+                    	echo "" #maybe add things here
+                    #zenity --error --text="Debug konnte nicht entpackt werden\!" --title="Achtung!" 2> /dev/null
                 fi
             fi
             DSM=dsm

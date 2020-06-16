@@ -120,7 +120,7 @@ while getopts ":uvh" opt; do
             echo "open https://archive.synology.com/download/Package/spk/" >> "${Script_dir}/tmp/lftp2.cfg"
         	for v in "${PackageArray[@]}"
         	do
-                echo "echo -n "\""${v//\/}" \""; cd ${v}; dir | tail -n1 | cut -d \' \'  -f18; cd .." >> "${Script_dir}/files/lftp2.cfg"
+                echo "echo -n "\""${v//\/}" \""; cd ${v}; dir | tail -n1 | cut -d \' \'  -f18; cd .." >> "${Script_dir}/tmp/lftp2.cfg"
         	done
         	echo "bye" >> "${Script_dir}/tmp/lftp2.cfg"
             lftp -f "${Script_dir}/tmp/lftp2.cfg" | tee "${package_versions}"

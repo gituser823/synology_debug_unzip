@@ -1,4 +1,6 @@
-System Model	CPU-Model			Cores		Threads	FPU	Packet-Architecture RAM
+System Model	CPU-Model			Cores		Threads	FPU	Packet-Arcitecture RAM
+UC-Serie
+UC3200      Intel Xeon D-1521       Quad Core x 2  ?    ?    DDR4 ECC UDIMM (per Controller) 8 GB
 FS-Serie
 FS6400      Intel Xeon Silver 4110 x 2  Eight-Core x 2  16 x 2  Ja  Purley  DDR4 ECC RDIMM 32 GB
 FS3600		Intel Xeon D-1567 	12-Core 				24 		Ja 	Broadwellnk 	DDR4 ECC RDIMM 16 GB
@@ -11,14 +13,14 @@ SA3600      Intel Xeon D-1567       12-Core     24  Ja  Broadwellnk DDR4 ECC RDI
 SA3400      Intel Xeon D-1541       Eight Core  16  Ja  Broadwellnk DDR4 ECC RDIMM 16 GB
 SA3200D    	Intel Xeon D-1521 x 2   Quad-Core x 2   8 x 2   Ja  Broadwellntbap  DDR4 ECC UDIMM 2x 8 GB
 x20-Reihe
-RS820RP+    Intel Atom C3538        Quad Core   4   Ja  Denverton   DDR4 Non-ECC 2GB
-RS820+      Intel Atom C3538        Quad Core   4   Ja  Denverton   DDR4 Non-ECC 2GB
-DS920+		Intel Celeron J4125 	Quad Core 	4 	Ja 	Geminilake 	DDR4 4GB
+RS820RP+    Intel Atom C3538        Quad Core   4   Ja  Denverton   DDR4 Non-ECC 2 GB
+RS820+      Intel Atom C3538        Quad Core   4   Ja  Denverton   DDR4 Non-ECC 2 GB
+DS920+		Intel Celeron J4125 	Quad Core 	4 	Ja 	Geminilake 	DDR4 4 GB
 DS720+		Intel Celeron J4125 	Quad Core 	4 	Ja 	Geminilake 	DDR4 2 GB
-DS620slim   Intel Celeron J3355     Dual Core   2   Ja  Apollolake  DDR3L SO-DIMM 2GB
-DS420j      Realtek rtd1296         Quad Core   4   Ja  rtd1296     DDR4 1GB
-DS220j      Realtek RTD1296         Quad Core   4   Ja  rtd1296     DDR4 512MB
-DS120j		Marvell A3720			Dual Core 	2 	Ja 	armada37xx 	DDR3 512MB
+DS620slim   Intel Celeron J3355     Dual Core   2   Ja  Apollolake  DDR3L SO-DIMM 2 GB
+DS420j      Realtek rtd1296         Quad Core   4   Ja  rtd1296     DDR4 1 GB
+DS220j      Realtek RTD1296         Quad Core   4   Ja  rtd1296     DDR4 512 MB
+DS120j		Marvell A3720			Dual Core 	2 	Ja 	armada37xx 	DDR3 512 MB
 x19-Reihe
 RS1619xs+   Intel Xeon D-1527       Quad Core   4   Ja  Broadwell   DDR4-2133 ECC UDIMM 8 GB
 RS1219+     Intel Atom C2538        Quad Core   4   Ja  Avoton      DDR3 2 GB
@@ -27,7 +29,7 @@ DS2419+     Intel Atom C3538        Quad Core   4   Ja  Denverton   DDR4 Non-ECC
 DS1819+     Intel Atom C3538        Quad Core   4   Ja  Denverton   DDR4-2133 Non-ECC SO-DIMM 4 GB
 DS1019+     Intel Celeron J3455     Quad Core   4   Ja  Apollolake  DDR3L 8 GB
 DS419slim   Marvell Armada 385 88F6820  Dual Core   2   Ja  armada38xx  DDR3L 512 MB
-DS119j      Marvell A3720           Dual Core   2   Ja  armada37xx  DDR3L 256MB
+DS119j      Marvell A3720           Dual Core   2   Ja  armada37xx  DDR3L 256 MB
 x18-Reihe
 RS3618xs 	Intel Xeon D-1521 		Quad Core 	8 	Yes 	Broadwell 	DDR4 ECC UDIMM 8 GB
 RS2818RP+ 	Intel Atom C3538 		Quad Core 	4 	Yes 	Denverton 	DDR4-2133 Non-ECC UDIMM 4 GB

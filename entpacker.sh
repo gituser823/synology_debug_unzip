@@ -3,7 +3,7 @@
 required_packages="bc bsdtar unzip sqlite3 lftp"
 for package in $required_packages; do
     command -v $package > /dev/null || {
-        echo "Must install $package to proceed."
+        echo "Please install $package to proceed."
         exit 1
     }
 done
@@ -31,6 +31,10 @@ available_packages="${Script_dir}/tmp/available_packages.txt"
 package_versions="${Script_dir}/tmp/package_versions.txt"
 mkdir -p "${Script_dir}/comp"
 mkdir -p "${Script_dir}/tmp"
+mkdir -p "${Script_dir}/tmp/lftp"
+confpath="${Script_dir}/tmp/lftp"
+declare -a confs
+confs=( "${confpath}/config_no_"{00..8}.cfg )
 ProductList="${Script_dir}/comp/ProductList.json"
 sleep_scan_dir_backup=$sleep_scan_dir
 
@@ -69,7 +73,6 @@ while getopts ":uvh" opt; do
         #curl "https://www.synology.com/de-de/knowledgebase/DSM/tutorial/General/What_kind_of_CPU_does_my_NAS_have" -# --output "$cputxt_file"
         #stat --printf="Size: %s" "$cputxt_file"
         #awk '/<table id="b_4">/{f=1;next} /<\/table>/{f=0} f' "$cputxt_file" > "$cputxt_file2"
-
         echo -e "\nDownloading latest SRS-list:"
         curl "https://www.synology.com/de-de/solution/SRS" -# --output "$srs"
         stat --printf="Size: %s" "$srs"
@@ -86,23 +89,31 @@ while getopts ":uvh" opt; do
         IFS=$' \t\n'
         echo -e "\nModels: ${Models[*]}" #old: echo -e "\nModels: ${Models[@]}"
         echo "Downloading In-/Compatibility-lists:"
-        	echo "set ssl:verify-certificate false" > "${Script_dir}/tmp/lftp.cfg"
-            echo "set net:connection-limit 40" >> "${Script_dir}/tmp/lftp.cfg"
-            echo "set xfer:clobber yes" >> "${Script_dir}/tmp/lftp.cfg"
+        {
+        echo "set ssl:verify-certificate false"
+        echo "set net:connection-limit 40"
+        echo "set xfer:clobber yes"
+        }|tee  "${confs[@]}" >/dev/null
+
+            ind=0
             for m in "${Models[@]}"
                 do
                 {
                     #n="${m,,}" #convert to lowercase
-                    echo 'echo getting /comp/'"${m}"'_hdds_compatible.json'
+                    #echo 'echo getting /comp/'"${m}"'_hdds_compatible.json'
                     echo 'get "https://www.synology.com/api/compatibility/findHclList?lang=en-global&search_by=products&model='"${m//+/%2B}"'&category=hdds&usage_id=12&recommend=t" -o "'"${Script_dir}"'/comp/'"${m}"'_hdds_compatible.json"'
                     #stat --printf=", Size: %s" "${Script_dir}/comp/${m}_hdds_compatible.json"
-                    echo 'echo getting /comp/'"${m}"'_hdds_incompatible.json'
+                    #echo 'echo getting /comp/'"${m}"'_hdds_incompatible.json'
                     echo 'get "https://www.synology.com/api/compatibility/findHclList?lang=en-global&search_by=products&model='"${m//+/%2B}"'&category=hdds&usage_id=12&recommend=f" -o "'"${Script_dir}"'/comp/'"${m}"'_hdds_incompatible.json"'
                     #stat --printf=", Size: %s" "${Script_dir}/comp/${m}_hdds_compatible.json"
-                } >> "${Script_dir}/tmp/lftp.cfg"
+                } >> "${confs[$ind]}"
+                    let ind++
+                    [ $ind -ge ${#confs[@]} ] && ind=0
                 done
-            echo "bye" >> "${Script_dir}/tmp/lftp.cfg"
-            lftp -f "${Script_dir}/tmp/lftp.cfg"
+            echo "bye" |tee -a "${confs[@]}" >/dev/null
+                for conf in "${confs[@]}";do
+                    lftp -f "$conf" 2>/dev/null &
+                done
             echo "done.";
             sed -e "s/\\\\\///g" -i "${Script_dir}"/comp/*.json #Kingston SSDs: remove "\/"
         echo "Updating latest package Versions:"
@@ -164,27 +175,27 @@ if [[ "$(find "${Script_dir}"/tmp/ -name SRS.php -mmin +600)" ]] || [[ -z $(find
         awk '/<div class="selected_country">Deutschland<\/div>/{f=1;next} /<div class="selected_country">Griechenland<\/div>/{f=0} f' "$srs" > "$srsde"
 fi
 
-if [[ "$(find "${Script_dir}"/tmp/ -name lftp.cfg -mmin +10040)" ]] || [[ -z $(find "${Script_dir}"/tmp/ -name lftp.cfg) ]]; then  #update, if no file found or older than 20 hours
-        touch "${Script_dir}/tmp/lftp.cfg"
+if [[ "$(find "${Script_dir}"/tmp/lftp/ -name config_no_00.cfg -mmin +16040)" ]] || [[ -z $(find "${Script_dir}"/tmp/lftp/ -name config_no_00.cfg) ]]; then  #update, if no file found or older than 20 hours
+        touch "${Script_dir}/tmp/lftp/config_no_00.cfg"
         echo -e "\nGetting available Models:"
         curl "https://www.synology.com/cgi/misc/?action=getProductList_withOEM" -# | grep -oP '(?<=\[).*(?=\])' > "$ProductList" #get all Models listed in Synology API
         stat --printf="Size: %s" "$ProductList"
         IFS=","
-        #declare -a ModelArray
         counter="0"
         for v in $(cat "$ProductList")
         do
             Models["${counter}"]="${v//\"}"
-            #$(expr "${PoH}" - "${LastSmartTest}" )
-            #counter=$((counter + 1))
             counter=`expr $counter + 1`
         done
         IFS=$' \t\n'
         echo -e "\nModels: ${Models[*]}" #old: echo -e "\nModels: ${Models[@]}"
         echo "Downloading In-/Compatibility-lists:"
-        	echo "set ssl:verify-certificate false" > "${Script_dir}/tmp/lftp.cfg"
-            echo "set net:connection-limit 20" >> "${Script_dir}/tmp/lftp.cfg"
-            echo "set xfer:clobber yes" >> "${Script_dir}/tmp/lftp.cfg"
+            {
+                echo "set ssl:verify-certificate false"
+                echo "set net:connection-limit 40"
+                echo "set xfer:clobber yes"
+            }|tee  "${confs[@]}" >/dev/null
+        	ind=0
             for m in "${Models[@]}"
                 do
                 {
@@ -195,10 +206,15 @@ if [[ "$(find "${Script_dir}"/tmp/ -name lftp.cfg -mmin +10040)" ]] || [[ -z $(f
                     echo 'echo getting /comp/'"${m}"'_hdds_incompatible.json'
                     echo 'get "https://www.synology.com/api/compatibility/findHclList?lang=en-global&search_by=products&model='"${m//+/%2B}"'&category=hdds&usage_id=12&recommend=f" -o "'"${Script_dir}"'/comp/'"${m}"'_hdds_incompatible.json"'
                     #stat --printf=", Size: %s" "${Script_dir}/comp/${m}_hdds_compatible.json"
-                } >> "${Script_dir}/tmp/lftp.cfg"
+                } >> "${confs[$ind]}"
+                let ind++
+                [ $ind -ge ${#confs[@]} ] && ind=0
                 done
-            echo "bye" >> "${Script_dir}/tmp/lftp.cfg"
-            lftp -f "${Script_dir}/tmp/lftp.cfg"
+            echo "bye" |tee -a "${confs[@]}" >/dev/null
+
+            for conf in "${confs[@]}";do
+                lftp -f "$conf" 2>/dev/null &
+            done
             echo "done.";
             sed -e "s/\\\\\///g" -i "${Script_dir}"/comp/*.json #Kingston SSDs: remove "\/"
             #}
@@ -267,11 +283,19 @@ do
                         DatPresent=$(ls -l "$DOWNLOAD_DIR/debug_$DATE/root/@tmp/$SupportFormVar/"*.dat 2>/dev/null | wc -l)
                 		if [[ "$DatPresent" != 0 ]]
                 		then
-                			mv "$DOWNLOAD_DIR/debug_$DATE/root/@tmp/$SupportFormVar/"*.dat "$DOWNLOAD_DIR/"
-                            log "rootpath, moved *.dat-file"
-                		else
-                        	mv "$DOWNLOAD_DIR/debug_$DATE/root/@tmp/$SupportFormVar/"* "$DOWNLOAD_DIR/debug_$DATE/"
-                            log "rootpath, moved all files"
+                            if [[ -f "$DOWNLOAD_DIR/debug_$DATE/cap_debug.dat" ]]
+                            then
+                                log "cap_debug found"
+                                else
+                    			mv "$DOWNLOAD_DIR/debug_$DATE/root/@tmp/$SupportFormVar/"*.dat "$DOWNLOAD_DIR/"
+                                log "rootpath, moved *.dat-files"
+                                mv "$DOWNLOAD_DIR/debug_$DATE/root" "$DOWNLOAD_DIR/debug_$DATE/root_old"
+                                sleep 10
+                                break
+                            fi
+                    		else
+                            	mv "$DOWNLOAD_DIR/debug_$DATE/root/@tmp/$SupportFormVar/"* "$DOWNLOAD_DIR/debug_$DATE/"
+                                log "rootpath, moved all files"
                      	fi
                     log "rootpath, Var is: $SupportFormVar"
                 fi
@@ -283,7 +307,7 @@ do
                             mv "$DOWNLOAD_DIR/debug_$DATE/volumeUSB1/$RouterUSBShareVar/@tmp/$SupportFormVar/"* "$DOWNLOAD_DIR/debug_$DATE/"
                 			log "not breaking loop"
                 			log "$DOWNLOAD_DIR/debug_$DATE"
-                			sleep 6
+                			sleep 10
                 			sleep_scan_dir=12
                 		else
                 			log "dsmdir: $DOWNLOAD_DIR/debug_$DATE/volumeUSB1/dsm"
@@ -297,7 +321,7 @@ do
                          	rm -rf "$DOWNLOAD_DIR/debug_$DATE/volumeUSB1"
                     		log "Routerpath, Vars are: $RouterUSBShareVar and $SupportFormVar"
                     		#log "breaking out of loop..."
-                    		sleep 6
+                    		sleep 10
                     		break
                     	fi
                     else
@@ -321,16 +345,8 @@ do
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/packages.list" ]]
                 then    DSM=""
                 fi
-                if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/ha/ha.conf" ]]
-                then
-                    if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/ha/passive_debug.dat" ]]
-                    then
-                        sm="$DOWNLOAD_DIR/debug_$DATE/$DSM/sm.log"
-                        echo -e "Synology HA: Detected, this is the ACTIVE Server-log\n" >> "$sm"
-                        mv "$DOWNLOAD_DIR/debug_$DATE/$DSM/ha/passive_debug.dat" "$DOWNLOAD_DIR/testdebug1.dat" #"$DOWNLOAD_DIR/passive_debugfile.dat"
-                        sleep 2
-                    fi
-                elif [[ -f "$DOWNLOAD_DIR/debug_$DATE/HighAvailability/ha.conf" ]]
+
+                if [[ -f "$DOWNLOAD_DIR/debug_$DATE/HighAvailability/ha.conf" ]]
                 then
                     if [[ -f "$DOWNLOAD_DIR/debug_$DATE/HighAvailability/passive_debug.dat" ]]
                     then
@@ -349,7 +365,7 @@ do
                 fi
 
 
-                if [[ -f "$DOWNLOAD_DIR/debug_$DATE/remote.debug.dat" ]]
+                if [[ -f "$DOWNLOAD_DIR/debug_$DATE/remote.debug.dat" ]] #for UC3200
                 then
                     if [[ -f "$DOWNLOAD_DIR/debug_$DATE/remote.debug.dat" ]]
                     then
@@ -539,6 +555,7 @@ do
                 fi
 
                 #Analyze ExtensionUnits
+                ExtCt=0
                 echo -n "ExtensionUnits:" >> "$sm"
                 OIFS=$IFS
                 IFS=","
@@ -557,12 +574,15 @@ do
                             ExtensionUnit=$(grep "Unique" "$file" | cut -d "\"" -f2)
                             if [ -n "$ExtensionUnit" ]; then
                                 echo -e "\n$ExtensionUnit with $ExtensionHdds" >> "$sm"
+                                echo "$ExtensionUnit:$ExtensionHdds" >> "$DOWNLOAD_DIR/debug_$DATE/$DSM/Ext_plain"
+                                let "ExtCt=ExtCt+1"
                             fi
                         done
                 IFS=$OIFS
-                if [ -z "$ExtensionHdds" ]; then
+                if [ "$ExtCt" -eq 0 ]; then
                     echo -e " none" >> "$sm"
                 fi
+
                 if [ "$UpnpModel_migrated_from" != "$UpnpModel" ]; then
                     echo "DSM was possibly migrated from $UpnpModel_migrated_from to $UpnpModel" >> "$sm"
                 fi
@@ -570,7 +590,7 @@ do
                 #TIMEFORMAT=$'hdd-compatibility-check until opening Sublime took\t\t\t\t\e[36m%Rsec\e[39m'
                             #time(
 
-                log "Extension all hdds-array: ${ExtensionHddsArray[@]}"
+                log "ExtensionHDDs: $ExtensionHdds"
                # if [[ -f $DOWNLOAD_DIR/debug_$DATE/$DSM/etc/private/domain_info ]]
                # then    windomain=$(grep "ads:domain_name" $DOWNLOAD_DIR/debug_$DATE/$DSM/etc/private/domain_info)
                # if [[ -z "$windomain" ]]; then
@@ -710,24 +730,6 @@ do
                     echo "Offline_Uncorrectable:" "$OfflineUncorrectable_sum on ${OfflineUncorrectable_HDD_Array[@]}" >> "$sm"
                 fi
 
-                UpnpModelCASE=${UpnpModel/rp/RP}
-                #hdd-compatibility:
-                if [[ -f "${Script_dir}/comp/${UpnpModelCASE}_hdds_compatible.json" ]]; then
-                    comp_list="${Script_dir}/comp/${UpnpModelCASE}_hdds_compatible.json"
-                    log "\e[32mCompatibility-list for ${UpnpModel} found and set. ($comp_list)\e[0m"
-                else
-                    echo -e "\e[31mCompatibility-list for ${UpnpModel} not found! should be ${Script_dir}/comp/${UpnpModelCASE}_hdds_compatible.json\e[0m"
-                    echo -e "Compatibility-list for ${UpnpModel} not found! should be ${Script_dir}/comp/${UpnpModelCASE}_hdds_compatible.json\nTHE FOLLOWING COMPATIBILITY RESULTS ARE WRONG:" >> "$sm"
-                fi
-
-                if [[ -f "${Script_dir}/comp/${UpnpModelCASE}_hdds_incompatible.json" ]]; then
-                    incomp_list="${Script_dir}/comp/${UpnpModelCASE}_hdds_incompatible.json"
-                    log "\e[32mIncompatibility-list for ${UpnpModel} found and set. ($incomp_list)\e[0m"
-                else
-                    echo -e "\e[31mIncompatibility-list for ${UpnpModel} not found! should be ${Script_dir}/comp/${UpnpModelCASE}_hdds_incompatible.json\e[0m"
-                    echo -e "Incompatibility-list for ${UpnpModel} not found! should be ${Script_dir}/comp/${UpnpModelCASE}_hdds_incompatible.json\nTHE FOLLOWING COMPATIBILITY RESULTS ARE WRONG:" >> "$sm"
-                fi
-
                 #declare -a PowerOnHours
                 for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/"{sd,nv,smart,sas[0-9]}*
                 do
@@ -764,33 +766,88 @@ do
                         hddname2=$(grep -i "$model_file" "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/disk_overview.xml" -m1 | cut -d "\"" -f2 | xargs )
                     fi
 
+                    UpnpModelCASE=${UpnpModel/rp/RP}
+
+                    if [ "$ExtCt" -gt 0 ]; then
+                        hddprefix_base=$(basename -- "$file")
+                        hddprefix=${hddprefix_base%_*}
+                        {
+                        log "prefix: $hddprefix for $file"
+                        } >&3
+                        if grep -q "$hddprefix" "$DOWNLOAD_DIR/debug_$DATE/$DSM/Ext_plain"; then
+                            ExtentionUnit_plain=$(grep "$hddprefix" "$DOWNLOAD_DIR/debug_$DATE/$DSM/Ext_plain" |cut -d':' -f1)
+                            UpnpModelCASE="$ExtentionUnit_plain"
+                            #log "checked Extensions, plain: $ExtentionUnit_plain"
+                        fi
+                    fi
+
+                    #hdd-compatibility:
+                    if [[ -f "${Script_dir}/comp/${UpnpModelCASE}_hdds_compatible.json" ]]; then
+                        comp_list="${Script_dir}/comp/${UpnpModelCASE}_hdds_compatible.json"
+                        {
+                        log "\e[32mCompatibility-list for ${UpnpModelCASE} found and set. ($comp_list)\e[0m"
+                        } >&3
+                    else
+                        echo -e "\e[31mCompatibility-list for ${UpnpModelCASE} not found! should be ${Script_dir}/comp/${UpnpModelCASE}_hdds_compatible.json\e[0m"
+                        echo -e "Compatibility-list for ${UpnpModelCASE} not found! should be ${Script_dir}/comp/${UpnpModelCASE}_hdds_compatible.json\nTHE FOLLOWING COMPATIBILITY RESULTS ARE WRONG:" >> "$sm"
+                    fi
+
+                    if [[ -f "${Script_dir}/comp/${UpnpModelCASE}_hdds_incompatible.json" ]]; then
+                        incomp_list="${Script_dir}/comp/${UpnpModelCASE}_hdds_incompatible.json"
+                        {
+                        log "\e[32mIncompatibility-list for ${UpnpModelCASE} found and set. ($incomp_list)\e[0m"
+                        } >&3
+                    else
+                        echo -e "\e[31mIncompatibility-list for ${UpnpModelCASE} not found! should be ${Script_dir}/comp/${UpnpModelCASE}_hdds_incompatible.json\e[0m"
+                        echo -e "Incompatibility-list for ${UpnpModelCASE} not found! should be ${Script_dir}/comp/${UpnpModelCASE}_hdds_incompatible.json\nTHE FOLLOWING COMPATIBILITY RESULTS ARE WRONG:" >> "$sm"
+                    fi
+
                     if [[ -z "${modelname}" ]]; then
                         HDDComp=""
+                        {
                         log "\e[31mHDD-Comp: Modelname empty!\e[0m"
+                        } >&3
                     elif grep "${modelname}" "${incomp_list}" &> /dev/null; then
                         HDDComp="(incompatible)"
+                        {
                         log "HDD-INComp: found \"\e[31m${modelname}\e[0m\""
+                        } >&3
                     elif grep "${modelname//-/ - }" "${incomp_list}" &> /dev/null; then
                         HDDComp="(incompatible)"
+                        {
                         log "HDD-INComp: found \"\e[31m${modelname//-/ - }\e[0m\""
+                        } >&3
                     elif grep  "${modelname}" "${comp_list}" &> /dev/null; then
                         HDDComp="(compatible)"
+                        {
                         log "HDD-Comp: found \"\e[32m${modelname}\e[0m\""
+                        } >&3
                     elif grep  "${modelname//-/ - }" "${comp_list}" &> /dev/null; then
                         HDDComp="(compatible)"
+                        {
                         log "HDD-Comp: found \"\e[32m${modelname//-/ - }\e[0m\""
+                        } >&3
                     elif grep  "${modelname%-*}" "${incomp_list}" &> /dev/null; then # remove part after "-"; check if two parts first?
                         HDDComp="(incompatible)"
+                        {
                         log "HDD-INComp: found \"\e[32m${modelname%-*}\e[0m\""
+                        } >&3
                     elif grep  "${modelname%-*}" "${comp_list}" &> /dev/null; then # remove part after "-"; check if two parts first?
                         HDDComp="(compatible)"
+                        {
                         log "HDD-Comp: found \"\e[32m${modelname%-*}\e[0m\""
+                        } >&3
                     else
                         HDDComp="(not listed)"
+                        {
                         log "\e[34mHDD-Comp: \"${modelname}\" not found.\e[0m"
+                        } >&3
                     fi
-                    log "compatibility check for ${hddname} grepped for ${modelname} , ${modelname//-/ - } and ${modelname%-*} ; HDD Size: ${modelname_hdd_size}"
-                    PoH=$(grep -iE "Power(_|-)on(_|-)(Hours|Hour_Count)" "$file" | sed -e "s/ ([^()]*)//g" | rev | cut -d " " -f1 | rev | sed 's/h.*//' )
+
+                    {
+                    log "compatibility check for ${hddname} grepped for \"${modelname}\" , \"${modelname//-/ - }\" and \"${modelname%-*}\"; HDD Size: ${modelname_hdd_size}"
+                    } >&3
+                    PoH=$(grep -iE "Power(_|-)on(_|-)(Hours|Hour_Count|Time)" "$file" | sed -e "s/ ([^()]*)//g" | rev | cut -d " " -f1 | rev | sed 's/h.*//' )
                     echo -e "$hddname: $hddname2\t$HDDComp: PowerOnHours: ${PoH}" #>> "$sm"
                     echo -n "Last Extended SMART-Test: " #>> "$sm"
                     LastSmartTest=$(grep -i -m1 "Extended Offline" "$file" | sed -n '/Extended offline/s/ \+/ /gp' | rev | cut -d " " -f2 | rev )
@@ -811,7 +868,9 @@ do
                     fi
                     echo -ne ", Sectorsize: $SectorSize" #>> "$sm"
                     echo ", HDD Size: $modelname_hdd_size" #>> "$sm"
-                done | column -t -s$'\t' >> "$sm"
+                done 3>&1 > >(column -t -s$'\t' >> "$sm") | cat
+                #done | column -t -s$'\t' >> "$sm"
+                #done 3>&1 >> "$sm" | column -t -s$'\t' >> "$sm"
                 #mehr smart-kram
                 #echo -e "\n" >> "$sm"
 
@@ -995,7 +1054,6 @@ do
                         echo -e "\nKnown Issue: random HDD drops of WD or HGST HDDs, update HDD Firmware: https://cssnew.synology.com/issue/9198" >> "$sm"
                         grep -ia "core_clear_root_int_from_queue Error Interrupt: PHY Decoding Error\|Issued IDENTIFY to non-existent device ?!" "$MESSAGES" >> "$sm"
                     fi
-
                         version_compare_gt() {
                             ! printf "%s\n" "$@" | sort --check --version-sort &> /dev/null
                         }
@@ -1008,7 +1066,7 @@ do
                             echo -e "This Machines BIOS-Version: $UpnpModel $BIOS_V_CUT"
                         } >> "$sm"
                     else
-                            log "installed BIOS bigger than M.024"
+                            log "installed BIOS version ĺater than M.024"
                     fi
                 fi
 
@@ -1020,7 +1078,7 @@ do
                             echo -e "This Machines BIOS-Version: $UpnpModel $BIOS_V_CUT"
                         } >> "$sm"
                     else
-                            log "installed BIOS bigger than M.220"
+                            log "installed BIOS version ĺater than M.220"
                     fi
                 fi
 
@@ -1032,7 +1090,7 @@ do
                             echo -e "This Machines BIOS-Version: $UpnpModel $BIOS_V_CUT"
                         } >> "$sm"
                     else
-                            log "installed BIOS bigger than M.124"
+                            log "installed BIOS version ĺater than M.124"
                     fi
                 fi
 
@@ -1044,7 +1102,7 @@ do
                             echo -e "This Machines BIOS-Version: $UpnpModel $BIOS_V_CUT"
                         } >> "$sm"
                     else
-                            log "installed BIOS bigger than M.310"
+                            log "installed BIOS version ĺater than M.310"
                     fi
                 fi
 
@@ -1057,7 +1115,7 @@ do
                 if grep -ia "tn40xx" "$KERN" | grep Link Up 10G &> /dev/null ; then
                 {
                 echo -e "\nPossible Known Issue: with 10GbE E10G15-F1 Card detected."
-                echo "If Time are above 600s after Boot, please check SOP."
+                echo "If Times are above 600s after Boot, please check SOP."
                 echo "See https://cssnew.synology.com/issue/5206 Issue A"
                 grep -ia "tn40xx" "$KERN" | grep "Link Up 10G\|Link Down" | tail -n20
                 } >> "$sm"
@@ -1180,7 +1238,7 @@ do
                 DSMBuildNumber=$( grep buildnumber "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/etc.defaults/VERSION | cut -d "\"" -f2 )
                 if [ "$LatestBuildNumber" -gt "$DSMBuildNumber" ]; then
                     {
-                    echo "More current DSM Version available."
+                    echo "More recent DSM Version available."
                     echo "available Updates (grep ""$DS_MODEL_plus""):"
                     grep -i "$DS_MODEL_plus" "$rss" | sed -e 's/<[^>]*>//g'
                     echo -e " "
@@ -1242,12 +1300,12 @@ do
                 bytesToHuman "$swap_total" >> "$hb_debug"
 
                 if [[ -z "$DS_MEM3" ]]; then
-                    log "$DS_MEM3 is empty."
+                    log "DS_MEM3 is empty."
                 else
                     echo -e "\nInstalled RAM-modules:\n$DS_MEM3"
                 fi
                 if [[ -z "$DS_MEM3_calc" ]]; then
-                    log "$DS_MEM3_calc is empty."
+                    log "DS_MEM3_calc is empty."
                 else
                     echo -e "RAM, calced: $DS_MEM3_calc"
                 fi

@@ -775,9 +775,9 @@ do
                         log "prefix: $hddprefix for $file"
                         } >&3
                         if grep -q "$hddprefix" "$DOWNLOAD_DIR/debug_$DATE/$DSM/Ext_plain"; then
-                            ExtentionUnit_plain=$(grep "$hddprefix" "$DOWNLOAD_DIR/debug_$DATE/$DSM/Ext_plain" |cut -d':' -f1)
-                            UpnpModelCASE="$ExtentionUnit_plain"
-                            #log "checked Extensions, plain: $ExtentionUnit_plain"
+                            ExtensionUnit_plain=$(grep "$hddprefix" "$DOWNLOAD_DIR/debug_$DATE/$DSM/Ext_plain" |cut -d':' -f1)
+                            UpnpModelCASE=${ExtensionUnit_plain/rp/RP}
+                            #log "checked Extensions, plain: $ExtensionUnit_plain"
                         fi
                     fi
 

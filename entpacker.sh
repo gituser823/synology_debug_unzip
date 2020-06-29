@@ -3,12 +3,12 @@
 
 #DOWNLOAD_DIR= #uncomment this and set path
 
-ThomasModus=0
+ThomasModus=1
 if [ "$ThomasModus" -eq 1 ]; then
  	DOWNLOAD_DIR=/home/thomas/Downloads/neu #change this to the path of the download folder or use -d "/path"
  	writeLastDebugToFile=1 	#write last debug to LastDebugFile? open with "bash ~/Dokumente/bash/last_debug.sh"
     LastDebugFile=/home/thomas/Dokumente/bash/last_debug.sh
- 	verbose=1
+ 	verbose=0
 fi
 
 
@@ -82,7 +82,7 @@ bytesToHuman() {
 
 spinDot(){
   while true
-  do 
+  do
     echo -ne "."
     sleep 0.2
   done
@@ -153,7 +153,7 @@ updateLatestPackageVersionsList() {
         echo "bye" >> "${Script_dir}/tmp/lftp2.cfg"
         if [ "$ThomasModus" -eq 1 ]; then
             lftp -f "${Script_dir}/tmp/lftp2.cfg" | tee "${package_versions}"
-            cat "${package_versions}" 
+            cat "${package_versions}"
         else
             lftp -f "${Script_dir}/tmp/lftp2.cfg" | tee "${package_versions}" 1>/dev/null
         fi
@@ -216,7 +216,7 @@ version_compare_gt() {
         ! printf "%s\n" "$@" | sort --check --version-sort &> /dev/null
 }
 
-serviceIsEnabled () { 
+serviceIsEnabled () {
     name=$1
     config_file=$2
 
@@ -544,6 +544,10 @@ do
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/proc/mdstat" ]]
                 then    MDSTAT=$DOWNLOAD_DIR/debug_$DATE/$DSM/proc/mdstat
                         cat "$MDSTAT" >> "$sg"
+                        md0E=$(cat "$MDSTAT" | egrep 'md0' -A2 | grep -q 'E')
+                        if [[ "$md0E" -eq 1 ]]; then
+                            cat "$MDSTAT" | egrep 'md0' -A2 >> "$sm"
+                        fi
                         cat "$MDSTAT" | egrep 'md[^01]' -A2 | sed -r '/^\s*$/d' >> "$sm"
                 fi
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/bash_history.log" ]]
@@ -629,7 +633,7 @@ do
 
                 #Analyze ExtensionUnits
                 ExtCt=0
-                echo -n "ExtensionUnits:" >> "$sm"
+                echo "ExtensionUnits:" >> "$sm"
                 OIFS=$IFS
                 IFS=","
                 for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/sys/class/scsi_host/host"*"/syno_pm_info"
@@ -646,22 +650,19 @@ do
                             done
                             ExtensionUnit=$(grep "Unique" "$file" | cut -d "\"" -f2)
                             if [ -n "$ExtensionUnit" ]; then
-                                echo -e "\n$ExtensionUnit with $ExtensionHdds" >> "$sm"
+                                echo "$ExtensionUnit with $ExtensionHdds" >> "$sm"
                                 echo "$ExtensionUnit:$ExtensionHdds" >> "$DOWNLOAD_DIR/debug_$DATE/$DSM/Ext_plain"
                                 let "ExtCt=ExtCt+1"
                             fi
                         done
                 IFS=$OIFS
                 if [ "$ExtCt" -eq 0 ]; then
-                    echo -e " none" >> "$sm"
+                    echo "none" >> "$sm"
                 fi
 
                 if [ "$UpnpModel_migrated_from" != "$UpnpModel" ]; then
                     echo "DSM was migrated from $UpnpModel_migrated_from to $UpnpModel" >> "$sm"
                 fi
-
-                #TIMEFORMAT=$'hdd-compatibility-check until opening Sublime took\t\t\t\t\e[36m%Rsec\e[39m'
-                            #time(
 
                 log "ExtensionHDDs: $ExtensionHdds"
                # if [[ -f $DOWNLOAD_DIR/debug_$DATE/$DSM/etc/private/domain_info ]]
@@ -924,25 +925,32 @@ do
                     LastSmartResult=$(grep -i -m1 "Extended Offline" "$file" | sed -n '/Extended offline/s/ \+/ /gp' | cut -d " " -f4-8 )
                     fi
                     if [[ -z "${LastSmartResult}" ]]; then
-                        LastSmartResult=$(grep -i -m1 "Background long" "$file" | sed -e 's/^.*Background long\s\{3,\}//' | cut -d " " -f1-4 | sed -e 's/[[:space:]]*$//' ) #for sas hdds
-                        LastSmartTest="sas"
+                    LastSmartResult=$(grep -i -m1 "Background long" "$file" | sed -e 's/^.*Background long\s\{3,\}//' | cut -d " " -f1-4 | sed -e 's/[[:space:]]*$//' ) #for sas hdds
+                        if [[ -n "${LastSmartResult}" ]]; then #if SmartResult was successfully set by preious command
+                            LastSmartTest="sas-drive"
+                            CalculatePoH=0
+                        fi
                     fi
+
                     if [[ -z "${LastSmartTest}" ]]; then
                     echo -n "never"
-                    elif [[ LastSmartTest="sas" ]]; then
-                        if [[ -z "${LastSmartResult}" ]]; then
-                            LastSmartResult="never"
-                        fi
-                    echo -n "cant calculate testtime, $LastSmartResult" #SAS-drive, no PowerOnHours available to calculate last SMART-test
                     elif [[ -z "${LastSmartTest+x}" ]]; then
                     echo -n "error"
                     else
-                        LastSmartExpr=$(expr "${PoH}" - "${LastSmartTest}" )
-                        #log "expr: $PoH und $LastSmarttest"
-                        echo -n "$LastSmartExpr" "hours ago, $LastSmartResult" #>> "$sm"
+                        if [[ "$CalculatePoH" != 0 ]];then
+                            LastSmartExpr=$(expr "${PoH}" - "${LastSmartTest}" )
+                            echo -n "$LastSmartExpr hours ago" #>> "$sm"
+                        else
+                            echo -n "unknown when run" #>> "$sm"
+                        fi
                     fi
-                    echo -ne ", Sectorsize: $SectorSize" #>> "$sm"
-                    echo ", HDD Size: $modelname_hdd_size" #>> "$sm"
+                    if [[ -n "${LastSmartResult}" ]]; then
+                        echo -n ", $LastSmartResult" #>> "$sm"
+                    fi
+                    if [[ -n "${SectorSize}" ]]; then
+                        echo -n ", Sectors: $SectorSize" #>> "$sm"
+                    fi
+                    echo ", Size: $modelname_hdd_size" #>> "$sm"
                 done 3>&1 > >(column -t -s$'\t' >> "$sm") | cat
                 #done | column -t -s$'\t' >> "$sm"
                 #done 3>&1 >> "$sm" | column -t -s$'\t' >> "$sm"
@@ -1076,9 +1084,9 @@ do
                             DS_MODEL_v="${UpnpModel}"
                             DS_MODEL_unter="${DS_MODEL_v}_"
                             DS_MODEL_plus="${DS_MODEL_unter//+/%2B}"
-                            else DS_HWMODEL_v="${DS_HWMODEL}"
-                                DS_MODEL_unter="${DS_HWMODEL_v}_"
-                                DS_MODEL_plus="${DS_MODEL_unter//+/%2B}"
+                    else DS_HWMODEL_v="${DS_HWMODEL}"
+                            DS_MODEL_unter="${DS_HWMODEL_v}_"
+                            DS_MODEL_plus="${DS_MODEL_unter//+/%2B}"
                     fi
                     DS_CPU=$( grep -m1 "model name\|Hardware" "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/proc/cpuinfo )
                     DS_Cores=$( cat "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/proc/sys/kernel/syno_CPU_info_core )
@@ -1214,7 +1222,7 @@ do
                 echo -e "\nKnown Issue: Lots of error messages 'High system usage detected' show up under HA Manager." >> "$sm"
                 echo "Showing only latest of $Issue25154Ct occurences." >> "$sm"
                 echo "See https://cssnew.synology.com/issue/25154" >> "$sm"
-                grep -ia '"faulty_communication":true' "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/var/log/ha.log | tail -n1 >> "$sm" 
+                grep -ia '"faulty_communication":true' "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/var/log/ha.log | tail -n1 >> "$sm"
                 fi
 
                 #https://cssnew.synology.com/issue/25294
@@ -1500,7 +1508,7 @@ do
                         if [[ -z "$volumecrash" ]]; then
                             echo -e "Volume crashes:\t\t\tnone" >> "$sm"
                         else
-                            echo -ne "Volume crashes found: \t" >> "$sm"
+                            echo -ne "Volume crashes:\t\t\t" >> "$sm"
                             grep -iac "was crashed" "$SYSDB" >> "$sm"
                         fi
 
@@ -1665,7 +1673,7 @@ do
                             if [[ "$CallTraces" -eq 0 ]]; then
                                 echo -e "Call Traces:\t\t\tnone"
                             else
-                                echo -e "$(grep -iac "Call Trace" "$MESSAGES") times call traces + next 25 lines:"
+                                echo -e "$(grep -iac "Call Trace" "$MESSAGES") Call traces + next 25 lines:"
                                 #grep -ia "Call Trace" "$MESSAGES" -A25
                                 grep -ia "Call Trace" "$MESSAGES" | while read l; do
                                   # Get seconds-since-startup timestamp from Call Trace line
@@ -1709,7 +1717,10 @@ do
                             then echo "Extended kernel logging on NAS is on." >> "$hb_debug"
                             else echo "Extended kernel logging on NAS is off." >> "$hb_debug"
                     fi
+                else
+                    log "synoinfo.conf not found."
                 fi
+
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/synoinfo.conf" ]]; then
                 sys_stat_dump=$(grep "sys_stat_dump" "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/synoinfo.conf" | cut -d "=" -f2)
                     if [ "$sys_stat_dump" == "yes" ]
@@ -1720,7 +1731,7 @@ do
                         echo "Log system status periodically: unknown" >> "$hb_debug"
                     fi
                 else
-                    log "smb.conf not found."
+                    log "synoinfo.conf not found."
                 fi
 
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/samba/smb.conf" ]]; then
@@ -1805,6 +1816,7 @@ do
 
 
                 sleep 0.1
+
             TIMEFORMAT=$'\nOpening Editor took: \t\t\t\t\t\t\t\t\e[36m%Rsec\e[39m'
             time(
                 source "${Script_dir}/files/config.sh" #load OpenFiles[] Array from config.sh

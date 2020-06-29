@@ -1,7 +1,5 @@
 *.php
-/files/available_packages.txt
-/files/package_versions.txt
-/comp/*.*
-/tmp/*.*
+/comp/*
+/tmp/*
 *.zip
 *.cfg

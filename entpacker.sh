@@ -3,18 +3,19 @@
 
 #DOWNLOAD_DIR= #uncomment this and set path
 
-ThomasModus=1
+ThomasModus=0
 if [ "$ThomasModus" -eq 1 ]; then
  	DOWNLOAD_DIR=/home/thomas/Downloads/neu #change this to the path of the download folder or use -d "/path"
  	writeLastDebugToFile=1 	#write last debug to LastDebugFile? open with "bash ~/Dokumente/bash/last_debug.sh"
     LastDebugFile=/home/thomas/Dokumente/bash/last_debug.sh
- 	verbose=0
+ 	verbose=1
+    trap "/usr/bin/env bash" SIGINT SIGTERM #catch CTRL+C and start bash
 fi
 
 
-required_packages="bsdtar lftp jq sqlite3"
+required_packages="bsdtar lftp jq sqlite3 ps"
 for package in $required_packages; do
-    command -v $package > /dev/null || {
+    command -v "$package" > /dev/null || {
         echo "Please install $package to proceed."
         exit 1
     }
@@ -80,6 +81,7 @@ bytesToHuman() {
 #   kill $pid
 # }
 
+
 spinDot(){
   while true
   do
@@ -93,7 +95,7 @@ convertJson() {
     sleep 1
     done
 	printf "Converting Json-files"
-	spinDot & &>/dev/null #"..."-animation
+	spinDot & #"..."-animation
     pid=$! #set process id to kill (spinDot)
 	for file in "${Script_dir}"/comp/*.json
 	do
@@ -106,7 +108,7 @@ convertJson() {
         fi
     done
     kill $pid #end "..."-animation
-    wait $! 2>/dev/null #send Terminted message to /dev/null
+    wait $! 2>/dev/null #send Terminated message to /dev/null
     echo "done"
 }
 
@@ -114,7 +116,7 @@ updateSRSList() {
     	echo -en "Downloading latest SRS-list..."
         curl "https://www.synology.com/de-de/solution/SRS" -s --output "$srs" #for progress add -#
         if [ "$ThomasModus" -eq 1 ]; then
-        stat --printf="Size: %s" "$srs"
+        stat --printf=" Size: %s " "$srs"
     	fi
         awk '/<div class="selected_country">Deutschland<\/div>/{f=1;next} /<div class="selected_country">Griechenland<\/div>/{f=0} f' "$srs" > "$srsde"
         echo "done"
@@ -124,7 +126,7 @@ updateDSMUpdatesList() {
     	echo -en "Downloading latest genRSS.php..."
         curl "https://update.synology.com/autoupdate/genRSS.php" -s --output "$rss" #for progress add -#
         if [ "$ThomasModus" -eq 1 ]; then
-        stat --printf="Size: %s" "$rss"
+        stat --printf=" Size: %s " "$rss"
     	fi
     	echo "done"
 }
@@ -134,7 +136,7 @@ updateLatestPackageVersionsList() {
         sed -i '/^enabled$/d' "${available_packages_pre}"
         echo "Number of available Packages: $(cat "${available_packages_pre}" | wc -w)"
 		printf "Updating latest package Versions"
-			spinDot & &>/dev/null #"..."-animation
+			spinDot & #"..."-animation
     		pid2=$! #set process id to kill (spinDot)
         echo "set ssl:verify-certificate false" > "${Script_dir}/tmp/lftp2.cfg"
         echo "set net:connection-limit 20" >> "${Script_dir}/tmp/lftp2.cfg"
@@ -158,7 +160,7 @@ updateLatestPackageVersionsList() {
             lftp -f "${Script_dir}/tmp/lftp2.cfg" | tee "${package_versions}" 1>/dev/null
         fi
         kill $pid2 #end "..."-animation
-        wait $! 2>/dev/null #send Terminted message to /dev/null
+        wait $! 2>/dev/null #send Terminated message to /dev/null
         echo "done"
 }
 
@@ -199,7 +201,7 @@ updateCompatibilityLists() {
                     #stat --printf=", Size: %s" "${Script_dir}/comp/${m}_hdds_compatible.json"
                     } >> "${confs[$ind]}"
                     let ind++
-                    [ $ind -ge ${#confs[@]} ] && ind=0 #split to multiple files in confs[@]
+                    [ "$ind" -ge ${#confs[@]} ] && ind=0 #split to multiple files in confs[@]
                 done
             echo "bye" |tee -a "${confs[@]}" 1>/dev/null
                 for conf in "${confs[@]}";do
@@ -244,7 +246,7 @@ serviceIsEnabled () {
 #einbauen: Critical Updates: https://archive.synology.com/download/DSM/criticalupdate/update_pack/
 
 usage() {
-	echo -e "Usage $(basename -- $0):\t[-d \"/absolute/directory/path/of/download/directory\"] [-h show help]" 1>&2; exit 1;
+	echo -e "Usage $(basename -- "$0"):\t[-d \"/absolute/directory/path/of/download/directory\"] [-h show help]" 1>&2; exit 1;
 }
 
 while getopts ":uhvd:" opt; do
@@ -264,7 +266,7 @@ while getopts ":uhvd:" opt; do
         echo -e "\t-v : Be Verbose"
         echo -e "\t-d : Set Download directory to scan (use absolute path) [required]"
         echo -e "\t     example: entpacker.sh -d \"/home/thomas/Downloads/neu\""
-        echo -e "\t     alternatively set variable DOWNLOAD_DIR in $(basename -- $0)"
+        echo -e "\t     alternatively set variable DOWNLOAD_DIR in $(basename -- "$0")"
         echo -e "\n"
         exit 1
     	;;
@@ -340,8 +342,7 @@ do
             TIMEFORMAT=$'Extractiontime debug.dat: \t\t\t\t\t\t\t\e[36m%Rsec\e[39m'
             time(
             filetype=$(file "$file")
-            echo "$filetype" | grep "gzip"
-            if [ $? -eq 0 ]
+            if echo "$filetype" | grep "gzip";
             then
                 mkdir -p "$DOWNLOAD_DIR"/debug_"$DATE"
                 bsdtar xf "$file" -C "$DOWNLOAD_DIR"/debug_"$DATE"
@@ -356,7 +357,7 @@ do
                 echo "$date_now debug extracted to $DOWNLOAD_DIR/debug_$DATE"
                 TemporaryWorkaround=0
                 if [[ -d "$DOWNLOAD_DIR/debug_$DATE/root" ]]
-                    then SupportFormVar=$(find $DOWNLOAD_DIR/debug_$DATE/root/@tmp/ -maxdepth 1 -mindepth 1 -exec basename {} ';')
+                    then SupportFormVar=$(find "$DOWNLOAD_DIR/debug_$DATE/root/@tmp/" -maxdepth 1 -mindepth 1 -exec basename {} ';')
                         DatPresent=$(ls -l "$DOWNLOAD_DIR/debug_$DATE/root/@tmp/$SupportFormVar/"*.dat 2>/dev/null | wc -l)
                 		if [[ "$DatPresent" != 0 ]]
                 		then
@@ -377,8 +378,8 @@ do
                     log "rootpath, Var is: $SupportFormVar"
                 fi
                 if [[ -d "$DOWNLOAD_DIR/debug_$DATE/volumeUSB1" ]]
-                    then RouterUSBShareVar=$(find $DOWNLOAD_DIR/debug_$DATE/volumeUSB1/ -maxdepth 1 -mindepth 1 -exec basename {} ';')
-                         SupportFormVar=$(find $DOWNLOAD_DIR/debug_$DATE/volumeUSB1/$RouterUSBShareVar/@tmp/ -maxdepth 1 -mindepth 1 -exec basename {} ';')
+                    then RouterUSBShareVar=$(find "$DOWNLOAD_DIR/debug_$DATE/volumeUSB1/" -maxdepth 1 -mindepth 1 -exec basename {} ';')
+                         SupportFormVar=$(find "$DOWNLOAD_DIR/debug_$DATE/volumeUSB1/$RouterUSBShareVar/@tmp/" -maxdepth 1 -mindepth 1 -exec basename {} ';')
                         if [[ "$SupportFormVar" == *"SupportFormAttach"* ]]
                 		then
                             mv "$DOWNLOAD_DIR/debug_$DATE/volumeUSB1/$RouterUSBShareVar/@tmp/$SupportFormVar/"* "$DOWNLOAD_DIR/debug_$DATE/"
@@ -388,9 +389,9 @@ do
                 			sleep_scan_dir=12
                 		else
                 			log "dsmdir: $DOWNLOAD_DIR/debug_$DATE/volumeUSB1/dsm"
-                		 for file in "$DOWNLOAD_DIR/debug_$DATE/volumeUSB1/$RouterUSBShareVar/@tmp/$SupportFormVar/"*.dat
-    					 	do 	mv "$file" "$DOWNLOAD_DIR"
-                            log "file: $file, dir: $DOWNLOAD_DIR"
+                		 for volumeUSB1Datfile in "$DOWNLOAD_DIR/debug_$DATE/volumeUSB1/$RouterUSBShareVar/@tmp/$SupportFormVar/"*.dat
+    					 	do 	mv "$volumeUSB1Datfile" "$DOWNLOAD_DIR"
+                            log "file: $volumeUSB1Datfile, dir: $DOWNLOAD_DIR"
     					 		sleep 2
     					 		#break 2 #break out of 2 levels of loops
     					 	done
@@ -399,19 +400,19 @@ do
                     		log "Routerpath, Vars are: $RouterUSBShareVar and $SupportFormVar"
                     		#log "breaking out of loop..."
                     		sleep 10
-                    		break
+                    		#break
                     	fi
                     else
                     	sleep_scan_dir=$sleep_scan_dir_backup
                 fi
                 if [[ -d "$DOWNLOAD_DIR/debug_$DATE/volume1/@tmp/" ]]
-                    then SupportFormVar=$(find $DOWNLOAD_DIR/debug_$DATE/volume1/@tmp/ -maxdepth 1 -mindepth 1 -exec basename {} ';')
+                    then SupportFormVar=$(find "$DOWNLOAD_DIR/debug_$DATE/volume1/@tmp/" -maxdepth 1 -mindepth 1 -exec basename {} ';')
                          mv "$DOWNLOAD_DIR/debug_$DATE/volume1/@tmp/$SupportFormVar/dsm/"* "$DOWNLOAD_DIR/debug_$DATE/"
                     log "tmppath, Var is: $SupportFormVar"
-                    TemporaryWorkaround=1
+                    TemporaryWorkaround=0
                     echo -e "\e[5;49;31mWarning! This is an old DSM-Versions debug. Data after 'Overview' may not be reliable.\e[0m"
                 else
-                log "test4"
+                	log "$DOWNLOAD_DIR/debug_$DATE/volume1/@tmp/ not detected"
                 fi
 
 				#PackVar=$(find $DOWNLOAD_DIR/debug_$DATE/ -iname "packages.list" -printf '%h\n')
@@ -480,26 +481,24 @@ do
 
                 UpnpModel=$(grep -i "upnpmodelname" "$Synoinfo" | cut -d "\"" -f2)
                 UpnpModel_migrated_from=$(grep -i "upnpmodelname" "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/synoinfo.conf" | cut -d "\"" -f2)
-                    for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/messages"*.xz
+                    for messagefile in "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/messages"*.xz
                         do
-                            unxz "${file}"
-                            cat "${file%.*}" "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/messages" 2> /dev/null > "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/messages_temp" 2> /dev/null
+                            unxz "${messagefile}"
+                            cat "${messagefile%.*}" "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/messages" 2>/dev/null > "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/messages_temp"
                             mv "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/messages_temp" "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/messages"
-                        done
+                    	done
 
-                    for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/kern"*.xz
+                    for kernfile in "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/kern"*.xz
                         do
-                            unxz "${file}"
-                            cat "${file%.*}" "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/kern.log" 2> /dev/null > "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/kern_temp" 2> /dev/null
+                            unxz "${kernfile}"
+                            cat "${kernfile%.*}" "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/kern.log" 2>/dev/null > "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/kern_temp"
                             mv "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/kern_temp" "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/kern.log"
                         done
-                        log "334"
-                    #cat "${file%.*}" >> "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/kern.log" #überflüssig??
-                    log "335"
-                        for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/dmesg"*.xz
+
+                    for dmesgfile in "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/dmesg"*.xz
                         do
-                            unxz "${file}"
-                            cat "${file%.*}" "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/dmesg" 2> /dev/null > "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/dmesg_temp" 2> /dev/null
+                            unxz "${dmesgfile}"
+                            cat "${dmesgfile%.*}" "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/dmesg" 2>/dev/null > "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/dmesg_temp"
                             mv "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/dmesg_temp" "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/dmesg"
                         done
 
@@ -522,21 +521,22 @@ do
                 fi
 
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/du-h-d1-rootmnt.result" ]]
-                then    DU=$DOWNLOAD_DIR/debug_$DATE/$DSM/result/du-h-d1-rootmnt.result
+                then    DU="$DOWNLOAD_DIR/debug_$DATE/$DSM/result/du-h-d1-rootmnt.result"
+            			#export $DU
                 fi
 
                 #check for 16Tb Volume limitation
-                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/tune2fs/dev.vg"*".result"
+                for vgfile in "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/tune2fs/dev.vg"*".result"
                         do
-                            [[ -e "$file" ]] || log "No vg files found."
-                            [[ -e "$file" ]] || break
-                            Volume_Features=$(grep -a "Filesystem features" "$file")
+                            [[ -e "$vgfile" ]] || log "No vg files found."
+                            [[ -e "$vgfile" ]] || break
+                            Volume_Features=$(grep -a "Filesystem features" "$vgfile")
                                 if [ "$Volume_Features" ]; then
-                                    Volume_x64=$(grep -a "Filesystem features" "$file" | grep 64bit)
+                                    Volume_x64=$(grep -a "Filesystem features" "$vgfile" | grep 64bit)
                                     if  [ "$Volume_x64" ]; then
-                                        log "$(basename -- "$file") has x64"
+                                        log "$(basename -- "$vgfile") has x64"
                                     else
-                                        echo -e "$(basename -- "$file" | cut -d '.' -f2) has 16 Terabyte Volume Limitation.\n" >> "$sm"
+                                        echo -e "$(basename -- "$vgfile" | cut -d '.' -f2) has 16 Terabyte Volume Limitation.\n" >> "$sm"
                                     fi
                                 fi
                         done
@@ -544,11 +544,12 @@ do
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/proc/mdstat" ]]
                 then    MDSTAT=$DOWNLOAD_DIR/debug_$DATE/$DSM/proc/mdstat
                         cat "$MDSTAT" >> "$sg"
-                        md0E=$(cat "$MDSTAT" | egrep 'md0' -A2 | grep -q 'E')
-                        if [[ "$md0E" -eq 1 ]]; then
-                            cat "$MDSTAT" | egrep 'md0' -A2 >> "$sm"
+                        md0E=$(cat "$MDSTAT" | grep -E 'md0' -A2 | grep -q 'E')
+                        md0ExitCode=$?
+                        if [[ "$md0ExitCode" -eq 0 ]]; then
+                            cat "$MDSTAT" | grep -E 'md0' -A2 >> "$sm"
                         fi
-                        cat "$MDSTAT" | egrep 'md[^01]' -A2 | sed -r '/^\s*$/d' >> "$sm"
+                        cat "$MDSTAT" | grep -E 'md[^01]' -A2 | sed -r '/^\s*$/d' >> "$sm"
                 fi
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/bash_history.log" ]]
                 then    Bash_history=$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/bash_history.log
@@ -636,11 +637,11 @@ do
                 echo "ExtensionUnits:" >> "$sm"
                 OIFS=$IFS
                 IFS=","
-                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/sys/class/scsi_host/host"*"/syno_pm_info"
+                for pmfile in "$DOWNLOAD_DIR/debug_$DATE/$DSM/sys/class/scsi_host/host"*"/syno_pm_info"
                         do
-                            [[ -e "$file" ]] || log "$file not found."
-                            [[ -e "$file" ]] || break
-                            ExtensionHdds=$(grep -a "syno_device_list" "$file" | tr '\0' '\n' | cut -d "\"" -f2 | sed 's/\/dev\///g' )
+                            [[ -e "$pmfile" ]] || log "$pmfile not found."
+                            [[ -e "$pmfile" ]] || break
+                            ExtensionHdds=$(grep -a "syno_device_list" "$pmfile" | tr '\0' '\n' | cut -d "\"" -f2 | sed 's/\/dev\///g' )
                             ExtensionHddsLoopArray=("$ExtensionHdds")
                             for ((i=0; i<${#ExtensionHddsLoopArray[@]}; ++i))
                             do
@@ -648,7 +649,7 @@ do
                                     ExtensionHddsArray=("${ExtensionHddsArray[@]}" "${ExtensionHddsLoopArray[i]}")
                                 fi
                             done
-                            ExtensionUnit=$(grep "Unique" "$file" | cut -d "\"" -f2)
+                            ExtensionUnit=$(grep "Unique" "$pmfile" | cut -d "\"" -f2)
                             if [ -n "$ExtensionUnit" ]; then
                                 echo "$ExtensionUnit with $ExtensionHdds" >> "$sm"
                                 echo "$ExtensionUnit:$ExtensionHdds" >> "$DOWNLOAD_DIR/debug_$DATE/$DSM/Ext_plain"
@@ -694,11 +695,11 @@ do
                         #oder: tar xf "${SMART_neu[*]: -2:1}" -C "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/"
                         #tar xf "${SMART_neu[-1]}" -C "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/" #geht!
                         smarttar=$(ls "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/result/var/log/smart_result/ 2>/dev/null)
-                        for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/var/log/smart_result/$smarttar/"*
+                        for smarttarfile in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/var/log/smart_result/$smarttar/"*
                         do
-                            [[ -e "$file" ]] || break #no smart-files
-                            filename=$(basename -- "$file")
-                            mv "$file" "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/sd_$filename".result
+                            [[ -e "$smarttarfile" ]] || break #no smart-files
+                            filename=$(basename -- "$smarttarfile")
+                            mv "smarttar$file" "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/sd_$filename".result
                             #mv "$file" "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/sd_$filename".result
                         done
                         SMART_FILES=( "${DOWNLOAD_DIR}/debug_${DATE}/${DSM}/result/sd"*.result )
@@ -711,29 +712,29 @@ do
                 declare -a BadSectors_HDD_Array
                 declare -a PendingSectors_HDD_Array
                 declare -a OfflineUncorrectable_HDD_Array
-                files="
-                "
+                smartResultfile="
+                " #remove?
                 #for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/smart"{sd,nv,sas}*
-                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/"{sd,smart,nv,sas[0-9]}*
+                for smartResultfile in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/"{sd,smart,nv,sas[0-9]}*
                 do
-                    [[ -e "$file" ]] || break #no smart-files
+                    [[ -e "$smartResultfile" ]] || break #no smart-files
                     #counter=$((counter + 1))
                     counter=`expr $counter + 1`
                     declare -a BadSectors
                     declare -a PendingSectors
                     declare -a OfflineUncorrectable
-                    BadSectors=$(grep -i "Reallocated_Sector_Ct\|Reallocated_Sector_Count" "$file" | awk '{print 0+$10 }')
-                    PendingSectors=$(grep -i "Current_Pending_Sector" "$file" | awk '{print 0+$10 }')
-                    OfflineUncorrectable=$(grep -i "Offline_Uncorrectable\|Uncorrectable_Error_Count\|Off-Line_Scan_Uncorrectable_Sector_Count" "$file" | awk '{print 0+$10 }')
+                    BadSectors=$(grep -i "Reallocated_Sector_Ct\|Reallocated_Sector_Count" "$smartResultfile" | awk '{print 0+$10 }')
+                    PendingSectors=$(grep -i "Current_Pending_Sector" "$smartResultfile" | awk '{print 0+$10 }')
+                    OfflineUncorrectable=$(grep -i "Offline_Uncorrectable\|Uncorrectable_Error_Count\|Off-Line_Scan_Uncorrectable_Sector_Count" "$smartResultfile" | awk '{print 0+$10 }')
 
                     if [ "${BadSectors[@]}" -gt 0 ] 2>/dev/null; then
-                        BadSectors_HDD_Array+=$(basename -- "$file ")
+                        BadSectors_HDD_Array+=$(basename -- "$smartResultfile ")
                     fi
                     if [ "${PendingSectors[@]}" -gt 0  ] 2>/dev/null; then
-                        PendingSectors_HDD_Array+=$(basename -- "$file ")
+                        PendingSectors_HDD_Array+=$(basename -- "$smartResultfile ")
                     fi
                     if [ "${OfflineUncorrectable[@]}" -gt 0 ] 2>/dev/null ; then
-                        OfflineUncorrectable_HDD_Array+=$(basename -- "$file ")
+                        OfflineUncorrectable_HDD_Array+=$(basename -- "$smartResultfile ")
                     fi
                     for i in "${BadSectors[@]}"; do
                         (( BadSector_sum+="$i" )) &> /dev/null
@@ -784,36 +785,37 @@ do
                     echo "Offline_Uncorrectable:" "$OfflineUncorrectable_sum on ${OfflineUncorrectable_HDD_Array[@]}" >> "$sm"
                 fi
 
+
                 #declare -a PowerOnHours
-                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/"{sd,nv,smart,sas[0-9]}*
+                for smartResultfile in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/"{sd,nv,smart,sas[0-9]}*
                 do
-                    [[ -e "$file" ]] || break #no smart-files
-                    hddname=$(basename -- "$file")
-                    hddname2=$(grep -i "Model Family\|Device Model" "$file" | cut -d " " -f7-20 | sed -r 's/\"/Inch/' | xargs )
-                    modelname=$(grep -i "Device Model" "$file" | cut -d " " -f8 | sed -r 's/\"/Inch/' | xargs ) #evtl f7-20
-                    modelname_hdd_size=$(grep -i "User Capacity" "$file" | awk -F '[][]+' 'NF && !/\[\[/{print $2}' ) # i.e.: 3.00TB or 500.00GB
-                    SectorSize=$(grep -i "Sector Size\|Logical block size" "$file" | cut -d ":" -f2 | sed -e 's/^[ \t]*//' | cut -d " " -f1 ) #evtl -f1,f2
+                    [[ -e "$smartResultfile" ]] || break #no smart-files
+                    hddname=$(basename -- "$smartResultfile")
+                    hddname2=$(grep -i "Model Family\|Device Model" "$smartResultfile" | cut -d " " -f7-20 | sed -r 's/\"/Inch/' | xargs )
+                    modelname=$(grep -i "Device Model" "$smartResultfile" | cut -d " " -f8 | sed -r 's/\"/Inch/' | xargs ) #evtl f7-20
+                    modelname_hdd_size=$(grep -i "User Capacity" "$smartResultfile" | awk -F '[][]+' 'NF && !/\[\[/{print $2}' ) # i.e.: 3.00TB or 500.00GB
+                    SectorSize=$(grep -i "Sector Size\|Logical block size" "$smartResultfile" | cut -d ":" -f2 | sed -e 's/^[ \t]*//' | cut -d " " -f1 ) #evtl -f1,f2
                     if [[ "${modelname}" == "SSD" ]]; then #samsung SSDs!
-                        modelname=$(grep -i "Device Model" "$file" | cut -d " " -f9-10 | sed -r 's/\"/Inch/' | xargs)
-                        modelname_hdd_size=$(grep -i "Device Model" "$file" | cut -d " " -f11 | xargs)
-                        modelname_first_part=$(grep -i "Device Model" "$file" | cut -d " " -f8 | sed -r 's/\"/Inch/' | cut -d "-" -f1 )
-                    modelname_first_part=$(grep -i "Device Model" "$file" | cut -d " " -f8 | sed -r 's/\"/Inch/' | cut -d "-" -f1 ) #evtl f7-20
+                        modelname=$(grep -i "Device Model" "$smartResultfile" | cut -d " " -f9-10 | sed -r 's/\"/Inch/' | xargs)
+                        modelname_hdd_size=$(grep -i "Device Model" "$smartResultfile" | cut -d " " -f11 | xargs)
+                        modelname_first_part=$(grep -i "Device Model" "$smartResultfile" | cut -d " " -f8 | sed -r 's/\"/Inch/' | cut -d "-" -f1 )
+                    modelname_first_part=$(grep -i "Device Model" "$smartResultfile" | cut -d " " -f8 | sed -r 's/\"/Inch/' | cut -d "-" -f1 ) #evtl f7-20
                     fi
                     #to add: include size of HDD/SSD
                     if [[ -z "${modelname}" ]]; then
-                        modelname=$(grep -i "Device Model" "$file" | cut -d " " -f7 | sed -r 's/\"/Inch/' | xargs )
-                        modelname_first_part=$(grep -i "Device Model" "$file" | cut -d " " -f7 | sed -r 's/\"/Inch/' | cut -d "-" -f1)
+                        modelname=$(grep -i "Device Model" "$smartResultfile" | cut -d " " -f7 | sed -r 's/\"/Inch/' | xargs )
+                        modelname_first_part=$(grep -i "Device Model" "$smartResultfile" | cut -d " " -f7 | sed -r 's/\"/Inch/' | cut -d "-" -f1)
                     fi
 
                     #for SAS in FS2017
                     if [[ -z "${modelname}" ]]; then
-                        modelname=$(grep -i "Product" "$file" | cut -d ":" -f2 | xargs )
-                        hddname2=$(grep -i "Vendor:\|Product:" "$file" | cut -d ":" -f2 | xargs )
+                        modelname=$(grep -i "Product" "$smartResultfile" | cut -d ":" -f2 | xargs )
+                        hddname2=$(grep -i "Vendor:\|Product:" "$smartResultfile" | cut -d ":" -f2 | xargs )
                     fi
 
                     #Samsung SSDs
                     if [[ -z "${modelname}" ]]; then
-                        filename=$(basename -- "$file")
+                        filename=$(basename -- "$smartResultfile")
                         model_file=$(echo "$filename" | cut -d "." -f1 | rev | cut -d "_" -f1 | rev)
                         modelname=$(grep -i "$model_file" "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/disk_overview.xml" -m1 | cut -d "\"" -f2 | awk -F 'SSD ' '{print $2 }' | xargs)
                         hddname2=$(grep -i "$model_file" "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/disk_overview.xml" -m1 | cut -d "\"" -f2 | xargs )
@@ -822,10 +824,10 @@ do
                     UpnpModelCASE=${UpnpModel/rp/RP}
 
                     if [ "$ExtCt" -gt 0 ]; then
-                        hddprefix_base=$(basename -- "$file")
+                        hddprefix_base=$(basename -- "$smartResultfile")
                         hddprefix=${hddprefix_base%_*}
                         {
-                        log "prefix: $hddprefix for $file"
+                        log "prefix: $hddprefix for $smartResultfile"
                         } >&3
                         if grep -q "$hddprefix" "$DOWNLOAD_DIR/debug_$DATE/$DSM/Ext_plain"; then
                             ExtensionUnit_plain=$(grep "$hddprefix" "$DOWNLOAD_DIR/debug_$DATE/$DSM/Ext_plain" |cut -d':' -f1)
@@ -907,26 +909,26 @@ do
                     else
                         HDDComp="(not listed)"
                         {
-                        log "\e[34mHDD-Comp: \"${modelname}\" not found.\e[0m"
+                        log "\e[36mHDD-Comp: \"${modelname}\" not found.\e[0m"
                         } >&3
                     fi
 
                     #{
                     #log "compatibility check for ${hddname} grepped for \"${modelname}\" , \"${modelname//-/ - }\" and \"${modelname%-*}\"; HDD Size: ${modelname_hdd_size}"
                     #} >&3
-                    PoH=$(grep -iE "Power(_|-)on(_|-)(Hours|Hour_Count|Time)" "$file" | sed -e "s/ ([^()]*)//g" | rev | cut -d " " -f1 | rev | sed 's/h.*//' )
+                    PoH=$(grep -iE "Power(_|-)on(_|-)(Hours|Hour_Count|Time)" "$smartResultfile" | sed -e "s/ ([^()]*)//g" | rev | cut -d " " -f1 | rev | sed 's/h.*//' )
                     echo -e "$hddname: $hddname2\t$HDDComp: PowerOnHours: ${PoH}" #>> "$sm"
                     echo -n "Last Extended SMART-Test: " #>> "$sm"
-                    LastSmartTest=$(grep -i -m1 "Extended Offline" "$file" | sed -n '/Extended offline/s/ \+/ /gp' | rev | cut -d " " -f2 | rev )
-                    LastSmartResult=$(grep -i -m1 "Extended Offline" "$file" | sed -n '/Extended offline/s/ \+/ /gp' | sed 's/[^0-9]*[0-9] *//' | sed 's/ [0-9].*$//' | sed 's/^Extended offline //' )
+                    LastSmartTest=$(grep -i -m1 "Extended Offline" "$smartResultfile" | sed -n '/Extended offline/s/ \+/ /gp' | rev | cut -d " " -f2 | rev )
+                    LastSmartResult=$(grep -i -m1 "Extended Offline" "$smartResultfile" | sed -n '/Extended offline/s/ \+/ /gp' | sed 's/[^0-9]*[0-9] *//' | sed 's/ [0-9].*$//' | sed 's/^Extended offline //' )
                     re='^[0-9]+$'
                     if ! [[ "${LastSmartTest}" =~ $re ]] ; then
-                    LastSmartTest=$(grep -i -m1 "Extended Offline" "$file" | sed -n '/Extended offline/s/ \+/ /gp' | cut -d " " -f8 )
-                    LastSmartResult=$(grep -i -m1 "Extended Offline" "$file" | sed -n '/Extended offline/s/ \+/ /gp' | cut -d " " -f4-8 )
+                    LastSmartTest=$(grep -i -m1 "Extended Offline" "$smartResultfile" | sed -n '/Extended offline/s/ \+/ /gp' | cut -d " " -f8 )
+                    LastSmartResult=$(grep -i -m1 "Extended Offline" "$smartResultfile" | sed -n '/Extended offline/s/ \+/ /gp' | cut -d " " -f4-8 )
                     fi
                     if [[ -z "${LastSmartResult}" ]]; then
-                    LastSmartResult=$(grep -i -m1 "Background long" "$file" | sed -e 's/^.*Background long\s\{3,\}//' | cut -d " " -f1-4 | sed -e 's/[[:space:]]*$//' ) #for sas hdds
-                        if [[ -n "${LastSmartResult}" ]]; then #if SmartResult was successfully set by preious command
+                    LastSmartResult=$(grep -i -m1 "Background long" "$smartResultfile" | sed -e 's/^.*Background long\s\{3,\}//' | cut -d " " -f1-4 | sed -e 's/[[:space:]]*$//' ) #for sas hdds
+                        if [[ -n "${LastSmartResult}" ]]; then #if LastSmartResult was successfully set by previous command
                             LastSmartTest="sas-drive"
                             CalculatePoH=0
                         fi
@@ -957,32 +959,32 @@ do
                 #mehr smart-kram
                 #echo -e "\n" >> "$sm"
 
-                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/"{sd,nv,sas[0-9],smart}*
+                for smartfile3 in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/"{sd,nv,sas[0-9],smart}*
                 do
-                    [[ -e "$file" ]] || break #no smart-files
-                    grep -i "Model Family\|Device Model\|User Capacity" "$file" >> "$sg"
+                    [[ -e "$smartfile3" ]] || break #no smart-files
+                    grep -i "Model Family\|Device Model\|User Capacity" "$smartfile3" >> "$sg"
                 done
-                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/"{sd,nv,smart}*
+                for smartfile4 in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/"{sd,nv,smart}*
                 do
-                    [[ -e "$file" ]] || break #no smart-files
+                    [[ -e "$smartfile4" ]] || break #no smart-files
                 {
                     echo -e "\n"
-                    echo "$file"
-                    grep -i "overall-health self-assessment\|Model Family\|Device Model\|Serial Number\|Firmware Version\|User Capacity\|Sector Sizes\|Rotation Rate\|ID\#\|Raw_Read_Error_Rate\|Reallocated_Sector_Ct\|Seek_Error_Rate\|Spin_Retry_Count\|Calibration_Retry_Count\|Reallocated_Event_Count\|Current_Pending_Sector\|Offline_Uncorrectable\|UDMA_CRC_Error_Count\|Multi_Zone_Error_Rate\|Power_On_Hours\|Reallocated_Sector_Count\|Power-on_Hours\|Program_Fail_Count_(total)\|Erase_Fail_Count_(total)\|Runtime_Bad_Count_(total)\|Uncorrectable_Error_Count\|Uncorrectable_Error_Cnt\|Off-Line_Scan_Uncorrectable_Sector_Count\|Airflow_Temperature_Cel\|ECC_Error_Rate\|CRC_Error_Count\|POR_Recovery_Count\|Percent_Lifetime_Remain" "$file"
+                    echo "$smartfile4"
+                    grep -i "overall-health self-assessment\|Model Family\|Device Model\|Serial Number\|Firmware Version\|User Capacity\|Sector Sizes\|Rotation Rate\|ID\#\|Raw_Read_Error_Rate\|Reallocated_Sector_Ct\|Seek_Error_Rate\|Spin_Retry_Count\|Calibration_Retry_Count\|Reallocated_Event_Count\|Current_Pending_Sector\|Offline_Uncorrectable\|UDMA_CRC_Error_Count\|Multi_Zone_Error_Rate\|Power_On_Hours\|Reallocated_Sector_Count\|Power-on_Hours\|Program_Fail_Count_(total)\|Erase_Fail_Count_(total)\|Runtime_Bad_Count_(total)\|Uncorrectable_Error_Count\|Uncorrectable_Error_Cnt\|Off-Line_Scan_Uncorrectable_Sector_Count\|Airflow_Temperature_Cel\|ECC_Error_Rate\|CRC_Error_Count\|POR_Recovery_Count\|Percent_Lifetime_Remain" "$smartfile4"
                             echo " "
                             #awk '/=== START OF READ SMART DATA SECTION ===/{f=1;next} /END/{f=0} f' "$file" #????
-                            awk '/SMART Error Log Version: 1/{f=1;next} /Selective self-test flags/{f=0} f' "$file"
+                            awk '/SMART Error Log Version: 1/{f=1;next} /Selective self-test flags/{f=0} f' "$smartfile4"
                     echo -e " \n \n"
                 } >> "$sg"
                 done
 
-                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/"{smart_sas,sas[0-9]}*
+                for smartfile5 in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/"{smart_sas,sas[0-9]}*
                 do
-                    [[ -e "$file" ]] || break #no smart-files
+                    [[ -e "$smartfile5" ]] || break #no smart-files
                 {
                     echo -e "\n"
-                    echo "$file"
-                    grep -i "Vendor\|Product\|Revision\|Compliance\|User Capacity\|block size\|Rotation\|Form Factor\|Serial Number\|SMART support is\|Temperature Warning" "$file"
+                    echo "$smartfile5"
+                    grep -i "Vendor\|Product\|Revision\|Compliance\|User Capacity\|block size\|Rotation\|Form Factor\|Serial Number\|SMART support is\|Temperature Warning" "$smartfile5"
                             echo " "
                             awk '/=== START OF READ SMART DATA SECTION ===/{f=1;next} /END/{f=0} f' "$file"
                             #awk '/SMART Error Log Version: 1/{f=1;next} /Selective self-test flags/{f=0} f' "$file"
@@ -992,32 +994,32 @@ do
                 if [[ -d "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/space" ]]
                 then ls -lh "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/space/space_history_"*.xml >> "$DOWNLOAD_DIR/debug_$DATE/$DSM/space.xml"
 
-                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/space/space_history_"*.xml
+                for spaceFile in "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/space/space_history_"*.xml
                 do
-                    [[ -e "$file" ]] || break #no space-files
+                    [[ -e "$spaceFile" ]] || break #no space-files
                     {
-                    echo "$(basename -- "$file")"
-                    CountHDDs1=$(awk -F '"' '/dev_path/ {print $4} /raid path/ {print $2} /raid>/ {print $5}' "$file" | grep -v "vg" | grep -v "volume" | tr '\n' ' '  | sed 's#  #\n\n#g' | wc -w)
+                    echo "$(basename -- "$spaceFile")"
+                    CountHDDs1=$(awk -F '"' '/dev_path/ {print $4} /raid path/ {print $2} /raid>/ {print $5}' "$spaceFile" | grep -v "vg" | grep -v "volume" | tr '\n' ' '  | sed 's#  #\n\n#g' | wc -w)
                     #CountHDDs2="$(($CountHDDs1-1))" //entfernen
                     echo -en "############################################\t#HDDs: $(($CountHDDs1-1))\t"
-                    awk -F '"' '/dev_path/ {print $4} /raid path/ {print $2} /raid>/ {print $5}' "$file" | grep -v "vg" | grep -v "volume" | tr '\n' ' '  | sed 's#  #\n#g'
+                    awk -F '"' '/dev_path/ {print $4} /raid path/ {print $2} /raid>/ {print $5}' "$spaceFile" | grep -v "vg" | grep -v "volume" | tr '\n' ' '  | sed 's#  #\n#g'
                     echo "SerialNumbers:"
-                    awk -F '"' '/dev_path/ {print $8} /raid>/ {print $5}' "$file" | grep -v "vg" | grep -v "volume" | tr '\n' ' '  | sed 's#  #\n#g'
+                    awk -F '"' '/dev_path/ {print $8} /raid>/ {print $5}' "$spaceFile" | grep -v "vg" | grep -v "volume" | tr '\n' ' '  | sed 's#  #\n#g'
                     echo -e '\n'
                     #cat "$file" | awk -F '"' '/dev_path/ {print $4} /raid path/ {print $2} /raid>/ {print $5}' - | grep -v "vg" | tr '\n' ' '  | sed 's#  #\n\n#g'
                     } >> "$DOWNLOAD_DIR/debug_$DATE/$DSM/space.xml"
                 done
 
-                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/space/space_history_"*.xml
+                for spaceHistoryFile in "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/space/space_history_"*.xml
                 do
-                    [[ -e "$file" ]] || break #no space-files
+                    [[ -e "$spaceHistoryFile" ]] || break #no space-files
                     {
-                    echo "$file"
-                    cat "$file"
-                    CountHDDs1=$(awk -F '"' '/dev_path/ {print $4} /raid path/ {print $2} /raid>/ {print $5}' "$file" | grep -v "vg" | grep -v "volume" | tr '\n' ' '  | sed 's#  #\n\n#g' | wc -w)
+                    echo "$spaceHistoryFile"
+                    cat "$spaceHistoryFile"
+                    CountHDDs1=$(awk -F '"' '/dev_path/ {print $4} /raid path/ {print $2} /raid>/ {print $5}' "$spaceHistoryFile" | grep -v "vg" | grep -v "volume" | tr '\n' ' '  | sed 's#  #\n\n#g' | wc -w)
                     CountHDDs2="$(($CountHDDs1-1))"
                     echo -e "#HDDs: $CountHDDs2"
-                    awk -F '"' '/dev_path/ {print $4} /raid path/ {print $2} /raid>/ {print $5}' "$file" | grep -v "vg" | grep -v "volume" | tr '\n' ' '  | sed 's#  #\n\n#g'
+                    awk -F '"' '/dev_path/ {print $4} /raid path/ {print $2} /raid>/ {print $5}' "$spaceHistoryFile" | grep -v "vg" | grep -v "volume" | tr '\n' ' '  | sed 's#  #\n\n#g'
                     #cat "$file" | awk -F '"' '/dev_path/ {print $4} /raid path/ {print $2} /raid>/ {print $5}' - | grep -v "vg" | tr '\n' ' '  | sed 's#  #\n\n#g'
                     echo -e "\n \n \n \n"
                     } >> "$DOWNLOAD_DIR/debug_$DATE/$DSM/space.xml"
@@ -1092,7 +1094,7 @@ do
                     DS_Cores=$( cat "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/proc/sys/kernel/syno_CPU_info_core )
                     Processor_count=$( grep -i -c "processor" "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/proc/cpuinfo ) #CPU Count
                     DS_SN=$( cat "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/proc/sys/kernel/syno_serial )
-                    Kernel_version=$( grep -m1 "Linux version" $KERN | awk -F 'Linux version ' '{print $2}')
+                    Kernel_version=$( grep -m1 "Linux version" "$KERN"| awk -F 'Linux version ' '{print $2}')
                     #DS_SN=$( grep -i -m1 "serial number" $DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/kern.log | sed "s/.*[Ss]erial [Nn]umber//" )
                 fi
                 date_now=$(date +"%d. %B %H:%M:%S:")
@@ -1283,10 +1285,10 @@ do
                 fi
                 echo "found ${ifc_dropped_sum} dropped Packages in ifconfig.result." >> "$sm"
                 echo "found ${ifc_error_sum} bugged Packages in ifconfig.result." >> "$sm"
-                for file in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/"{ethtool.eth,ethtool.bond}*.result
+                for ethFile in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/"{ethtool.eth,ethtool.bond}*.result
                 do
-                    [[ -e "$file" ]] || break  # handle the case of no *.result files
-                    ethresult=$(grep "Speed" -H "$file")
+                    [[ -e "$ethFile" ]] || break  # handle the case of no *.result files
+                    ethresult=$(grep "Speed" -H "$ethFile")
                     echo "${ethresult#$DOWNLOAD_DIR/debug_$DATE/$DSM/result/}" >> "$sm"
                 done
                 echo "DNS Servers:" >> "$sm"
@@ -1387,7 +1389,7 @@ do
 
                 #log "$DS_MEM3_calc"
                 date_now=$(date +"%d. %B %H:%M:%S: ")
-                echo -e $date_now 'Associated Tickets: \nhttps://cssnew.synology.com/ticket?list_type=agent_all&sort_by=update_time&sort_direction=desc&filter=%7B%22search_column%22%3A%5B%22ticket_id%22%2C%22content%22%5D%2C%22sn%22%3A%22'"$DS_SN"'%22%7D'
+                echo -e '$date_now Associated Tickets: \nhttps://cssnew.synology.com/ticket?list_type=agent_all&sort_by=update_time&sort_direction=desc&filter=%7B%22search_column%22%3A%5B%22ticket_id%22%2C%22content%22%5D%2C%22sn%22%3A%22'"$DS_SN"'%22%7D'
 
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/samba/smb.share.conf" ]]
                 then    SmbShares=$(grep "path=" "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/samba/smb.share.conf" | tr '\n' '\t')
@@ -1407,12 +1409,22 @@ do
                             else
                                 echo -e "\nFound LUNs:" >> "$sm"
                                 cat "$LUNs" >> "$sm"
-                                LUNSize_bytesToAdd="$(grep "bytes=" $LUNs | cut -d "=" -f2 | sed ':a;N;$!ba;s/\n/+/g')"
+                                LUNSize_bytesToAdd="$(grep "bytes=" "$LUNs" | cut -d "=" -f2 | sed ':a;N;$!ba;s/\n/+/g')"
                                 LUNSize_byte="$(($LUNSize_bytesToAdd))"
                                 echo -en "Combined LUN Size: " >> "$sm"
                                 bytesToHuman "$LUNSize_byte" >> "$sm"
                                 echo -e "\n" >> "$sm"
                             fi
+                fi
+
+                if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/usr/syno/etc/iscsi_mapping.conf" ]]
+                then    echo "iSCSI Mapping:" >> "$sm"
+                        cat "$DOWNLOAD_DIR/debug_$DATE/$DSM/usr/syno/etc/iscsi_mapping.conf" >> "$sm"
+                fi
+
+                if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/usr/syno/etc/iscsi_target.conf" ]]
+                then    echo "iSCSI Targets:" >> "$sm"
+                        cat "$DOWNLOAD_DIR/debug_$DATE/$DSM/usr/syno/etc/iscsi_target.conf" >> "$sm"
                 fi
 
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/packages.list" ]]
@@ -1423,8 +1435,8 @@ do
                         #synopkgfile="$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/var/log/synopkg.log
                         if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/synopkg.log" ]]; then
                             synopkgfile="$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/var/log/synopkg.log
-                            if [[ $(stat -c%s "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/synopkg.log") -lt 1 ]]; then #if synopkg.log is empty
-                                if [ unxz "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/synopkg.log.1.xz" ]; then # if successfully extracted
+                            if [[ $(stat -c%s "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/synopkg.log") -eq 0 ]]; then #if synopkg.log is empty
+                                if unxz "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/synopkg.log.1.xz"; then # if successfully extracted
                                     synopkgfile="$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/var/log/synopkg.log.1
                                 fi
                             fi
@@ -1435,7 +1447,8 @@ do
                         counter=0
                         for i in "${InstalledPackageArray[@]}"
                         do
-                            tac "$synopkgfile" | grep -ia "${InstalledPackageArray[$counter]}:" | grep -ia "start version\|stop version" | grep -ia -m1 "successfully" >> "$DOWNLOAD_DIR/debug_$DATE/$DSM/packages_onoff.list"
+                            #tac "$synopkgfile" | grep -ia "${InstalledPackageArray[$counter]}:" | grep -ia "start version\|stop version" | grep -ia -m1 "successfully" >> "$DOWNLOAD_DIR/debug_$DATE/$DSM/packages_onoff.list"
+                            grep -ia "${InstalledPackageArray[$counter]}" "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/syno_service.result" >> "$DOWNLOAD_DIR/debug_$DATE/$DSM/packages_onoff.list"
                             PACK_ONOFF="$DOWNLOAD_DIR/debug_$DATE/$DSM/packages_onoff.list"
                             aver=$(grep "^$i " "$package_versions")
                             PureVerAvailable=$(echo "${aver}" | rev | cut -d " " -f1 | rev | sed 's/\-/./g')
@@ -1594,7 +1607,7 @@ do
                     tac "$SYSDB" >> "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/synolog/synosystac.log"
                     SYSDBtac="$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/synolog/synosystac.log"
 
-                    impropershutdown=$(grep -ia "improper shutdown" "$SYSDB")
+                    impropershutdown=$(grep -ia "improper shutdown" "$SYSDB") #improper shutdowns
                     if [[ -z "$impropershutdown" ]]; then
                         echo -e "improper shutdowns:\t\tnone" >> "$sm"
                     else
@@ -1620,7 +1633,7 @@ do
                         echo -e "\n" >> "$sm"
                     fi
 
-                    generrors=$(grep -ia "error" "$SYSDB" | uniq -u | wc -l) #volumecrash
+                    generrors=$(grep -ia "error" "$SYSDB" | uniq -u | wc -l) #generic errors
                     if [[ "$generrors" -eq 0 ]]; then
                         echo -e "generic errs:\t\t\tnone" >> "$sm"
                     else
@@ -1639,53 +1652,55 @@ do
                                 echo -e "DRDY:\t\t\t\t\tnone"
                             else
                                 echo -e "$(grep -ia "DRDY" "$MESSAGES" | uniq -u | wc -l) times DRDY, showing 20 max:"
-                                tac "$MESSAGES" | grep -ia -B5 -A10 -m 20 "DRDY" | tac
+                                tac "$MESSAGES" | grep -ia -B5 -A10 -m20 "DRDY" | tac
                                 echo -e "\n"
                             fi
-
+                            log "1646"
                             database_malformed=$(grep -iac "database disk image is malformed" "$MESSAGES")
                             if [[ "$database_malformed" -eq 0 ]]; then
                                 echo -e "Database is malformed:\tnone"
                             else
-                                echo -e "$(grep -iac "database disk image is malformed" "$MESSAGES") times malformed database:"
-                                grep -ia "database disk image is malformed" "$MESSAGES"
+                                echo -e "$(grep -iac "database disk image is malformed" "$MESSAGES") times malformed database, showing 20 max:"
+                                tac "$MESSAGES" | grep -ia -m20 "database disk image is malformed"
                                 echo -e "\n"
                             fi
-
+                            log "1655"
                             oom_kills=$(grep -iac "out_of_memory" "$MESSAGES")
                             if [[ "$oom_kills" -eq 0 ]]; then
                                 echo -e "Out of Memory kills:\tnone"
                             else
-                                echo -e "$(grep -iac "out_of_memory" "$MESSAGES") times Out of Memory kills:"
-                                grep -ia "out_of_memory" "$MESSAGES"
+                                echo -e "$(grep -iac "out_of_memory" "$MESSAGES") times Out of Memory kills, showing 20 max:"
+                                tac "$MESSAGES" | grep -ia -m20 "out_of_memory"
                                 echo -e "\n"
                             fi
                             crashes=$(grep -iac "crash" "$MESSAGES")
                             if [[ "$crashes" -eq 0 ]]; then
                                 echo -e "generic crashes:\t\tnone"
                             else
-                                echo -e "$(grep -iac "crash" "$MESSAGES") times generic crashes:"
-                                grep -ia "crash" "$MESSAGES"
+                                echo -e "$(grep -iac "crash" "$MESSAGES") times generic crashes, showing 100 max:"
+                                grep -ia -m100 "crash" "$MESSAGES"
                                 echo -e "\n"
                             fi
-
+                            log "1672"
                             CallTraces=$(grep -iac "Call Trace" "$MESSAGES")
                             if [[ "$CallTraces" -eq 0 ]]; then
                                 echo -e "Call Traces:\t\t\tnone"
                             else
-                                echo -e "$(grep -iac "Call Trace" "$MESSAGES") Call traces + next 25 lines:"
-                                #grep -ia "Call Trace" "$MESSAGES" -A25
-                                grep -ia "Call Trace" "$MESSAGES" | while read l; do
-                                  # Get seconds-since-startup timestamp from Call Trace line
-                                  if [[ $l =~ kernel:\ \[\ *([0-9]+)\.[0-9]+\] ]]; then
-                                    tsecs="${BASH_REMATCH[1]}"
-                                    # Grep again for anything +/- 1 sec around that timestamp
-                                    grep -aE "kernel: \[($((tsecs-2))|$((tsecs-1))|${tsecs}|$((tsecs+1))|$((tsecs+2)))\.[0-9]+\]" "$MESSAGES"
-                                    echo -e "\n"
-                                  fi
-                                done
+                                echo -e "$(grep -iac "Call Trace" "$MESSAGES") Call traces, showing 20 most recent + next 25 lines:"
+                                grep -ia -m20 "Call Trace" -A25 "$MESSAGES"
+                                # grep -ia "Call Trace" "$MESSAGES" | while read l; do
+                                #   # Get seconds-since-startup timestamp from Call Trace line
+                                #   log "1681" >&3
+                                #   if [[ $l =~ kernel:\ \[\ *([0-9]+)\.[0-9]+\] ]]; then
+                                #     log "1683" >&3
+                                #     tsecs="${BASH_REMATCH[1]}"
+                                #     # Grep again for anything +/- 1 sec around that timestamp
+                                #     grep -aE "kernel: \[($((tsecs-2))|$((tsecs-1))|${tsecs}|$((tsecs+1))|$((tsecs+2)))\.[0-9]+\]" "$MESSAGES"
+                                #     echo -e "\n"
+                                #   fi
+                                #done
                             fi
-                        } >> "$sm"
+                        } >>  "$sm"
                     fi
                 fi
 

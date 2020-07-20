@@ -1,12 +1,15 @@
-# Synology debug unzip
+<<<<<<< HEAD
+=======
+# entpacker2
 
-Extracts Synology debugging files
+>>>>>>> origin/master
+zum debugs entpacken und so.
 
 
-requires:
-bsdtar unzip sqlite3 jq lftp
+benötigt:
+sudo apt install sqlite3 zenity sublime-text
 
-Under Windows/Mobaxterm additionally:
-sudo apt-get install ca-certificates
+Unter Windows/Mobaxterm zusätzlich:
+apt-get install ca-certificates
 
-Before starting set $DOWNLOAD_DIR in entpacker.sh
+und in der entpacker.sh Script_dir und DOWNLOAD_DIR anpassen

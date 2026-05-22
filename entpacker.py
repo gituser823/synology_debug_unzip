@@ -200,7 +200,8 @@ def update_compatibility_lists():
         print(f" error: {e}")
         return
 
-    print(f"Downloading compatibility lists for {len(models)} models...")
+    total = len(models)
+    print(f"Downloading compatibility lists for {total} models...")
 
     def fetch_compat(model):
         enc = model.replace("+", "%2B")
@@ -216,9 +217,24 @@ def update_compatibility_lists():
             except Exception:
                 pass
 
+    def _fmt_eta(seconds):
+        seconds = int(seconds)
+        if seconds < 60:
+            return f"{seconds}s"
+        return f"{seconds // 60}m {seconds % 60:02d}s"
+
+    start = time.time()
     with concurrent.futures.ThreadPoolExecutor(max_workers=40) as exe:
-        list(exe.map(fetch_compat, models))
-    print("Compatibility lists downloaded.")
+        futures = {exe.submit(fetch_compat, m): m for m in models}
+        for done, fut in enumerate(concurrent.futures.as_completed(futures), 1):
+            fut.result()
+            elapsed = time.time() - start
+            rate = done / elapsed
+            eta = _fmt_eta((total - done) / rate) if rate > 0 else "?"
+            pct = done * 100 // total
+            bar = "." * (done * 20 // total)
+            print(f"\r  [{bar:<20}] {done}/{total} ({pct}%) ETA: {eta}   ", end="", flush=True)
+    print(f"\r  [{'.' * 20}] {total}/{total} (100%) done.              ")
 
 
 def check_and_update():

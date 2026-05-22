@@ -1540,7 +1540,10 @@ def watch(download_dir: Path):
     while True:
         for dat in sorted(download_dir.glob("*.dat")):
             if dat.is_file():
-                process_file(dat, download_dir)
+                try:
+                    process_file(dat, download_dir)
+                except Exception as e:
+                    print(f"Error processing {dat.name}: {e}")
         time.sleep(SLEEP_SCAN_DIR)
 
 

@@ -20,6 +20,7 @@ import subprocess
 import sys
 import tarfile
 import time
+import traceback
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -90,9 +91,14 @@ def find_editor():
             r"C:\Program Files\Sublime Text\subl.exe",
             r"C:\Program Files\Sublime Text 4\subl.exe",
             r"C:\Program Files\Sublime Text 3\subl.exe",
+            r"C:\Program Files\Sublime Text\sublime_text.exe",
+            r"C:\Program Files\Sublime Text 4\sublime_text.exe",
         ]:
             if Path(c).exists():
                 return c
+        found = shutil.which("subl") or shutil.which("sublime_text")
+        if found:
+            return found
         return "notepad.exe"
     try:
         with open("/proc/version") as f:
@@ -114,11 +120,13 @@ def read_file(path) -> str:
 
 
 def grep_lines(pattern, text, flags=re.IGNORECASE) -> list:
-    return [m.group(0) for m in re.finditer(f".*{pattern}.*", text, flags | re.MULTILINE)]
+    pat = re.compile(pattern, flags)
+    return [line for line in text.splitlines() if pat.search(line)]
 
 
 def grep_count(pattern, text, flags=re.IGNORECASE) -> int:
-    return len(re.findall(pattern, text, flags))
+    pat = re.compile(pattern, flags)
+    return sum(1 for line in text.splitlines() if pat.search(line))
 
 
 # ---------------------------------------------------------------------------
@@ -129,7 +137,7 @@ def update_dsm_updates_list():
     print("Downloading latest genRSS.php...", end="", flush=True)
     TMP_DIR.mkdir(parents=True, exist_ok=True)
     try:
-        r = requests.get("https://update.synology.com/autoupdate/genRSS.php", timeout=30)
+        r = requests.get("https://update.synology.com/autoupdate/genRSS.php", timeout=(5, 15))
         RSS_FILE.write_bytes(r.content)
         print(f" done ({len(r.content)} bytes)")
     except Exception as e:
@@ -145,7 +153,7 @@ def update_srs_list():
 def update_package_versions_list():
     TMP_DIR.mkdir(parents=True, exist_ok=True)
     try:
-        r = requests.get("https://archive.synology.com/download/Package/", timeout=30)
+        r = requests.get("https://archive.synology.com/download/Package/", timeout=(5, 15))
         packages = re.findall(r'href="([A-Za-z][^/"]+)/"', r.text)
         packages = [p for p in packages if not p.startswith(".")]
         AVAILABLE_PACKAGES.write_text("\n".join(packages) + "\n")
@@ -158,7 +166,7 @@ def update_package_versions_list():
     def fetch_version(pkg):
         url = f"https://archive.synology.com/download/Package/{pkg.replace('+', '%2B')}/"
         try:
-            resp = requests.get(url, timeout=20)
+            resp = requests.get(url, timeout=(5, 15))
             versions = re.findall(r'href="([0-9][^/"]*)"', resp.text)
             versions = [v for v in versions if re.match(r"^[0-9]", v)]
             if versions:
@@ -187,7 +195,7 @@ def update_compatibility_lists():
     print("Getting available Models...", end="", flush=True)
     try:
         r = requests.get(
-            "https://www.synology.com/cgi/misc/?action=getProductList_withOEM", timeout=30
+            "https://www.synology.com/cgi/misc/?action=getProductList_withOEM", timeout=(5, 15)
         )
         m = re.search(r"\[([^\]]+)\]", r.text)
         if not m:
@@ -211,7 +219,7 @@ def update_compatibility_lists():
             try:
                 resp = requests.get(
                     f"{base}?lang=en-global&tab=drives&model={enc}&category=hdds_no_ssd_trim&recommend={recommend}",
-                    timeout=30,
+                    timeout=(5, 15),
                 )
                 out.write_text(resp.text.replace("\\/", "/"))
             except Exception:
@@ -280,7 +288,8 @@ def _tar_extractall_safe(tf: tarfile.TarFile, dest: Path):
             continue
         member.name = _sanitize_archive_name(member.name)
         try:
-            tf.extract(member, dest, set_attrs=False)
+            kw = {"filter": "fully_trusted"} if sys.version_info >= (3, 12) else {}
+            tf.extract(member, dest, set_attrs=False, **kw)
         except Exception as e:
             log(f"Skipped {member.name}: {e}")
 
@@ -376,7 +385,7 @@ def parse_smart(path: Path) -> dict:
 
     def attr_raw(pattern):
         m = re.search(
-            rf"(?i){pattern}\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+(\d+)", text
+            rf"(?i)(?:{pattern})\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+(\d+)", text
         )
         return int(m.group(1)) if m else 0
 
@@ -723,7 +732,7 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
         if txz_files:
             try:
                 with tarfile.open(txz_files[-1], "r:xz") as tf:
-                    tf.extractall(result_dir)
+                    _tar_extractall_safe(tf, result_dir)
                 extracted_dir = result_dir / "var" / "log" / "smart_result"
                 if extracted_dir.is_dir():
                     for sub in extracted_dir.iterdir():
@@ -833,7 +842,7 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
     sata_deep = "satadeepsleeptimer=\"1\"" in synoinfo_etc
     kernel_log_max = 'kern_log_max="yes"' in synoinfo_etc
     fan_debug_m = re.search(r'enable_fan_debug="([^"]+)"', synoinfo_etc)
-    fan_debug_on = bool(fan_debug_m and int(fan_debug_m.group(1) or 0) > 0)
+    fan_debug_on = bool(fan_debug_m and int(fan_debug_m.group(1) or "0", 0) > 0)
     sys_stat_m = re.search(r'sys_stat_dump="?([^"\s]+)"?', synoinfo_etc)
     sys_stat = sys_stat_m.group(1) if sys_stat_m else "unknown"
     standbytimer = re.search(r"^standbytimer.+", synoinfo_etc, re.M)
@@ -943,10 +952,12 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
     # Write sm.log
     # ============================================================
     sm.parent.mkdir(parents=True, exist_ok=True)
+    sm.write_text("", encoding="utf-8")  # truncate
+
+    _sm_fh = open(sm, "a", encoding="utf-8")
 
     def w(s="", end="\n"):
-        with open(sm, "a", encoding="utf-8") as fh:
-            fh.write(str(s) + end)
+        _sm_fh.write(str(s) + end)
 
     if sm_prefix:
         w(sm_prefix)
@@ -1427,7 +1438,7 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
         if standbytimer:
             wh(standbytimer)
 
-        wh("Packages interfering with Hibernation:", end="")
+        wh("Packages interfering with Hibernation:")
         if not hb_packages:
             wh("\t\tnone.")
         else:
@@ -1452,6 +1463,7 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
 
         wh(samba_st)
 
+    _sm_fh.close()
     print(f"{datetime.now():%d. %B %H:%M:%S}: analysis complete → {sm}")
     return sm, sg, hb, dsm_dir
 
@@ -1471,13 +1483,18 @@ def open_in_editor(files: list):
             print(f"  {f}")
         return
 
-    if platform.system() == "Windows":
+    print(f"Opening editor: {editor}")
+    try:
+        if editor == "notepad.exe":
+            for f in existing:
+                subprocess.Popen([editor, f])
+        else:
+            subprocess.Popen([editor] + existing)
+    except Exception as e:
+        print(f"Editor launch failed: {e}")
+        print("Result files:")
         for f in existing:
-            os.startfile(f)
-    else:
-        for f in existing:
-            subprocess.Popen([editor, f])
-            time.sleep(0.1)
+            print(f"  {f}")
 
 
 # ---------------------------------------------------------------------------
@@ -1576,6 +1593,7 @@ def watch(download_dir: Path):
                     process_file(dat, download_dir)
                 except Exception as e:
                     print(f"Error processing {dat.name}: {e}")
+                    traceback.print_exc()
         time.sleep(SLEEP_SCAN_DIR)
 
 

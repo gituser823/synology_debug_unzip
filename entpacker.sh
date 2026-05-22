@@ -113,13 +113,8 @@ convertJson() {
 }
 
 updateSRSList() {
-    	echo -en "Downloading latest SRS-list..."
-        curl "https://www.synology.com/de-de/solution/SRS" -s --output "$srs" #for progress add -#
-        if [ "$ThomasModus" -eq 1 ]; then
-        stat --printf=" Size: %s " "$srs"
-    	fi
-        awk '/<div class="selected_country">Deutschland<\/div>/{f=1;next} /<div class="selected_country">Griechenland<\/div>/{f=0} f' "$srs" > "$srsde"
-        echo "done"
+    echo "SRS-Liste entfällt (Synology hat SRS eingestellt)."
+    touch "$srs" "$srsde"
 }
 
 updateDSMUpdatesList() {
@@ -132,7 +127,7 @@ updateDSMUpdatesList() {
 }
 
 updateLatestPackageVersionsList() {
-        lftp -c "open https://archive.synology.com/download/Package/spk/; cls" > "${available_packages_pre}"; #download package list
+        lftp -c "open https://archive.synology.com/download/Package/; cls" > "${available_packages_pre}"; #download package list
         sed -i '/^enabled$/d' "${available_packages_pre}"
         echo "Number of available Packages: $(cat "${available_packages_pre}" | wc -w)"
 		printf "Updating latest package Versions"
@@ -147,7 +142,7 @@ updateLatestPackageVersionsList() {
         readarray -t "PackageArray" < "${available_packages}"
         #echo "Array: ${PackageArray[@]}" #package array, i.e. Java7/
         echo "" > "${package_versions}"
-        echo "open https://archive.synology.com/download/Package/spk/" >> "${Script_dir}/tmp/lftp2.cfg"
+        echo "open https://archive.synology.com/download/Package/" >> "${Script_dir}/tmp/lftp2.cfg"
         for v in "${PackageArray[@]}"
         do
             echo "echo -n "\""${v//\/}" \""; cd ${v}; dir | tail -n1 | cut -d \' \'  -f18; cd .." >> "${Script_dir}/tmp/lftp2.cfg"
@@ -194,10 +189,10 @@ updateCompatibilityLists() {
                 do
                     {
                     #echo 'echo getting /comp/'"${m}"'_hdds_compatible.json'
-                    echo 'get "https://www.synology.com/api/compatibility/findHclList?lang=en-global&search_by=products&model='"${m//+/%2B}"'&category=hdds&usage_id=12&recommend=t" -o "'"${Script_dir}"'/comp/'"${m}"'_hdds_compatible.json"'
+                    echo 'get "https://www.synology.com/api/compatibility/findHclList?lang=en-global&tab=drives&model='"${m//+/%2B}"'&category=hdds_no_ssd_trim&recommend=t" -o "'"${Script_dir}"'/comp/'"${m}"'_hdds_compatible.json"'
                     #stat --printf=", Size: %s" "${Script_dir}/comp/${m}_hdds_compatible.json"
                     #echo 'echo getting /comp/'"${m}"'_hdds_incompatible.json'
-                    echo 'get "https://www.synology.com/api/compatibility/findHclList?lang=en-global&search_by=products&model='"${m//+/%2B}"'&category=hdds&usage_id=12&recommend=f" -o "'"${Script_dir}"'/comp/'"${m}"'_hdds_incompatible.json"'
+                    echo 'get "https://www.synology.com/api/compatibility/findHclList?lang=en-global&tab=drives&model='"${m//+/%2B}"'&category=hdds_no_ssd_trim&recommend=f" -o "'"${Script_dir}"'/comp/'"${m}"'_hdds_incompatible.json"'
                     #stat --printf=", Size: %s" "${Script_dir}/comp/${m}_hdds_compatible.json"
                     } >> "${confs[$ind]}"
                     let ind++

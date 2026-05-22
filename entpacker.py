@@ -263,19 +263,36 @@ def check_and_update():
 # Extraction
 # ---------------------------------------------------------------------------
 
+_WIN_INVALID = re.compile(r'[<>:"|?*\x00-\x09\x0b-\x1f]')  # control chars except \n
+
+
+def _sanitize_archive_name(name: str) -> str:
+    """Make an archive entry name safe for Windows: replace \n with / and strip other invalid chars."""
+    name = name.replace("\n", "/").replace("\r", "/")
+    return _WIN_INVALID.sub("_", name)
+
+
 def _tar_extractall_safe(tf: tarfile.TarFile, dest: Path):
-    """Extract tar, skipping symlinks and sanitizing names for Windows."""
-    _win_invalid = re.compile(r'[<>:"|?*]')
+    """Extract tar, skipping non-regular members and sanitizing names for Windows."""
     for member in tf.getmembers():
-        if member.issym() or member.islnk():
-            log(f"Skipping symlink: {member.name}")
+        if not (member.isfile() or member.isdir()):
+            log(f"Skipping non-regular: {member.name}")
             continue
-        # Replace characters invalid on Windows
-        member.name = _win_invalid.sub("_", member.name)
+        member.name = _sanitize_archive_name(member.name)
         try:
             tf.extract(member, dest, set_attrs=False)
         except Exception as e:
             log(f"Skipped {member.name}: {e}")
+
+
+def _zip_extractall_safe(zf: zipfile.ZipFile, dest: Path):
+    """Extract zip, sanitizing names for Windows (handles \n path separators from Linux)."""
+    for info in zf.infolist():
+        info.filename = _sanitize_archive_name(info.filename)
+        try:
+            zf.extract(info, dest)
+        except Exception as e:
+            log(f"Skipped {info.filename}: {e}")
 
 
 def extract_dat(filepath: Path, download_dir: Path):
@@ -293,7 +310,7 @@ def extract_dat(filepath: Path, download_dir: Path):
             _tar_extractall_safe(tf, dest)
     elif magic[:4] == b"PK\x03\x04":
         with zipfile.ZipFile(filepath) as zf:
-            zf.extractall(dest)
+            _zip_extractall_safe(zf, dest)
     else:
         with tarfile.open(filepath, "r:*") as tf:
             _tar_extractall_safe(tf, dest)

@@ -263,6 +263,21 @@ def check_and_update():
 # Extraction
 # ---------------------------------------------------------------------------
 
+def _tar_extractall_safe(tf: tarfile.TarFile, dest: Path):
+    """Extract tar, skipping symlinks and sanitizing names for Windows."""
+    _win_invalid = re.compile(r'[<>:"|?*]')
+    for member in tf.getmembers():
+        if member.issym() or member.islnk():
+            log(f"Skipping symlink: {member.name}")
+            continue
+        # Replace characters invalid on Windows
+        member.name = _win_invalid.sub("_", member.name)
+        try:
+            tf.extract(member, dest, set_attrs=False)
+        except Exception as e:
+            log(f"Skipped {member.name}: {e}")
+
+
 def extract_dat(filepath: Path, download_dir: Path):
     ts = datetime.now()
     ts_aligned = ts.replace(second=(ts.second // 10) * 10, microsecond=0)
@@ -275,13 +290,13 @@ def extract_dat(filepath: Path, download_dir: Path):
 
     if magic[:2] == b"\x1f\x8b":
         with tarfile.open(filepath, "r:gz") as tf:
-            tf.extractall(dest)
+            _tar_extractall_safe(tf, dest)
     elif magic[:4] == b"PK\x03\x04":
         with zipfile.ZipFile(filepath) as zf:
             zf.extractall(dest)
     else:
         with tarfile.open(filepath, "r:*") as tf:
-            tf.extractall(dest)
+            _tar_extractall_safe(tf, dest)
 
     return dest, date_str
 

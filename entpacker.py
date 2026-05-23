@@ -106,6 +106,16 @@ def find_editor():
                 return r"/mnt/c/Program Files/Sublime Text 3/subl.exe"
     except Exception:
         pass
+    # Prefer Flatpak Sublime Text (carries user's Log Highlight settings)
+    flatpak = shutil.which("flatpak")
+    if flatpak:
+        try:
+            r = subprocess.run([flatpak, "info", "com.sublimehq.SublimeText"],
+                               capture_output=True, text=True, timeout=5)
+            if r.returncode == 0:
+                return "flatpak:com.sublimehq.SublimeText"
+        except Exception:
+            pass
     for candidate in ["subl", "sublime_text", "gedit", "xdg-open"]:
         if shutil.which(candidate):
             return candidate
@@ -2073,6 +2083,9 @@ def open_in_editor(files: list):
         if editor == "notepad.exe":
             for f in existing:
                 subprocess.Popen([editor, f])
+        elif editor.startswith("flatpak:"):
+            app_id = editor.split(":", 1)[1]
+            subprocess.Popen(["flatpak", "run", app_id] + existing)
         else:
             subprocess.Popen([editor] + existing)
     except Exception as e:

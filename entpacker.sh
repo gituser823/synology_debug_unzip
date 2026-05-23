@@ -2140,7 +2140,9 @@ do
                     [ -n "${OpenFiles[$i]}" ] || unset "OpenFiles[$i]"
                 done
                 for i in "${OpenFiles[@]}"; do # open single files
-                    "$subl" "$i"
+                    # $subl may be a multi-word command (e.g. "flatpak run …"),
+                    # so use unquoted expansion to split into argv elements.
+                    $subl "$i"
                     sleep 0.1
                 done
 

@@ -31,7 +31,13 @@
                         ["\\[31m",                                         "[\\r\\n]"],
                         ["Reallocated_Sector_Ct: [1-9]",                   "[\\r\\n]"],
                         ["Current_Pending_Sector: [1-9]",                  "[\\r\\n]"],
-                        ["Offline_Uncorrectable: [1-9]",                   "[\\r\\n]"]
+                        ["Offline_Uncorrectable: [1-9]",                   "[\\r\\n]"],
+                        ["HDD temperature:.*\\(ERROR:",                    "[\\r\\n]"],
+                        ["HDD age ERROR:",                                 "[\\r\\n]"],
+                        ["RAID active rebuild:",                           "[\\r\\n]"],
+                        ["BTRFS scrub.*ERRORS:",                           "[\\r\\n]"],
+                        ["Disk Health Prediction:.*\\(CRITICAL\\)",        "[\\r\\n]"],
+                        ["High load average detected:.*\\(critical\\)",    "[\\r\\n]"]
                     ],
                     "color": {
                         "base"  : ["#F92672", ""],
@@ -57,7 +63,18 @@
                         ["Ext4-/Btrfs-Errs:\\s+[1-9]",    "[\\r\\n]"],
                         ["DRDY:\\s+[1-9]",                 "[\\r\\n]"],
                         ["More RAM installed!",            "[\\r\\n]"],
-                        ["Last Extended SMART-Test: never","[\\r\\n]"]
+                        ["Last Extended SMART-Test: never","[\\r\\n]"],
+                        ["Authentication failures:\\s+[1-9]","[\\r\\n]"],
+                        ["BTRFS qgroup warnings:\\s+[1-9]", "[\\r\\n]"],
+                        ["Auth failures:.*\\(WARNING\\)",   "[\\r\\n]"],
+                        ["HDD temperature:.*\\(warning",    "[\\r\\n]"],
+                        ["HDD age warning:",                "[\\r\\n]"],
+                        ["Disk Health Prediction:.*\\(WARNING\\)","[\\r\\n]"],
+                        ["Elevated load average:",          "[\\r\\n]"],
+                        ["UPS events:",                     "[\\r\\n]"],
+                        ["Low battery|On battery",          "[\\r\\n]"],
+                        ["RECENT: < 7 days",                "[\\r\\n]"],
+                        ["SMART self-test schedule: not configured","[\\r\\n]"]
                     ],
                     "color": {
                         "base"  : ["#FD971F", ""],
@@ -83,7 +100,12 @@
                         ["Out of Memory kills:\\s+none",       "[\\r\\n]"],
                         ["Volume crashes:\\s+none",            "[\\r\\n]"],
                         ["found 0 (?:dropped|bugged) Packages","[\\r\\n]"],
-                        ["md[0-9]+ : active.*\\[U+\\]",        "[\\r\\n]"]
+                        ["md[0-9]+ : active.*\\[U+\\]",        "[\\r\\n]"],
+                        ["Authentication failures:\\s+none",   "[\\r\\n]"],
+                        ["BTRFS qgroup warnings:\\s+none",     "[\\r\\n]"],
+                        ["Failed dpkg upgrades:\\s+none",      "[\\r\\n]"],
+                        ["RAID rebuild:\\s+none in progress",  "[\\r\\n]"],
+                        ["Disk Health Prediction:.*: normal",  "[\\r\\n]"]
                     ],
                     "color": {
                         "base"  : ["#A6E22E", ""],
@@ -107,7 +129,19 @@
                         ["^Kernel:",                     "[\\r\\n]"],
                         ["^CPU from logs:",              "[\\r\\n]"],
                         ["^DDNS",                        "[\\r\\n]"],
-                        ["Synology (?:HA|UC):",          "[\\r\\n]"]
+                        ["Synology (?:HA|UC):",          "[\\r\\n]"],
+                        ["^Extended Diagnostics:",       "[\\r\\n]"],
+                        ["^Volume layout:",              "[\\r\\n]"],
+                        ["^HDD temperature:",            "[\\r\\n]"],
+                        ["^HDD vendor distribution:",    "[\\r\\n]"],
+                        ["^BTRFS scrub \\(",             "[\\r\\n]"],
+                        ["^Disk Health Prediction:",     "[\\r\\n]"],
+                        ["^Last DSM update activity:",   "[\\r\\n]"],
+                        ["^HyperBackup tasks:",          "[\\r\\n]"],
+                        ["^DSM region:",                 "[\\r\\n]"],
+                        ["^SMART self-test schedule:",   "[\\r\\n]"],
+                        ["^Auth failures:",              "[\\r\\n]"],
+                        ["^Network bonding:",            "[\\r\\n]"]
                     ],
                     "color": {
                         "base"  : ["#66D9EF", ""],

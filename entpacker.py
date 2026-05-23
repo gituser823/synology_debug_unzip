@@ -471,6 +471,396 @@ def service_enabled(name, config_file, synoservice_dir: Path) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Extended diagnostics helpers
+# ---------------------------------------------------------------------------
+
+def parse_mdstat_rebuild(mdstat_text: str) -> list:
+    """Return list of rebuild/resync/check progress lines from mdstat."""
+    out = []
+    if not mdstat_text:
+        return out
+    lines = mdstat_text.splitlines()
+    for i, line in enumerate(lines):
+        m = re.match(r"^(md\d+)\s*:\s*active", line)
+        if not m:
+            continue
+        array = m.group(1)
+        for j in range(i + 1, min(i + 5, len(lines))):
+            sub = lines[j]
+            pm = re.search(
+                r"(recovery|resync|check|reshape)\s*=\s*([\d.]+%)"
+                r"(?:.*?\((\d+)/(\d+)\))?"
+                r"(?:.*?finish\s*=\s*([\d.]+min))?"
+                r"(?:.*?speed\s*=\s*(\S+))?",
+                sub,
+            )
+            if pm:
+                op, pct, cur, tot, eta, speed = pm.groups()
+                parts = [f"{array} {op}: {pct}"]
+                if cur and tot:
+                    parts.append(f"{cur}/{tot}")
+                if eta:
+                    parts.append(f"ETA {eta}")
+                if speed:
+                    parts.append(speed)
+                out.append(", ".join(parts))
+                break
+    return out
+
+
+def parse_volume_layout(space_history_dir: Path) -> list:
+    """Parse newest space_history_*.xml: return list of dicts per volume."""
+    if not space_history_dir.is_dir():
+        return []
+    files = sorted(space_history_dir.glob("space_history_*.xml"))
+    if not files:
+        return []
+    text = read_file(files[-1])
+    out = []
+    # Loop over <space> blocks
+    for sp in re.finditer(r"<space\s+([^>]+)>(.*?)</space>", text, re.S):
+        body = sp.group(2)
+        vol_m = re.search(r'<volume\s+path="([^"]+)"\s+[^>]*?type="([^"]+)"', body)
+        if not vol_m:
+            continue
+        vol_path = vol_m.group(1)
+        fs_type = vol_m.group(2)
+        raid_levels = re.findall(r'<raid\b[^>]*?level="([^"]+)"', body)
+        size_m = re.search(r'total_size="(\d+)"', body)
+        size = int(size_m.group(1)) if size_m else 0
+        encrypted = "encrypted" in body.lower() or 'enable_encryption="yes"' in body.lower()
+        disks = re.findall(r'<disk[^>]*?model="([^"]+)"', body)
+        out.append({
+            "path": vol_path,
+            "fs": fs_type,
+            "raid": "/".join(raid_levels) if raid_levels else "unknown",
+            "size_bytes": size,
+            "encrypted": encrypted,
+            "disks": disks,
+        })
+    return out
+
+
+def smart_temperature(smart_text: str) -> int:
+    """Extract current temperature in °C from a SMART text dump.
+
+    SMART attribute table columns are:
+      [ID, NAME, FLAG, VALUE, WORST, THRESH, TYPE, UPDATED, WHEN_FAILED, RAW, ...]
+    Raw value is at index 9 after split.
+    """
+    for name in ("Temperature_Celsius", "Airflow_Temperature_Cel",
+                 "Drive_Temperature", "Composite_Temperature"):
+        for line in smart_text.splitlines():
+            if name not in line:
+                continue
+            if not re.match(rf"^\s*\d+\s+{re.escape(name)}\b", line):
+                continue
+            parts = line.split()
+            if len(parts) >= 10 and parts[9].isdigit():
+                return int(parts[9])
+    # SAS/NVMe textual format
+    m = re.search(r"(?:Current Drive Temperature|Temperature:)\s*(\d+)\s*C", smart_text, re.I)
+    if m:
+        return int(m.group(1))
+    return 0
+
+
+def parse_disk_health_json(path: Path) -> dict:
+    """Parse Synology disk_health_information.json → {serial: status}."""
+    if not path.exists():
+        return {}
+    try:
+        import json
+        data = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+    except Exception:
+        return {}
+    out = {}
+    for serial, val in data.items():
+        if not isinstance(val, dict):
+            continue
+        # Find newest date entry
+        date_keys = [k for k in val.keys() if re.match(r"\d{4}-\d{2}-\d{2}", k)]
+        if not date_keys:
+            continue
+        newest = max(date_keys)
+        entry = val.get(newest, {})
+        detail = entry.get("detail", {}) if isinstance(entry, dict) else {}
+        status = detail.get("overview_status", "unknown")
+        temp = ""
+        cache = entry.get("cache", {}) if isinstance(entry, dict) else {}
+        if cache.get("temperature"):
+            temp = f", temp={cache['temperature']}°C"
+        out[serial] = {
+            "model": val.get("model", "?"),
+            "status": status,
+            "date": newest,
+            "temp": temp,
+        }
+    return out
+
+
+def count_auth_failures(auth_text: str) -> dict:
+    """Count failed SSH/auth attempts and group by user."""
+    if not auth_text:
+        return {"total": 0, "ssh": 0, "by_user": {}, "by_host": {}}
+    ssh_fail = 0
+    by_user = {}
+    by_host = {}
+    for line in auth_text.splitlines():
+        if not re.search(r"Failed password|authentication failure|Invalid user", line, re.I):
+            continue
+        ssh_fail += 1
+        um = re.search(r"(?:^|\s)user=(\S+)", line) or \
+             re.search(r"for(?:\s+invalid\s+user)?\s+(\S+)\s+from", line, re.I)
+        if um:
+            u = um.group(1).rstrip(";,")
+            if u and u not in (";", ","):
+                by_user[u] = by_user.get(u, 0) + 1
+        hm = re.search(r"rhost=(\S+)", line) or re.search(r"from\s+(\d+\.\d+\.\d+\.\d+)", line)
+        if hm and hm.group(1):
+            h = hm.group(1)
+            by_host[h] = by_host.get(h, 0) + 1
+    return {"total": ssh_fail, "ssh": ssh_fail, "by_user": by_user, "by_host": by_host}
+
+
+def parse_ups_events(messages_text: str) -> list:
+    """Find UPS state changes (on-battery, low-battery, restored)."""
+    if not messages_text:
+        return []
+    out = []
+    patterns = [
+        (r"on\s+battery|UPS.*on\s+battery|power\s+failure", "On battery"),
+        (r"on\s+line.*power|line\s+power\s+restored|UPS.*restored", "On line power"),
+        (r"low\s+battery|battery\s+low", "Low battery"),
+        (r"ups.*replace|battery.*replace", "Battery needs replacement"),
+        (r"apcupsd|upsmon|upsd\b|\bnut\b", "UPS monitor active"),
+    ]
+    for pat, label in patterns:
+        ms = re.findall(rf"^.*(?:{pat}).*$", messages_text, re.M | re.I)
+        if ms:
+            out.append(f"{label}: {len(ms)} event(s); last: {ms[-1].strip()[:200]}")
+    return out
+
+
+def parse_synobackup(text: str) -> list:
+    """Parse synobackup.log, return per-task summary."""
+    if not text:
+        return []
+    tasks = {}
+    for line in text.splitlines():
+        m = re.match(r"^(\w+)\s+(\S+\s+\S+)\s+(\S+?):\s+(.+)$", line)
+        if not m:
+            continue
+        level, dt, _user, msg = m.groups()
+        tm = re.match(r"\[Local\]\[(\w+)\]\s+(.+)", msg) or re.match(r"\[(\w+)\]\s+(.+)", msg)
+        if not tm:
+            continue
+        name = tm.group(1)
+        action = tm.group(2)
+        if name not in tasks or dt > tasks[name]["date"]:
+            tasks[name] = {"date": dt, "level": level, "action": action.strip()}
+    return [{"name": k, **v} for k, v in tasks.items()]
+
+
+def parse_synoupdate(text: str) -> dict:
+    """Parse synoupdate.log for last upgrade event."""
+    if not text:
+        return {}
+    # Look for major patterns
+    last_line = ""
+    for line in text.splitlines():
+        if re.search(r"start|finish|upgrade|update", line, re.I):
+            last_line = line
+    if not last_line:
+        return {}
+    dm = re.match(r"^(\d{4}/\d{2}/\d{2}\s+\d{2}:\d{2}:\d{2})", last_line)
+    if not dm:
+        return {"last_line": last_line.strip()[:200]}
+    from datetime import datetime
+    try:
+        dt = datetime.strptime(dm.group(1), "%Y/%m/%d %H:%M:%S")
+        days_ago = (datetime.now() - dt).days
+    except Exception:
+        days_ago = -1
+    return {"date": dm.group(1), "days_ago": days_ago, "last_line": last_line.strip()[:200]}
+
+
+def parse_dpkg_failures(text: str) -> list:
+    """Find failed dpkg upgrades."""
+    if not text:
+        return []
+    out = []
+    for line in text.splitlines():
+        if re.search(r"(?i)error|failed|not authenticated", line) and "passed" not in line.lower():
+            out.append(line.strip()[:200])
+    return out[-10:]
+
+
+def parse_bonding(bonding_dir: Path) -> list:
+    """Parse /proc/net/bonding/* files."""
+    if not bonding_dir.is_dir():
+        return []
+    out = []
+    for bf in sorted(bonding_dir.iterdir()):
+        text = read_file(bf)
+        mode = re.search(r"Bonding Mode:\s*(.+)", text)
+        slaves = re.findall(r"Slave Interface:\s*(\S+)", text)
+        states = re.findall(r"MII Status:\s*(\S+)", text)
+        out.append(
+            f"{bf.name}: {mode.group(1).strip() if mode else 'unknown'} "
+            f"({len(slaves)} slaves: {', '.join(slaves)}) "
+            f"states: {', '.join(states)}"
+        )
+    return out
+
+
+def hdd_vendor_summary(smart_files: list) -> str:
+    """Build 'Nx WD Red, Mx Seagate' summary from SMART files."""
+    counter = {}
+    for sf in smart_files:
+        s = parse_smart(sf)
+        mf = s["model_family"] or s["model"] or "Unknown"
+        # Collapse to top-level vendor/family
+        for k in ("Western Digital", "WD", "Seagate", "Toshiba", "HGST",
+                  "Samsung", "Hitachi", "Crucial", "Kingston", "Intel",
+                  "SanDisk", "Micron", "Synology"):
+            if k.lower() in mf.lower():
+                counter[k] = counter.get(k, 0) + 1
+                break
+        else:
+            counter[mf.split()[0]] = counter.get(mf.split()[0], 0) + 1
+    if not counter:
+        return ""
+    return ", ".join(f"{v}x {k}" for k, v in sorted(counter.items(), key=lambda x: -x[1]))
+
+
+def count_users_groups(etc_dir: Path) -> dict:
+    """Count human users (uid >= 1000) and groups."""
+    users = []
+    groups = []
+    pwd = etc_dir / "passwd"
+    grp = etc_dir / "group"
+    if pwd.exists():
+        for line in read_file(pwd).splitlines():
+            parts = line.split(":")
+            if len(parts) >= 4:
+                try:
+                    if int(parts[2]) >= 1000 and parts[0] not in ("nobody",):
+                        users.append(parts[0])
+                except ValueError:
+                    pass
+    if grp.exists():
+        for line in read_file(grp).splitlines():
+            parts = line.split(":")
+            if len(parts) >= 3:
+                try:
+                    if int(parts[2]) >= 100 and parts[0] not in ("nobody",):
+                        groups.append(parts[0])
+                except ValueError:
+                    pass
+    return {"users": users, "groups": groups}
+
+
+def synoinfo_region(synoinfo_text: str) -> dict:
+    """Extract timezone and language."""
+    out = {}
+    for key in ("timezone", "language", "country_code", "ntp_server"):
+        m = re.search(rf'^{key}\s*=\s*"([^"]*)"', synoinfo_text, re.M)
+        if m:
+            out[key] = m.group(1)
+    return out
+
+
+def count_encrypted_shares(synoshare_dir: Path) -> int:
+    """Count encrypted share configs."""
+    if not synoshare_dir.is_dir():
+        return -1
+    count = 0
+    for sf in synoshare_dir.iterdir():
+        if sf.is_file():
+            t = read_file(sf)
+            if re.search(r'encryption\s*=\s*"?(yes|true|1)"?', t, re.I) or \
+               "enc_key" in t or "EncryptedShare" in t:
+                count += 1
+    return count
+
+
+def smart_test_schedule(synoinfo_text: str, smart_test_log: Path) -> str:
+    """Determine if automatic SMART tests are scheduled."""
+    sched_m = re.search(
+        r'(?:disk_smart_test_schedule|smart_test_period)\s*=\s*"?(\w+)"?',
+        synoinfo_text, re.I,
+    )
+    if sched_m and sched_m.group(1).lower() not in ("none", "no", "0", ""):
+        return f"SMART self-test schedule: {sched_m.group(1)}"
+    if smart_test_log.exists() and smart_test_log.stat().st_size > 100:
+        return "SMART self-test schedule: history present (recent tests detected)"
+    return "SMART self-test schedule: not configured"
+
+
+def parse_btrfs_scrub(text: str) -> dict:
+    """Parse datascrubbing.log for real scrub events (not config syncs)."""
+    if not text:
+        return {}
+    by_vol = {}
+    for line in text.splitlines():
+        ts_m = re.match(r"^(\S+)\s", line)
+        if not ts_m:
+            continue
+        ts = ts_m.group(1)
+
+        # Start of an actual scrub: "Start btrfs data scrubbing on /volumeN"
+        sm = re.search(r"Start (?:btrfs|ext4)? data scrubbing on (\S+)", line)
+        if sm:
+            vol = sm.group(1)
+            by_vol.setdefault(vol, {})["last_start"] = ts
+            continue
+
+        # Schedule round start (no specific volume)
+        if re.search(r"Start next data scrubbing round", line):
+            by_vol.setdefault("(scheduled round)", {})["last_round"] = ts
+            continue
+
+        # Done: "Space '/dev/...' data scrubbing done"
+        dm = re.search(r"Space '(\S+?)' data scrubbing done", line)
+        if dm:
+            vol = dm.group(1)
+            by_vol.setdefault(vol, {})["last_finish"] = ts
+            continue
+
+        # Real errors: scrub-related uncorrectable / corruption
+        if re.search(r"scrub.*(uncorrectable|corrupt|csum)", line, re.I):
+            vm = re.search(r"(/volume\d+|/dev/\S+|md\d+)", line)
+            vol = vm.group(1) if vm else "?"
+            by_vol.setdefault(vol, {}).setdefault("errors", []).append(line.strip()[:200])
+    return by_vol
+
+
+def parse_qgroup_warnings(messages_text: str, kern_text: str) -> int:
+    """Count qgroup over-quota events."""
+    combined = messages_text + "\n" + kern_text
+    return grep_count(r"qgroup.*(over|exceed|limit reach)", combined)
+
+
+def docker_container_count(result_dir: Path) -> int:
+    """Approximate number of running Docker containers from ethtool.docker* files."""
+    if not result_dir.is_dir():
+        return 0
+    return len(list(result_dir.glob("ethtool.docker[a-f0-9]*.result")))
+
+
+def check_smart_test_age(smart_test_log: Path) -> dict:
+    """Get last test date and count tests from disk_smart_test_log.xml."""
+    if not smart_test_log.exists():
+        return {}
+    text = read_file(smart_test_log)
+    dates = re.findall(r'\b(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})', text)
+    if not dates:
+        return {}
+    return {"count": len(dates), "newest": max(dates), "oldest": min(dates)}
+
+
+# ---------------------------------------------------------------------------
 # Analysis
 # ---------------------------------------------------------------------------
 
@@ -949,6 +1339,59 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
             known_issues.append(lns[-1])
 
     # ============================================================
+    # Extended diagnostics (collect)
+    # ============================================================
+    raid_rebuild = parse_mdstat_rebuild(mdstat_text)
+    volume_layout = parse_volume_layout(dsm_dir / "etc" / "space")
+
+    # Per-HDD temperature
+    hdd_temps = []
+    for sf in smart_files:
+        t_text = read_file(sf)
+        t = smart_temperature(t_text)
+        if t > 0:
+            hdd_temps.append({"disk": sf.name, "temp": t})
+
+    disk_health = parse_disk_health_json(dsm_dir / "var" / "log" / "disk_health_information.json")
+    auth_text = read_file(dsm_dir / "var" / "log" / "auth.log")
+    auth_failures = count_auth_failures(auth_text)
+    ups_events = parse_ups_events(messages_text)
+
+    synobackup_text = read_file(dsm_dir / "var" / "log" / "synolog" / "synobackup.log")
+    backup_tasks = parse_synobackup(synobackup_text)
+
+    synoupdate_text = read_file(dsm_dir / "var" / "log" / "synoupdate.log")
+    upgrade_info = parse_synoupdate(synoupdate_text)
+
+    dpkg_text = read_file(dsm_dir / "var" / "log" / "dpkg_upgrade.log")
+    dpkg_fails = parse_dpkg_failures(dpkg_text)
+
+    bonds = parse_bonding(dsm_dir / "proc" / "net" / "bonding")
+    qgroup_warnings = parse_qgroup_warnings(messages_text, kern_text)
+    docker_count = docker_container_count(result_dir)
+    user_grp = count_users_groups(dsm_dir / "etc")
+    region = synoinfo_region(synoinfo_etc)
+    enc_share_count = count_encrypted_shares(dsm_dir / "etc" / "synoshare")
+    smart_sched = smart_test_schedule(synoinfo_etc,
+                                      dsm_dir / "var" / "log" / "disk_smart_test_log.xml")
+    smart_test_history = check_smart_test_age(dsm_dir / "var" / "log" / "disk_smart_test_log.xml")
+    btrfs_scrub = parse_btrfs_scrub(read_file(dsm_dir / "var" / "log" / "datascrubbing.log"))
+    vendor_summary = hdd_vendor_summary(smart_files)
+
+    # Load average parsing from uptime
+    load_avg_warning = ""
+    lm = re.search(r"load average:\s*([\d.]+),\s*([\d.]+),\s*([\d.]+)", uptime_text)
+    if lm:
+        try:
+            la_1 = float(lm.group(1))
+            if la_1 > 10.0:
+                load_avg_warning = f"High load average detected: {la_1} (critical)"
+            elif la_1 > 5.0:
+                load_avg_warning = f"Elevated load average: {la_1} (warning)"
+        except ValueError:
+            pass
+
+    # ============================================================
     # Write sm.log
     # ============================================================
     sm.parent.mkdir(parents=True, exist_ok=True)
@@ -1194,7 +1637,149 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
         w(f"Out of Memory kills:\t{'none' if oom_kills == 0 else oom_kills}")
         w(f"generic crashes:\t\t{'none' if crashes_ct == 0 else crashes_ct}")
         w(f"Call Traces:\t\t\t{'none' if call_traces == 0 else call_traces}")
+        w(f"Authentication failures:\t{'none' if auth_failures['total'] == 0 else auth_failures['total']}")
+        w(f"BTRFS qgroup warnings:\t{'none' if qgroup_warnings == 0 else qgroup_warnings}")
+        w(f"Docker containers seen:\t{docker_count if docker_count > 0 else 'none'}")
+        if user_grp["users"]:
+            w(f"Non-system users:\t\t{len(user_grp['users'])}")
+        if enc_share_count >= 0:
+            w(f"Encrypted shares:\t\t{enc_share_count}")
         w()
+
+        # ─── Extended Diagnostics ───────────────────────────────
+        w("Extended Diagnostics:")
+
+        # RAID rebuild status
+        if raid_rebuild:
+            for line in raid_rebuild:
+                w(f"RAID active rebuild: {line}")
+        else:
+            w("RAID rebuild:\t\t\tnone in progress")
+
+        # Volume layout summary
+        if volume_layout:
+            w("Volume layout:")
+            for v in volume_layout:
+                enc = " (encrypted)" if v["encrypted"] else ""
+                disks = ", ".join(v["disks"][:4]) if v["disks"] else "?"
+                w(f"  {v['path']}: {v['raid']} / {v['fs']}{enc}, "
+                  f"{bytes_to_human(v['size_bytes'])}, disks: {disks}")
+
+        # HDD temperatures
+        if hdd_temps:
+            for ht in hdd_temps:
+                t = ht["temp"]
+                if t >= 60:
+                    tag = " (ERROR: critical temp)"
+                elif t >= 50:
+                    tag = " (warning: high temp)"
+                else:
+                    tag = ""
+                w(f"HDD temperature: {ht['disk']}: {t}°C{tag}")
+
+        # HDD age warnings (re-scan smart files)
+        for sf in smart_files:
+            s = parse_smart(sf)
+            if s["poh"] and s["poh"].isdigit():
+                hours = int(s["poh"])
+                if hours > 70000:
+                    w(f"HDD age ERROR: {sf.name}: {hours}h (~{hours//8760}y) — replace recommended")
+                elif hours > 50000:
+                    w(f"HDD age warning: {sf.name}: {hours}h (~{hours//8760}y)")
+
+        # Vendor distribution
+        if vendor_summary:
+            w(f"HDD vendor distribution: {vendor_summary}")
+
+        # BTRFS scrub status — drop bookkeeping-only entries
+        real_scrubs = {k: v for k, v in btrfs_scrub.items()
+                       if k != "(scheduled round)" and (v.get("last_start") or v.get("last_finish") or v.get("errors"))}
+        if real_scrubs:
+            for vol, st in real_scrubs.items():
+                start = st.get("last_start", "?")
+                finish = st.get("last_finish", "?")
+                errs = st.get("errors", [])
+                w(f"BTRFS scrub ({vol}): last start={start}, last finish={finish}"
+                  f"{', ERRORS: ' + str(len(errs)) if errs else ''}")
+        else:
+            w("BTRFS scrub: no scrub history found")
+
+        # Disk health prediction
+        if disk_health:
+            for serial, info in disk_health.items():
+                state = info["status"]
+                tag = ""
+                if state not in ("normal", "unknown"):
+                    tag = " (WARNING)" if state == "warning" else " (CRITICAL)"
+                w(f"Disk Health Prediction: {serial} ({info['model']}): "
+                  f"{state}{info['temp']}{tag}")
+
+        # Failed upgrades
+        if dpkg_fails:
+            w(f"Failed dpkg upgrades: {len(dpkg_fails)} entries (showing 3):")
+            for f in dpkg_fails[:3]:
+                w(f"  {f}")
+        else:
+            w("Failed dpkg upgrades:\tnone")
+
+        # Recent DSM upgrade
+        if upgrade_info:
+            d = upgrade_info.get("days_ago", -1)
+            tag = " (RECENT: < 7 days)" if 0 <= d < 7 else ""
+            w(f"Last DSM update activity: {upgrade_info.get('date', '?')} "
+              f"({d} days ago){tag}")
+
+        # SSH/auth failures detail
+        if auth_failures["total"] > 0:
+            top_user = sorted(auth_failures["by_user"].items(), key=lambda x: -x[1])[:3]
+            top_host = sorted(auth_failures["by_host"].items(), key=lambda x: -x[1])[:3]
+            severity = " (WARNING)" if auth_failures["total"] >= 10 else ""
+            w(f"Auth failures: {auth_failures['total']} total{severity}")
+            if top_user:
+                w(f"  Top targeted users: " +
+                  ", ".join(f"{u}({c})" for u, c in top_user))
+            if top_host:
+                w(f"  Top source hosts: " +
+                  ", ".join(f"{h}({c})" for h, c in top_host))
+
+        # UPS
+        if ups_events:
+            w("UPS events:")
+            for e in ups_events:
+                w(f"  {e}")
+
+        # HyperBackup tasks
+        if backup_tasks:
+            w("HyperBackup tasks:")
+            for t in backup_tasks[:8]:
+                tag = " (ERROR)" if t["level"] == "err" else \
+                      " (warning)" if t["level"] == "warning" else ""
+                w(f"  {t['name']}: {t['date']} - {t['action'][:120]}{tag}")
+
+        # Bonding
+        if bonds:
+            w("Network bonding:")
+            for b in bonds:
+                w(f"  {b}")
+
+        # Load avg
+        if load_avg_warning:
+            w(load_avg_warning)
+
+        # Region
+        if region:
+            w(f"DSM region: timezone={region.get('timezone', '?')}, "
+              f"language={region.get('language', '?')}")
+
+        # SMART self-test schedule
+        w(smart_sched)
+        if smart_test_history:
+            w(f"SMART tests in history: {smart_test_history['count']} "
+              f"(newest: {smart_test_history['newest']})")
+
+        w()  # blank line
+        # ─── End Extended Diagnostics ────────────────────────────
+
         w("Third Party packages:", end="")
         if not third_pkgs:
             w("\tnone")

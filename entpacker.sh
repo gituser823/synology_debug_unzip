@@ -1567,6 +1567,311 @@ do
                             echo -e "Call Traces:\t\t\t$(grep -iac "Call Trace" "$MESSAGES")" >> "$sm"
                         fi
 
+                        # ── auth failures count ─────────────────────────────
+                        AUTH_LOG="$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/auth.log"
+                        if [[ -f "$AUTH_LOG" ]]; then
+                            auth_fail_ct=$(grep -ic "Failed password\|authentication failure\|Invalid user" "$AUTH_LOG")
+                        else
+                            auth_fail_ct=0
+                        fi
+                        if [[ "$auth_fail_ct" -eq 0 ]]; then
+                            echo -e "Authentication failures:\tnone" >> "$sm"
+                        else
+                            echo -e "Authentication failures:\t$auth_fail_ct" >> "$sm"
+                        fi
+
+                        # ── BTRFS qgroup warnings ───────────────────────────
+                        qgroup_ct=$(grep -ic "qgroup.*\(over\|exceed\|limit reach\)" "$MESSAGES" "$KERN" 2>/dev/null | awk -F: '{s+=$NF} END{print s+0}')
+                        if [[ "$qgroup_ct" -eq 0 ]]; then
+                            echo -e "BTRFS qgroup warnings:\tnone" >> "$sm"
+                        else
+                            echo -e "BTRFS qgroup warnings:\t$qgroup_ct" >> "$sm"
+                        fi
+
+                        # ── docker container count ──────────────────────────
+                        docker_ct=$(ls "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/ethtool.docker"*[a-f0-9]*.result 2>/dev/null | wc -l)
+                        if [[ "$docker_ct" -gt 0 ]]; then
+                            echo -e "Docker containers seen:\t$docker_ct" >> "$sm"
+                        else
+                            echo -e "Docker containers seen:\tnone" >> "$sm"
+                        fi
+
+                        # ── non-system users / encrypted shares ─────────────
+                        PWD_FILE="$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/passwd"
+                        if [[ -f "$PWD_FILE" ]]; then
+                            users_ct=$(awk -F: '$3>=1000 && $1!="nobody"' "$PWD_FILE" | wc -l)
+                            echo -e "Non-system users:\t\t$users_ct" >> "$sm"
+                        fi
+                        SHARE_DIR="$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/synoshare"
+                        if [[ -d "$SHARE_DIR" ]]; then
+                            enc_share_ct=$(grep -lE 'encryption[[:space:]]*=[[:space:]]*"?(yes|true|1)"?' "$SHARE_DIR"/* 2>/dev/null | wc -l)
+                            echo -e "Encrypted shares:\t\t$enc_share_ct" >> "$sm"
+                        fi
+
+                        echo "" >> "$sm"
+
+                        # ── Extended Diagnostics block ──────────────────────
+                        echo "Extended Diagnostics:" >> "$sm"
+
+                        # 1. RAID rebuild/resync/check
+                        raid_rebuild=$(grep -E "(recovery|resync|check|reshape)\s*=\s*[0-9.]+%" "$MDSTAT" 2>/dev/null)
+                        if [[ -n "$raid_rebuild" ]]; then
+                            echo "$raid_rebuild" | while read -r l; do
+                                echo "RAID active rebuild: $l" >> "$sm"
+                            done
+                        else
+                            echo -e "RAID rebuild:\t\t\tnone in progress" >> "$sm"
+                        fi
+
+                        # 2. Volume layout from newest space_history_*.xml
+                        sp_hist=$(ls -t "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/space/space_history_"*.xml 2>/dev/null | head -1)
+                        if [[ -n "$sp_hist" && -f "$sp_hist" ]]; then
+                            echo "Volume layout:" >> "$sm"
+                            awk '
+                            /<space[[:space:]]/ { in_sp=1; vp=""; vt=""; vr=""; vs=""; venc="" }
+                            in_sp && /<volume[[:space:]]+path=/ {
+                                if (match($0, /path="[^"]+"/))  vp=substr($0,RSTART+6,RLENGTH-7)
+                                if (match($0, /type="[^"]+"/))  vt=substr($0,RSTART+6,RLENGTH-7)
+                            }
+                            in_sp && /<raid[[:space:]]/ {
+                                if (match($0, /level="[^"]+"/)) {
+                                    lvl=substr($0,RSTART+7,RLENGTH-8)
+                                    vr=(vr=="" ? lvl : vr "/" lvl)
+                                }
+                            }
+                            in_sp && /total_size="/ {
+                                if (match($0, /total_size="[0-9]+"/)) vs=substr($0,RSTART+12,RLENGTH-13)
+                            }
+                            in_sp && /enable_encryption="yes"/ { venc=" (encrypted)" }
+                            /<\/space>/ {
+                                if (vp != "") {
+                                    gib = vs / 1024 / 1024 / 1024
+                                    if (gib >= 1024) printf "  %s: %s / %s%s, %.2f TiB\n", vp, vr, vt, venc, gib/1024
+                                    else printf "  %s: %s / %s%s, %.2f GiB\n", vp, vr, vt, venc, gib
+                                }
+                                in_sp=0
+                            }' "$sp_hist" >> "$sm"
+                        fi
+
+                        # 3. HDD temperatures (warn >50, error >60)
+                        for sf in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/"{sd,nv,sas[0-9],smart}*; do
+                            [[ -e "$sf" ]] || continue
+                            tline=$(grep -m1 -iE "^\s*[0-9]+\s+(Temperature_Celsius|Airflow_Temperature_Cel)\b" "$sf" 2>/dev/null)
+                            [[ -z "$tline" ]] && continue
+                            temp=$(echo "$tline" | awk '{print $10}')
+                            [[ ! "$temp" =~ ^[0-9]+$ ]] && continue
+                            tag=""
+                            if   [[ "$temp" -ge 60 ]]; then tag=" (ERROR: critical temp)"
+                            elif [[ "$temp" -ge 50 ]]; then tag=" (warning: high temp)"
+                            fi
+                            echo "HDD temperature: $(basename -- "$sf"): ${temp}°C${tag}" >> "$sm"
+                        done
+
+                        # 4. HDD age warning from SMART files
+                        for sf in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/"{sd,nv,sas[0-9],smart}*; do
+                            [[ -e "$sf" ]] || continue
+                            pohline=$(grep -m1 -iE "Power[_-][Oo]n[_-](Hours|Hour_Count|Time)" "$sf" 2>/dev/null)
+                            [[ -z "$pohline" ]] && continue
+                            hours=$(echo "$pohline" | sed -e "s/ ([^()]*)//g" | awk '{print $NF}' | sed 's/h.*//')
+                            [[ ! "$hours" =~ ^[0-9]+$ ]] && continue
+                            years=$((hours / 8760))
+                            if   [[ "$hours" -gt 70000 ]]; then
+                                echo "HDD age ERROR: $(basename -- "$sf"): ${hours}h (~${years}y) — replace recommended" >> "$sm"
+                            elif [[ "$hours" -gt 50000 ]]; then
+                                echo "HDD age warning: $(basename -- "$sf"): ${hours}h (~${years}y)" >> "$sm"
+                            fi
+                        done
+
+                        # 5. HDD vendor distribution
+                        vendor_tmp=$(mktemp)
+                        for sf in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/"{sd,nv,sas[0-9],smart}*; do
+                            [[ -e "$sf" ]] || continue
+                            mf=$(grep -m1 -iE "Model Family|Device Model|^Vendor:" "$sf" 2>/dev/null | sed 's/.*:\s*//' | head -c 80)
+                            [[ -z "$mf" ]] && mf="Unknown"
+                            for vend in "Western Digital" "WD " "Seagate" "Toshiba" "HGST" "Samsung" "Hitachi" "Crucial" "Kingston" "Intel" "SanDisk" "Micron" "Synology"; do
+                                if echo "$mf" | grep -qi "$vend"; then
+                                    echo "${vend% }" >> "$vendor_tmp"
+                                    continue 2
+                                fi
+                            done
+                            echo "$mf" | awk '{print $1}' >> "$vendor_tmp"
+                        done
+                        if [[ -s "$vendor_tmp" ]]; then
+                            summary=$(sort "$vendor_tmp" | uniq -c | sort -rn | awk '{printf "%dx %s, ", $1, $2}' | sed 's/, $//')
+                            echo "HDD vendor distribution: $summary" >> "$sm"
+                        fi
+                        rm -f "$vendor_tmp"
+
+                        # 6. BTRFS scrub status (real events only, not config syncs)
+                        SCRUB_LOG="$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/datascrubbing.log"
+                        if [[ -f "$SCRUB_LOG" ]]; then
+                            real_scrub_count=$(grep -cE "Start (btrfs|ext4)? data scrubbing on|data scrubbing done" "$SCRUB_LOG" 2>/dev/null)
+                            if [[ "$real_scrub_count" -gt 0 ]]; then
+                                # Last start per volume
+                                awk '
+                                /Start (btrfs|ext4)? data scrubbing on/ {
+                                    if (match($0, /on [^ ]+/)) {
+                                        v=substr($0,RSTART+3,RLENGTH-3); starts[v]=$1
+                                    }
+                                }
+                                /Space .* data scrubbing done/ {
+                                    if (match($0, /Space '\''[^'\'']+'\''/)) {
+                                        v=substr($0,RSTART+7,RLENGTH-8); finishes[v]=$1
+                                    }
+                                }
+                                END {
+                                    for (v in starts) printf "BTRFS scrub (%s): last start=%s, last finish=%s\n", v, starts[v], (finishes[v] ? finishes[v] : "?")
+                                    for (v in finishes) if (!(v in starts)) printf "BTRFS scrub (%s): last start=?, last finish=%s\n", v, finishes[v]
+                                }' "$SCRUB_LOG" >> "$sm"
+                            else
+                                echo "BTRFS scrub: no scrub history found" >> "$sm"
+                            fi
+                        else
+                            echo "BTRFS scrub: no scrub log present" >> "$sm"
+                        fi
+
+                        # 7. Disk Health Prediction (via jq)
+                        HEALTH_JSON="$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/disk_health_information.json"
+                        if [[ -f "$HEALTH_JSON" ]] && command -v jq >/dev/null; then
+                            jq -r 'to_entries[] |
+                                .key as $sn |
+                                .value as $v |
+                                ($v.model // "?") as $model |
+                                ($v | to_entries | map(select(.key | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}"))) | sort_by(.key) | last) as $latest |
+                                ($latest.value.detail.overview_status // "?") as $st |
+                                ($latest.value.cache.temperature // "") as $temp |
+                                "Disk Health Prediction: \($sn) (\($model)): \($st)\(if $temp != "" then ", temp=\($temp)°C" else "" end)" +
+                                (if $st == "warning" then " (WARNING)" elif $st != "normal" and $st != "?" then " (CRITICAL)" else "" end)
+                            ' "$HEALTH_JSON" 2>/dev/null >> "$sm"
+                        fi
+
+                        # 8. Failed dpkg upgrades
+                        DPKG_LOG="$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/dpkg_upgrade.log"
+                        if [[ -f "$DPKG_LOG" ]]; then
+                            dpkg_fails=$(grep -iE "error|failed|not authenticated" "$DPKG_LOG" 2>/dev/null | grep -vi passed | tail -3)
+                            if [[ -n "$dpkg_fails" ]]; then
+                                fail_count=$(grep -ciE "error|failed|not authenticated" "$DPKG_LOG" 2>/dev/null)
+                                echo "Failed dpkg upgrades: $fail_count entries (showing 3):" >> "$sm"
+                                echo "$dpkg_fails" | sed 's/^/  /' >> "$sm"
+                            else
+                                echo -e "Failed dpkg upgrades:\tnone" >> "$sm"
+                            fi
+                        else
+                            echo -e "Failed dpkg upgrades:\tnone" >> "$sm"
+                        fi
+
+                        # 9. Recent DSM update
+                        SYNOUPDATE_LOG="$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/synoupdate.log"
+                        if [[ -f "$SYNOUPDATE_LOG" ]]; then
+                            last_upd=$(tac "$SYNOUPDATE_LOG" | grep -m1 -E "^[0-9]{4}/[0-9]{2}/[0-9]{2}")
+                            if [[ -n "$last_upd" ]]; then
+                                ts=$(echo "$last_upd" | awk '{print $1, $2}')
+                                last_upd_epoch=$(date -d "$(echo "$ts" | sed 's|/|-|g')" +%s 2>/dev/null || echo 0)
+                                now_epoch=$(date +%s)
+                                days_ago=$(( (now_epoch - last_upd_epoch) / 86400 ))
+                                tag=""
+                                if [[ "$days_ago" -ge 0 && "$days_ago" -lt 7 ]]; then tag=" (RECENT: < 7 days)"; fi
+                                echo "Last DSM update activity: $ts (${days_ago} days ago)${tag}" >> "$sm"
+                            fi
+                        fi
+
+                        # 10. Auth failures detail
+                        if [[ "$auth_fail_ct" -gt 0 && -f "$AUTH_LOG" ]]; then
+                            severity=""
+                            [[ "$auth_fail_ct" -ge 10 ]] && severity=" (WARNING)"
+                            echo "Auth failures: ${auth_fail_ct} total${severity}" >> "$sm"
+                            top_user=$(grep -E "Failed password|authentication failure|Invalid user" "$AUTH_LOG" 2>/dev/null \
+                                | grep -oE '(^|[[:space:]])user=[^ ]+' | sed 's/.*user=//' \
+                                | sort | uniq -c | sort -rn | head -3 \
+                                | awk '{printf "%s(%d), ", $2, $1}' | sed 's/, $//')
+                            if [[ -z "$top_user" ]]; then
+                                top_user=$(grep -oE "for invalid user \S+|for \S+ from" "$AUTH_LOG" 2>/dev/null \
+                                    | awk '{print $(NF-1)}' | sort | uniq -c | sort -rn | head -3 \
+                                    | awk '{printf "%s(%d), ", $2, $1}' | sed 's/, $//')
+                            fi
+                            top_host=$(grep -E "Failed password|authentication failure|Invalid user" "$AUTH_LOG" 2>/dev/null \
+                                | grep -oE 'rhost=[^ ]+' | sed 's/rhost=//' \
+                                | grep -v '^$' | sort | uniq -c | sort -rn | head -3 \
+                                | awk '{printf "%s(%d), ", $2, $1}' | sed 's/, $//')
+                            [[ -n "$top_user" ]] && echo "  Top targeted users: $top_user" >> "$sm"
+                            [[ -n "$top_host" ]] && echo "  Top source hosts: $top_host" >> "$sm"
+                        fi
+
+                        # 11. UPS events from messages
+                        ups_events=$(grep -iE "on battery|power failure|low battery|battery low|ups.*replace|apcupsd|upsmon" "$MESSAGES" 2>/dev/null | tail -3)
+                        if [[ -n "$ups_events" ]]; then
+                            echo "UPS events:" >> "$sm"
+                            echo "$ups_events" | sed 's/^/  /' >> "$sm"
+                        fi
+
+                        # 12. HyperBackup task summary
+                        BACKUP_LOG="$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/synolog/synobackup.log"
+                        if [[ -f "$BACKUP_LOG" ]]; then
+                            # Last 5 backup tasks
+                            backup_summary=$(tac "$BACKUP_LOG" 2>/dev/null \
+                                | awk -F'\t' '
+                                    /\[Local\]\[/ || /\] Backup/ {
+                                        match($0, /\[[A-Za-z0-9_-]+\]/); name=substr($0,RSTART+1,RLENGTH-2);
+                                        if (!(name in seen)) {
+                                            seen[name]=1; print $0
+                                            count++; if (count>=5) exit
+                                        }
+                                    }' | head -5)
+                            if [[ -n "$backup_summary" ]]; then
+                                echo "HyperBackup tasks:" >> "$sm"
+                                echo "$backup_summary" | sed 's/^/  /' >> "$sm"
+                            fi
+                        fi
+
+                        # 13. Bonding/LAG
+                        BOND_DIR="$DOWNLOAD_DIR/debug_$DATE/$DSM/proc/net/bonding"
+                        if [[ -d "$BOND_DIR" ]]; then
+                            echo "Network bonding:" >> "$sm"
+                            for bf in "$BOND_DIR"/*; do
+                                [[ -f "$bf" ]] || continue
+                                mode=$(grep "Bonding Mode:" "$bf" | sed 's/.*: //')
+                                slaves=$(grep "Slave Interface:" "$bf" | sed 's/.*: //' | tr '\n' ',' | sed 's/,$//')
+                                states=$(grep "MII Status:" "$bf" | sed 's/.*: //' | tr '\n' ',' | sed 's/,$//')
+                                echo "  $(basename -- "$bf"): mode=$mode, slaves=$slaves, states=$states" >> "$sm"
+                            done
+                        fi
+
+                        # 14. Load average warning
+                        if [[ -n "$UPTIME" ]]; then
+                            la=$(echo "$UPTIME" | grep -oE "load average:\s*[0-9.]+" | awk '{print $NF}')
+                            if [[ -n "$la" ]]; then
+                                la_int=${la%.*}
+                                if [[ "$la_int" -gt 10 ]] 2>/dev/null; then
+                                    echo "High load average detected: $la (critical)" >> "$sm"
+                                elif [[ "$la_int" -gt 5 ]] 2>/dev/null; then
+                                    echo "Elevated load average: $la (warning)" >> "$sm"
+                                fi
+                            fi
+                        fi
+
+                        # 15. DSM region (timezone, language)
+                        if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/synoinfo.conf" ]]; then
+                            tz=$(grep -oE 'timezone\s*=\s*"[^"]*"' "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/synoinfo.conf" 2>/dev/null | head -1 | sed 's/.*"\(.*\)"/\1/')
+                            lang=$(grep -oE 'language\s*=\s*"[^"]*"' "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/synoinfo.conf" 2>/dev/null | head -1 | sed 's/.*"\(.*\)"/\1/')
+                            if [[ -n "$tz" || -n "$lang" ]]; then
+                                echo "DSM region: timezone=${tz:-?}, language=${lang:-?}" >> "$sm"
+                            fi
+                        fi
+
+                        # 16. SMART self-test schedule
+                        SMART_TEST_LOG="$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/disk_smart_test_log.xml"
+                        smart_sched=$(grep -oE "smart_test_period\s*=\s*\"[^\"]+\"|disk_smart_test_schedule\s*=\s*\"[^\"]+\"" "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/synoinfo.conf" 2>/dev/null | sed 's/.*"\(.*\)"/\1/')
+                        if [[ -n "$smart_sched" && "$smart_sched" != "none" && "$smart_sched" != "no" ]]; then
+                            echo "SMART self-test schedule: $smart_sched" >> "$sm"
+                        elif [[ -f "$SMART_TEST_LOG" && $(stat -c%s "$SMART_TEST_LOG" 2>/dev/null || echo 0) -gt 100 ]]; then
+                            echo "SMART self-test schedule: history present (recent tests detected)" >> "$sm"
+                        else
+                            echo "SMART self-test schedule: not configured" >> "$sm"
+                        fi
+
+                        echo "" >> "$sm"
+                        # ── End Extended Diagnostics ───────────────────────
+
                         echo -e "\n" >> "$sm"
                         echo -en "Third Party packages:" >> "$sm"
                         if [ -z "$third_packages" ]; then

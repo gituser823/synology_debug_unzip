@@ -1,3 +1,9 @@
+// IMPORTANT after editing this file:
+//   The Log Highlight plugin caches its generated syntax file under
+//   Packages/User/Log Highlight/sm_log-log.tmLanguage. It is NOT
+//   regenerated automatically when patterns below change.
+//   Run "Log Highlight: Generate Syntax & Theme" via Command Palette
+//   (Ctrl+Shift+P) and then close & reopen sm.log for changes to apply.
 {
     "context_menu": true,
     "auto_highlight": true,

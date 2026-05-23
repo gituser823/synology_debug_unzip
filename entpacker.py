@@ -1865,47 +1865,41 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
         w("\n".join(gen_errors))
         w()
 
-    # Messages detail
+    # Messages detail — each section capped at newest 20
+    def _emit_capped(label, lines):
+        shown = lines[-20:]
+        omitted = len(lines) - len(shown)
+        hdr = f"{label}: {len(lines)} total — showing newest 20"
+        if omitted > 0:
+            hdr += f" ({omitted} omitted)"
+        w(hdr + ":")
+        for l in shown:
+            w(l)
+        w()
+
     if messages_text:
         if not drdy_lines:
             w("DRDY:\t\t\t\t\tnone")
         else:
-            w(f"{len(drdy_lines)} times DRDY, showing 20 max:")
-            all_lines = messages_text.splitlines()
-            shown = set()
-            count = 0
-            for i, line in enumerate(all_lines):
-                if re.search("DRDY", line, re.I) and count < 20:
-                    for j in range(max(0, i - 5), min(len(all_lines), i + 11)):
-                        if j not in shown:
-                            w(all_lines[j])
-                            shown.add(j)
-                    count += 1
-            w()
+            _emit_capped("DRDY", drdy_lines)
 
         if db_malformed == 0:
             w("Database is malformed:\tnone")
         else:
-            w(f"{db_malformed} times malformed database, showing 20 max:")
-            for l in grep_lines("database disk image is malformed", messages_text)[-20:]:
-                w(l)
-            w()
+            _emit_capped("Database is malformed",
+                         grep_lines("database disk image is malformed", messages_text))
 
         if oom_kills == 0:
             w("Out of Memory kills:\tnone")
         else:
-            w(f"{oom_kills} times Out of Memory kills, showing 20 max:")
-            for l in grep_lines("out_of_memory", messages_text)[-20:]:
-                w(l)
-            w()
+            _emit_capped("Out of Memory kills",
+                         grep_lines("out_of_memory", messages_text))
 
         if crashes_ct == 0:
             w("generic crashes:\t\tnone")
         else:
-            w(f"{crashes_ct} times generic crashes, showing 100 max:")
-            for l in grep_lines("crash", messages_text)[:100]:
-                w(l)
-            w()
+            _emit_capped("generic crashes",
+                         grep_lines("crash", messages_text))
 
         if call_traces == 0:
             w("Call Traces:\t\t\tnone")

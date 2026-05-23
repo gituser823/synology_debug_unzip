@@ -1996,40 +1996,36 @@ do
                 if [[ "$TemporaryWorkaround" = 0 ]]; then
                     if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/messages.log" ]]; then
                         {
-                            DRDYErr=$(grep -ia "DRDY" "$MESSAGES" | uniq -u | wc -l)
+                            # Helper: print "<label>: N total — showing newest 20 (M omitted):" then last 20 lines (chronological)
+                            emit_capped() {
+                                local label="$1"; local pattern="$2"
+                                local total
+                                total=$(grep -iac "$pattern" "$MESSAGES")
+                                if [[ "$total" -eq 0 ]]; then
+                                    echo -e "${label}:\tnone"
+                                    return
+                                fi
+                                local omitted=$(( total - 20 ))
+                                if [[ "$omitted" -gt 0 ]]; then
+                                    echo -e "${label}: ${total} total — showing newest 20 (${omitted} omitted):"
+                                else
+                                    echo -e "${label}: ${total} total — showing newest ${total}:"
+                                fi
+                                tac "$MESSAGES" | grep -ia -m20 "$pattern" | tac
+                                echo -e "\n"
+                            }
+
+                            DRDYErr=$(grep -iac "DRDY" "$MESSAGES")
                             if [[ "$DRDYErr" -eq 0 ]]; then
                                 echo -e "DRDY:\t\t\t\t\tnone"
                             else
-                                echo -e "$(grep -ia "DRDY" "$MESSAGES" | uniq -u | wc -l) times DRDY, showing 20 max:"
-                                tac "$MESSAGES" | grep -ia -B5 -A10 -m20 "DRDY" | tac
-                                echo -e "\n"
+                                emit_capped "DRDY" "DRDY"
                             fi
                             log "1646"
-                            database_malformed=$(grep -iac "database disk image is malformed" "$MESSAGES")
-                            if [[ "$database_malformed" -eq 0 ]]; then
-                                echo -e "Database is malformed:\tnone"
-                            else
-                                echo -e "$(grep -iac "database disk image is malformed" "$MESSAGES") times malformed database, showing 20 max:"
-                                tac "$MESSAGES" | grep -ia -m20 "database disk image is malformed"
-                                echo -e "\n"
-                            fi
+                            emit_capped "Database is malformed" "database disk image is malformed"
                             log "1655"
-                            oom_kills=$(grep -iac "out_of_memory" "$MESSAGES")
-                            if [[ "$oom_kills" -eq 0 ]]; then
-                                echo -e "Out of Memory kills:\tnone"
-                            else
-                                echo -e "$(grep -iac "out_of_memory" "$MESSAGES") times Out of Memory kills, showing 20 max:"
-                                tac "$MESSAGES" | grep -ia -m20 "out_of_memory"
-                                echo -e "\n"
-                            fi
-                            crashes=$(grep -iac "crash" "$MESSAGES")
-                            if [[ "$crashes" -eq 0 ]]; then
-                                echo -e "generic crashes:\t\tnone"
-                            else
-                                echo -e "$(grep -iac "crash" "$MESSAGES") times generic crashes, showing 100 max:"
-                                grep -ia -m100 "crash" "$MESSAGES"
-                                echo -e "\n"
-                            fi
+                            emit_capped "Out of Memory kills" "out_of_memory"
+                            emit_capped "generic crashes" "crash"
                             log "1672"
                             CallTraces=$(grep -iac "Call Trace" "$MESSAGES")
                             if [[ "$CallTraces" -eq 0 ]]; then

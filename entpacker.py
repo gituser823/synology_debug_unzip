@@ -1623,9 +1623,6 @@ def main():
         verbose = True
 
     if args.u:
-        if not args.d:
-            print("Error: -d required with -u")
-            sys.exit(1)
         print("updating files:")
         update_dsm_updates_list()
         update_srs_list()

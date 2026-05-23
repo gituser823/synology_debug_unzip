@@ -243,6 +243,54 @@ usage() {
 	echo -e "Usage $(basename -- "$0"):\t[-d \"/absolute/directory/path/of/download/directory\"] [-h show help]" 1>&2; exit 1;
 }
 
+install_sublime_packages() {
+    # Skip on WSL or if Sublime Text is not installed
+    if grep -qE "(Microsoft|WSL)" /proc/version 2>/dev/null; then return; fi
+
+    local base=""
+    if flatpak info com.sublimehq.SublimeText &>/dev/null 2>&1; then
+        base="$HOME/.var/app/com.sublimehq.SublimeText/config/sublime-text"
+    elif command -v subl &>/dev/null || command -v sublime_text &>/dev/null; then
+        base="$HOME/.config/sublime-text"
+    else
+        return
+    fi
+
+    local pkg_dir="$base/Installed Packages"
+    local pkg_file="$pkg_dir/Package Control.sublime-package"
+    local settings_dir="$base/Packages/User"
+    local settings_file="$settings_dir/Package Control.sublime-settings"
+
+    mkdir -p "$pkg_dir" "$settings_dir"
+
+    if [[ ! -f "$pkg_file" ]]; then
+        echo "Installing Sublime Package Control..."
+        wget -q -O "$pkg_file" \
+            "https://packagecontrol.io/Package%20Control.sublime-package" \
+            || { echo "Package Control download failed."; rm -f "$pkg_file"; }
+    fi
+
+    if [[ ! -f "$settings_file" ]]; then
+        echo '{"installed_packages": ["Log Highlight"]}' > "$settings_file"
+        echo "Sublime: Log Highlight added to Package Control queue."
+    elif ! grep -q "Log Highlight" "$settings_file"; then
+        python3 - "$settings_file" <<'PYEOF'
+import json, sys
+path = sys.argv[1]
+try:
+    data = json.loads(open(path).read())
+except Exception:
+    data = {}
+pkgs = data.get("installed_packages", [])
+if "Log Highlight" not in pkgs:
+    pkgs.append("Log Highlight")
+    data["installed_packages"] = pkgs
+    open(path, "w").write(json.dumps(data, indent=4) + "\n")
+    print("Sublime: Log Highlight added to Package Control queue.")
+PYEOF
+    fi
+}
+
 while getopts ":uhvd:" opt; do
   case ${opt} in
     u)
@@ -290,6 +338,8 @@ shift $((OPTIND-1))
 if [ -z "${DOWNLOAD_DIR}" ]; then
     usage
 fi
+
+install_sublime_packages
 
 if [[ "$(find "${Script_dir}"/tmp/ -name genRSS.php -mmin +600)" ]] || [[ -z "$(find "${Script_dir}"/tmp/ -name genRSS.php)" ]]; then  #update, if no file found or older than 10 hours
         touch "${Script_dir}/tmp/genRSS.php"
@@ -1885,22 +1935,22 @@ do
                 ext4errkern=$(grep -ia "ext-3\|ext-4" "$KERN" | grep -v "scripts/ext-3.4")
                 btrfserrmsg=$(grep -ia "btrfs critical\|btrfs error\|btrfs warning\|btrfs.*failure\|btrfs.*failed\|BTRFS: superblock checksum mismatch" "$MESSAGES")
                 ext4errmsg=$(grep -ia "ext-3\|ext-4" "$MESSAGES" | grep -v "scripts/ext-3.4" )
-                if [[ -z "$btrfserrkern" ]] && [[ -z "$ext4errkern" ]] && [[ -z "$ext4errmsg" ]] && [[ -z "$ext4errmsg" ]]; then
+                if [[ -z "$btrfserrkern" ]] && [[ -z "$ext4errkern" ]] && [[ -z "$btrfserrmsg" ]] && [[ -z "$ext4errmsg" ]]; then
                     echo -e "Ext4-/Btrfs-Errs:\t\tnone" >> "$sm"
                 else
-                    echo -e "\nExt4-/Btrfs-Errors:" >> "$sm"
-                    if [[ -n "$btrfserrkern" ]]; then
-                        echo -e "$btrfserrkern \n" >> "$sm"
+                    # Combine, dedupe, sort by leading ISO timestamp, keep newest 20
+                    all_fs=$(printf '%s\n%s\n%s\n%s\n' \
+                        "$btrfserrkern" "$ext4errkern" "$btrfserrmsg" "$ext4errmsg" \
+                        | grep -v '^$' | awk '!seen[$0]++' | sort)
+                    total=$(echo "$all_fs" | wc -l)
+                    shown=$(echo "$all_fs" | tail -n 20)
+                    if [[ "$total" -gt 20 ]]; then
+                        hidden=$((total - 20))
+                        echo -e "\nExt4-/Btrfs-Errors: $total total — showing newest 20 ($hidden omitted)" >> "$sm"
+                    else
+                        echo -e "\nExt4-/Btrfs-Errors:" >> "$sm"
                     fi
-                    if [[ -n "$ext4errkern" ]]; then
-                        echo -e "$ext4errkern \n" >> "$sm"
-                    fi
-                    if [[ -n "$btrfserrmsg" ]]; then
-                        echo -e "$btrfserrmsg \n" >> "$sm"
-                    fi
-                    if [[ -n "$ext4errmsg" ]]; then
-                        echo -e "$ext4errmsg \n" >> "$sm"
-                    fi
+                    echo "$shown" >> "$sm"
                 fi
 
                     tac "$SYSDB" >> "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/synolog/synosystac.log"

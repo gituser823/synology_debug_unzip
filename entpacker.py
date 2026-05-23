@@ -1796,13 +1796,21 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
         else:
             w("\n" + "\n".join(third_pkgs) + "\n")
 
-    # FS errors detail
+    # FS errors detail — newest 20 only
     all_fs = btrfs_kern + ext4_kern + btrfs_msg + ext4_msg
     if not all_fs:
         w("Ext4-/Btrfs-Errs:\t\tnone")
     else:
-        w("\nExt4-/Btrfs-Errors:")
-        for l in all_fs:
+        all_fs_uniq = list(dict.fromkeys(all_fs))
+        ts_re = re.compile(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})")
+        all_fs_uniq.sort(key=lambda l: (ts_re.match(l).group(1) if ts_re.match(l) else ""))
+        shown = all_fs_uniq[-20:]
+        hidden = len(all_fs_uniq) - len(shown)
+        if hidden > 0:
+            w(f"\nExt4-/Btrfs-Errors: {len(all_fs_uniq)} total — showing newest 20 ({hidden} omitted)")
+        else:
+            w("\nExt4-/Btrfs-Errors:")
+        for l in shown:
             w(l)
 
     # SRS
@@ -2096,6 +2104,71 @@ def open_in_editor(files: list):
 
 
 # ---------------------------------------------------------------------------
+# Sublime Text: Package Control + Log Highlight
+# ---------------------------------------------------------------------------
+
+def install_sublime_packages():
+    """Install Package Control and queue Log Highlight for Sublime Text."""
+    import urllib.request, json as _json
+
+    system = platform.system()
+    if system == "Windows":
+        return  # Skip on Windows/WSL
+
+    try:
+        with open("/proc/version") as _f:
+            if re.search(r"Microsoft|WSL", _f.read()):
+                return
+    except Exception:
+        pass
+
+    flatpak = shutil.which("flatpak")
+    is_flatpak = False
+    if flatpak:
+        try:
+            r = subprocess.run([flatpak, "info", "com.sublimehq.SublimeText"],
+                               capture_output=True, timeout=5)
+            is_flatpak = r.returncode == 0
+        except Exception:
+            pass
+
+    if is_flatpak:
+        base = Path.home() / ".var/app/com.sublimehq.SublimeText/config/sublime-text"
+    elif shutil.which("subl") or shutil.which("sublime_text"):
+        base = Path.home() / ".config/sublime-text"
+    else:
+        return  # Sublime Text not installed
+
+    pkg_ctrl_dir = base / "Installed Packages"
+    pkg_ctrl_file = pkg_ctrl_dir / "Package Control.sublime-package"
+    settings_dir = base / "Packages/User"
+    settings_file = settings_dir / "Package Control.sublime-settings"
+
+    pkg_ctrl_dir.mkdir(parents=True, exist_ok=True)
+    settings_dir.mkdir(parents=True, exist_ok=True)
+
+    if not pkg_ctrl_file.exists():
+        url = "https://packagecontrol.io/Package%20Control.sublime-package"
+        try:
+            print("Installing Sublime Package Control...")
+            urllib.request.urlretrieve(url, str(pkg_ctrl_file))
+        except Exception as e:
+            print(f"Package Control download failed: {e}")
+
+    # Merge Log Highlight into existing settings
+    try:
+        existing = _json.loads(settings_file.read_text()) if settings_file.exists() else {}
+    except Exception:
+        existing = {}
+    pkgs = existing.get("installed_packages", [])
+    if "Log Highlight" not in pkgs:
+        pkgs.append("Log Highlight")
+        existing["installed_packages"] = pkgs
+        settings_file.write_text(_json.dumps(existing, indent=4) + "\n")
+        print("Sublime: Log Highlight added to Package Control queue.")
+
+
+# ---------------------------------------------------------------------------
 # Process one .dat file
 # ---------------------------------------------------------------------------
 
@@ -2245,6 +2318,7 @@ def main():
     TMP_DIR.mkdir(parents=True, exist_ok=True)
     COMP_DIR.mkdir(parents=True, exist_ok=True)
 
+    install_sublime_packages()
     check_and_update()
     watch(download_dir)
 

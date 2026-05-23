@@ -1,0 +1,129 @@
+{
+    "context_menu": true,
+    "auto_highlight": true,
+
+    "log_list": {
+
+        "sm_log": {
+            "type"         : "system",
+            "extension"    : ["sm.log"],
+            "output.panel" : [],
+
+            "severity": {
+
+                // ── FEHLER ─────────────────────────────────────────────────
+                "error": {
+                    "enable": true,
+                    "pattern": [
+                        ["THE FOLLOWING COMPATIBILITY RESULTS ARE WRONG:", "[\\r\\n]"],
+                        ["\\(incompatible\\)",                             "[\\r\\n]"],
+                        ["Volume crashes:\\s+[1-9]",                       "[\\r\\n]"],
+                        ["Out of Memory kills:\\s+[1-9]",                  "[\\r\\n]"],
+                        ["md[0-9]+ : active.*\\[.*_.*\\]",                 "[\\r\\n]"],
+                        ["BTRFS[: ]+error",                                "[\\r\\n]"],
+                        ["IO failure",                                     "[\\r\\n]"],
+                        ["errno=-[0-9]+",                                  "[\\r\\n]"],
+                        ["(?i)memtest failed",                             "[\\r\\n]"],
+                        ["(?:Possible )?Known Issue:",                     "[\\r\\n]"],
+                        ["(?i)overheating",                                "[\\r\\n]"],
+                        ["Warning! This is an old DSM",                    "[\\r\\n]"],
+                        ["not found! should be",                           "[\\r\\n]"],
+                        ["\\[31m",                                         "[\\r\\n]"],
+                        ["Reallocated_Sector_Ct: [1-9]",                   "[\\r\\n]"],
+                        ["Current_Pending_Sector: [1-9]",                  "[\\r\\n]"],
+                        ["Offline_Uncorrectable: [1-9]",                   "[\\r\\n]"]
+                    ],
+                    "color": {
+                        "base"  : ["#F92672", ""],
+                        "link"  : ["#E6DB74", ""],
+                        "quote" : ["#4F99D3", ""]
+                    },
+                    "icon": "Danish Royalty/error.png"
+                },
+
+                // ── WARNUNGEN ──────────────────────────────────────────────
+                "warning": {
+                    "enable": true,
+                    "pattern": [
+                        ["\\(not listed\\)",               "[\\r\\n]"],
+                        ["16 Terabyte Volume Limitation",  "[\\r\\n]"],
+                        ["Aborted by host",                "[\\r\\n]"],
+                        ["(?:Samba|NFS|AFP) status unknown","[\\r\\n]"],
+                        ["BTRFS warning",                  "[\\r\\n]"],
+                        ["improper shutdowns:\\s+[1-9]",   "[\\r\\n]"],
+                        ["generic crashes:\\s+[1-9]",      "[\\r\\n]"],
+                        ["Call Traces:\\s+[1-9]",          "[\\r\\n]"],
+                        ["generic errs:\\s+[1-9]",         "[\\r\\n]"],
+                        ["Ext4-/Btrfs-Errs:\\s+[1-9]",    "[\\r\\n]"],
+                        ["DRDY:\\s+[1-9]",                 "[\\r\\n]"],
+                        ["More RAM installed!",            "[\\r\\n]"],
+                        ["Last Extended SMART-Test: never","[\\r\\n]"]
+                    ],
+                    "color": {
+                        "base"  : ["#FD971F", ""],
+                        "link"  : ["#FD971F", ""],
+                        "quote" : ["#4F99D3", ""]
+                    },
+                    "icon": "Danish Royalty/warning.png"
+                },
+
+                // ── ALLES OK ───────────────────────────────────────────────
+                "ok": {
+                    "enable": true,
+                    "pattern": [
+                        ["\\(compatible\\)",                   "[\\r\\n]"],
+                        ["DSM Version is latest!",             "[\\r\\n]"],
+                        ["Reallocated_Sector_Ct: 0",           "[\\r\\n]"],
+                        ["Current_Pending_Sector: 0",          "[\\r\\n]"],
+                        ["Offline_Uncorrectable: 0",           "[\\r\\n]"],
+                        ["(?i)memtest passed",                 "[\\r\\n]"],
+                        ["degraded volumes:\\s+none",          "[\\r\\n]"],
+                        ["DRDY:\\s+none",                      "[\\r\\n]"],
+                        ["Database is malformed:\\s+none",     "[\\r\\n]"],
+                        ["Out of Memory kills:\\s+none",       "[\\r\\n]"],
+                        ["Volume crashes:\\s+none",            "[\\r\\n]"],
+                        ["found 0 (?:dropped|bugged) Packages","[\\r\\n]"],
+                        ["md[0-9]+ : active.*\\[U+\\]",        "[\\r\\n]"]
+                    ],
+                    "color": {
+                        "base"  : ["#A6E22E", ""],
+                        "link"  : ["#A6E22E", ""],
+                        "quote" : ["#A6E22E", ""]
+                    }
+                },
+
+                // ── INFO ───────────────────────────────────────────────────
+                "info": {
+                    "enable": true,
+                    "pattern": [
+                        ["^sd[a-z]_Disk_[0-9]+_",       "[\\r\\n]"],
+                        ["Last Extended SMART-Test:",    "[\\r\\n]"],
+                        ["^Uptime:",                     "[\\r\\n]"],
+                        ["^Hostname:",                   "[\\r\\n]"],
+                        ["installed VERSION:",           "[\\r\\n]"],
+                        ["^Serialnumber:",               "[\\r\\n]"],
+                        ["^BIOS:",                       "[\\r\\n]"],
+                        ["^Hardware Version:",           "[\\r\\n]"],
+                        ["^Kernel:",                     "[\\r\\n]"],
+                        ["^CPU from logs:",              "[\\r\\n]"],
+                        ["^DDNS",                        "[\\r\\n]"],
+                        ["Synology (?:HA|UC):",          "[\\r\\n]"]
+                    ],
+                    "color": {
+                        "base"  : ["#66D9EF", ""],
+                        "link"  : ["#66D9EF", ""],
+                        "quote" : ["#66D9EF", ""]
+                    }
+                }
+            },
+
+            "theme": {
+                "foreground"      : "#D7D7D7",
+                "caret"           : "#F29718",
+                "selection"       : "#3A5166",
+                "selectionBorder" : "#181E26",
+                "lineHighlight"   : "#283240"
+            }
+        }
+    }
+}

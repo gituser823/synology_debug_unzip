@@ -33,7 +33,7 @@ sleep_scan_dir=6 #Folder rescan time in seconds
 sleep_extract_zip=0.5 #rescan time for finishing download
 Script_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )" #Scriptdirectory
 DSM=dsm
-CPU_FILE="${Script_dir}/files/CPU.txt"
+CPU_FILE="${Script_dir}/tmp/CPU.txt"
 rss="${Script_dir}/tmp/genRSS.php"
 available_packages_pre="${Script_dir}/tmp/available_packages_pre.txt"
 available_packages="${Script_dir}/tmp/available_packages.txt"
@@ -134,6 +134,36 @@ convertJson() {
     echo "done"
 }
 
+
+updateCPUList() {
+    echo -n "Updating CPU list from Synology KB..."
+    local url="https://kb.synology.com/de-de/DSM/tutorial/What_kind_of_CPU_does_my_NAS_have"
+    local tmpraw
+    tmpraw=$(mktemp)
+    curl -s "$url" > "$tmpraw" || { echo " error: curl failed"; rm -f "$tmpraw"; return; }
+    local errmsg
+    errmsg=$(python3 -c "
+import sys, re, json
+raw = open(sys.argv[1]).read()
+m = re.search(r'\"content\":\"(.*?)(?<!\\\\\\\\)\"', raw, re.S)
+if not m:
+    print('error: content not found', file=sys.stderr); sys.exit(1)
+content = json.loads('\"' + m.group(1) + '\"')
+rows = re.findall(r'<tr>(.*?)</tr>', content, re.S)
+print('System Model\tCPU-Model\tCores\tThreads\tFPU\tArchitecture\tRAM')
+count = 0
+for row in rows:
+    cells = re.findall(r'<td>(.*?)</td>', row, re.S)
+    cells = [re.sub(r'<[^>]+>', '', c).strip() for c in cells]
+    if len(cells) >= 7:
+        fpu = 'Ja' if '&check;' in cells[4] or chr(10003) in cells[4] else 'Nein'
+        print(f\"{cells[0]}\t{cells[1]}\t{cells[2]}\t{cells[3]}\t{fpu}\t{cells[5]}\t{cells[6]}\")
+        count += 1
+print(f'done ({count} models)', file=sys.stderr)
+" "$tmpraw" 2>&1 >"${CPU_FILE}")
+    rm -f "$tmpraw"
+    echo " ${errmsg:-done}"
+}
 
 updateDSMUpdatesList() {
     	echo -en "Downloading latest genRSS.php..."
@@ -317,6 +347,7 @@ while getopts ":uhvd:" opt; do
         updateCompatibilityLists
         updateLatestPackageVersionsList
         convertJson
+        updateCPUList
     	;;
     h)
         echo -e "\navailable commandline-arguments are:\n"
@@ -363,11 +394,10 @@ if [[ "$(find "${Script_dir}"/tmp/ -name genRSS.php -mmin +600)" ]] || [[ -z "$(
         updateDSMUpdatesList
 fi
 
-#if [[ $(find "${Script_dir}"/files/ -name CPU.php -mmin 700) ]] || [[ -z $(find "${Script_dir}"/files/ -name CPU.php) ]]; then  #update, if no file found or older than 10 hours
-        #echo -e "\nDownloading CPUs:"
-        #curl "https://www.synology.com/de-de/knowledgebase/DSM/tutorial/General/What_kind_of_CPU_does_my_NAS_have" -# --output "$cputxt_file"
-                #awk '/<table id="b_4">/{f=1;next} /<\/table>/{f=0} f' "$cputxt_file" > "$cputxt_file2"
-#fi
+if [[ "$(find "${Script_dir}"/tmp/ -name CPU.txt -mmin +1440)" ]] || [[ -z "$(find "${Script_dir}"/tmp/ -name CPU.txt)" ]]; then  #update, if no file found or older than 24 hours
+        touch "${Script_dir}/tmp/CPU.txt"
+        updateCPUList
+fi
 
 if [[ "$(find "${Script_dir}"/tmp/lftp/ -name config_no_00.cfg -mmin +1440)" ]] || [[ -z "$(find "${Script_dir}"/tmp/lftp/ -name config_no_00.cfg)" ]]; then  #update, if no file found or older than 24 hours
         touch "${Script_dir}/tmp/lftp/config_no_00.cfg"
@@ -2173,7 +2203,7 @@ do
 
             TIMEFORMAT=$'\nOpening Editor took: \t\t\t\t\t\t\t\t\e[36m%Rsec\e[39m'
             time(
-                source "${Script_dir}/files/config.sh" #load OpenFiles[] Array from config.sh
+                source "${Script_dir}/config.sh" #load OpenFiles[] Array from config.sh
                 #log "Array before unsetting: ${OpenFiles[@]}"
                 for i in "${!OpenFiles[@]}"; do #remove empty vars from array [@]
                     [ -n "${OpenFiles[$i]}" ] || log "OpenFiles[$i] unset, because empty!"

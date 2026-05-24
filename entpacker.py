@@ -32,7 +32,7 @@ except ImportError:
     sys.exit(1)
 
 SCRIPT_DIR = Path(__file__).parent.resolve()
-CPU_FILE = SCRIPT_DIR / "files" / "CPU.txt"
+CPU_FILE = SCRIPT_DIR / "tmp" / "CPU.txt"
 POWER_SCHED_PY = SCRIPT_DIR / "files" / "power_shed.py"
 RSS_FILE = SCRIPT_DIR / "tmp" / "genRSS.php"
 AVAILABLE_PACKAGES = SCRIPT_DIR / "tmp" / "available_packages.txt"
@@ -180,6 +180,34 @@ def grep_count(pattern, text, flags=re.IGNORECASE) -> int:
 # Update functions
 # ---------------------------------------------------------------------------
 
+def update_cpu_list():
+    print("Updating CPU list from Synology KB...", end="", flush=True)
+    TMP_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        r = requests.get(
+            "https://kb.synology.com/de-de/DSM/tutorial/What_kind_of_CPU_does_my_NAS_have",
+            timeout=(5, 30),
+        )
+        m = re.search(r'"content":"(.*?)(?<!\\)"', r.text, re.S)
+        if not m:
+            print(" error: content field not found")
+            return
+        import json as _json
+        content = _json.loads('"' + m.group(1) + '"')
+        rows = re.findall(r"<tr>(.*?)</tr>", content, re.S)
+        lines = ["System Model\tCPU-Model\tCores\tThreads\tFPU\tArchitecture\tRAM"]
+        for row in rows:
+            cells = re.findall(r"<td>(.*?)</td>", row, re.S)
+            cells = [re.sub(r"<[^>]+>", "", c).strip() for c in cells]
+            if len(cells) >= 7:
+                fpu = "Ja" if "&check;" in cells[4] or "✓" in cells[4] else "Nein"
+                lines.append(f"{cells[0]}\t{cells[1]}\t{cells[2]}\t{cells[3]}\t{fpu}\t{cells[5]}\t{cells[6]}")
+        CPU_FILE.write_text("\n".join(lines) + "\n")
+        print(f" done ({len(lines) - 1} models)")
+    except Exception as e:
+        print(f" error: {e}")
+
+
 def update_dsm_updates_list():
     print("Downloading latest genRSS.php...", end="", flush=True)
     TMP_DIR.mkdir(parents=True, exist_ok=True)
@@ -295,6 +323,11 @@ def check_and_update():
     if rss_age > 600 * 60:
         RSS_FILE.touch()
         update_dsm_updates_list()
+
+    cpu_age = now - CPU_FILE.stat().st_mtime if CPU_FILE.exists() else float("inf")
+    if cpu_age > 24 * 60 * 60:
+        CPU_FILE.touch()
+        update_cpu_list()
 
     pv_age = now - PACKAGE_VERSIONS.stat().st_mtime if PACKAGE_VERSIONS.exists() else float("inf")
     if pv_age > 24 * 60 * 60:
@@ -2313,6 +2346,7 @@ def main():
 
     if args.u:
         print("updating files:")
+        update_cpu_list()
         update_dsm_updates_list()
         update_compatibility_lists()
         update_package_versions_list()

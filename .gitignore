@@ -3,3 +3,5 @@
 /tmp/*
 *.zip
 *.cfg
+__pycache__/
+*.pyc

@@ -453,8 +453,10 @@ def parse_smart(path: Path) -> dict:
     text = read_file(path)
 
     def attr_raw(pattern):
+        # SMART columns after attribute name: FLAG VALUE WORST THRESH TYPE UPDATED WHEN_FAILED RAW_VALUE
+        # Skip 7 (FLAG..WHEN_FAILED) with \s+\S+, then capture RAW_VALUE with \s+(\d+)
         m = re.search(
-            rf"(?i)(?:{pattern})\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+(\d+)", text
+            rf"(?i)(?:{pattern})\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+(\d+)", text
         )
         return int(m.group(1)) if m else 0
 
@@ -494,7 +496,7 @@ def parse_smart(path: Path) -> dict:
 
     poh = ""
     m = re.search(
-        r"Power[_-][Oo]n[_-](?:[Hh]ours?|[Tt]ime)[_-]?(?:[Cc]ount)?\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+(\d+)",
+        r"Power[_-][Oo]n[_-](?:[Hh]ours?|[Tt]ime)[_-]?(?:[Cc]ount)?\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+(\d+)",
         text, re.I,
     )
     if m:

@@ -357,7 +357,7 @@ if [[ "$(find "${Script_dir}"/tmp/ -name SRS.php -mmin +600)" ]] || [[ -z "$(fin
         updateSRSList
 fi
 
-if [[ "$(find "${Script_dir}"/tmp/lftp/ -name config_no_00.cfg -mmin +16040)" ]] || [[ -z "$(find "${Script_dir}"/tmp/lftp/ -name config_no_00.cfg)" ]]; then  #update, if no file found or older than 267 hours
+if [[ "$(find "${Script_dir}"/tmp/lftp/ -name config_no_00.cfg -mmin +1440)" ]] || [[ -z "$(find "${Script_dir}"/tmp/lftp/ -name config_no_00.cfg)" ]]; then  #update, if no file found or older than 24 hours
         touch "${Script_dir}/tmp/lftp/config_no_00.cfg"
         updateCompatibilityLists
         updateLatestPackageVersionsList

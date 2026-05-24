@@ -310,7 +310,7 @@ def check_and_update():
         update_srs_list()
 
     pv_age = now - PACKAGE_VERSIONS.stat().st_mtime if PACKAGE_VERSIONS.exists() else float("inf")
-    if pv_age > 16040 * 60:
+    if pv_age > 24 * 60 * 60:
         PACKAGE_VERSIONS.touch()
         update_compatibility_lists()
         update_package_versions_list()

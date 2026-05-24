@@ -8,6 +8,7 @@ Requirements: pip install requests
 """
 
 import argparse
+import io
 import concurrent.futures
 import json
 import lzma
@@ -30,6 +31,26 @@ try:
 except ImportError:
     print("Please install requests: pip install requests")
     sys.exit(1)
+
+# Ensure UTF-8 output on Windows (avoids cp1252 UnicodeEncodeError)
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
+# On Windows, extracted Linux archives contain broken symlinks that raise
+# PermissionError on stat(). Patch pathlib.Path so exists/is_dir/is_file
+# return False instead of crashing — affects this process only.
+import pathlib as _pathlib
+for _method in ("exists", "is_dir", "is_file"):
+    _orig = getattr(_pathlib.Path, _method)
+    def _safe(self, _f=_orig):
+        try:
+            return _f(self)
+        except (PermissionError, OSError):
+            return False
+    setattr(_pathlib.Path, _method, _safe)
+del _pathlib, _method, _orig, _safe
 
 SCRIPT_DIR = Path(__file__).parent.resolve()
 CPU_FILE = SCRIPT_DIR / "tmp" / "CPU.txt"
@@ -164,6 +185,27 @@ def read_file(path) -> str:
         return Path(path).read_text(errors="replace")
     except Exception:
         return ""
+
+
+def safe_is_dir(path) -> bool:
+    try:
+        return Path(path).is_dir()
+    except (PermissionError, OSError):
+        return False
+
+
+def safe_exists(path) -> bool:
+    try:
+        return Path(path).exists()
+    except (PermissionError, OSError):
+        return False
+
+
+def safe_glob(path, pattern):
+    try:
+        return list(Path(path).glob(pattern))
+    except (PermissionError, OSError):
+        return []
 
 
 def grep_lines(pattern, text, flags=re.IGNORECASE) -> list:
@@ -1114,8 +1156,8 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
     ext_units = []
     ext_plain_lines = []
     scsi_base = dsm_dir / "sys" / "class" / "scsi_host"
-    if scsi_base.is_dir():
-        for pm in scsi_base.glob("host*/syno_pm_info"):
+    if safe_is_dir(scsi_base):
+        for pm in safe_glob(scsi_base, "host*/syno_pm_info"):
             pm_text = read_file(pm)
             dm = re.search(r'syno_device_list[^"]*"([^"]+)"', pm_text)
             hdds = re.sub(r"/dev/", "", dm.group(1)) if dm else ""
@@ -2008,6 +2050,10 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
         swap_pct = swap_used_kb / swap_total_kb * 100
         ram_str += f"  ·  Swap: {swap_pct:.2f}% ({bytes_to_human(swap_used_kb * 1024)} / {bytes_to_human(swap_total_kb * 1024)})"
 
+    try:
+        os.chmod(sm, 0o644)
+    except (PermissionError, OSError):
+        pass
     with open(sm, "w", encoding="utf-8") as _sm_fh:
         def write_sm(s=""):
             _sm_fh.write(str(s) + "\n")
@@ -2074,6 +2120,10 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
     # Write smartgrep
     # ============================================================
     sg.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chmod(sg, 0o644)
+    except (PermissionError, OSError):
+        pass
     with open(sg, "w", encoding="utf-8") as fsg:
         def write_sg(s=""):
             fsg.write(str(s) + "\n")
@@ -2155,6 +2205,10 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
     # Write hibernation_debug.log
     # ============================================================
     hb.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chmod(hb, 0o644)
+    except (PermissionError, OSError):
+        pass
     with open(hb, "w", encoding="utf-8") as fhb:
         def write_hb(s=""):
             fhb.write(str(s) + "\n")
@@ -2247,9 +2301,14 @@ def open_in_editor(files: list):
                 except Exception:
                     win_paths.append(f)
             subprocess.Popen([editor] + win_paths)
-        elif editor == "notepad.exe":
-            for f in existing:
-                subprocess.Popen([editor, f])
+        elif platform.system() == "Windows":
+            # subl.exe opens all files as tabs in one window.
+            # Exclude directories — passing a folder creates a separate project window.
+            subl = str(Path(editor).parent / "subl.exe")
+            if not Path(subl).exists():
+                subl = editor
+            files_only = [f for f in existing if not Path(f).is_dir()]
+            subprocess.Popen([subl] + files_only)
         elif editor.startswith("flatpak:"):
             app_id = editor.split(":", 1)[1]
             subprocess.Popen(["flatpak", "run", app_id] + existing)
@@ -2335,6 +2394,16 @@ def process_file(filepath: Path, download_dir: Path):
     while filepath.with_suffix(filepath.suffix + ".part").exists():
         time.sleep(SLEEP_EXTRACT_ZIP)
 
+    # On Windows, the file may still be locked briefly after the .part check
+    for _ in range(10):
+        try:
+            filepath.open("rb").close()
+            break
+        except PermissionError:
+            time.sleep(SLEEP_EXTRACT_ZIP)
+    else:
+        return  # still locked after retries — skip this scan cycle
+
     print(f"{datetime.now():%d. %B %H:%M:%S}: found .dat-file! Extracting...")
     t0 = time.time()
 
@@ -2348,7 +2417,10 @@ def process_file(filepath: Path, download_dir: Path):
         shutil.move(str(filepath), str(kapott / f"debug_{ts}.dat"))
         return
 
-    os.replace(str(filepath), str(debug_dir / filepath.name))
+    try:
+        shutil.move(str(filepath), str(debug_dir / filepath.name))
+    except (PermissionError, shutil.Error):
+        pass  # Windows may still hold a lock; file stays in place, no retry needed
     print(f"{datetime.now():%d. %B %H:%M:%S}: extracted to {debug_dir}")
 
     sm_prefix = ""

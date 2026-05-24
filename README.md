@@ -1,4 +1,4 @@
-# entpacker
+# synology_debug_unzip
 
 Bash script and Python port that watch a directory for Synology debug `.dat` files, extract and analyze them automatically, and open the results in a text editor.
 

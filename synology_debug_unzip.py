@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-entpacker.py - Synology debug file extractor and analyzer
-Python port of entpacker.sh by Thomas Feldmann
+synology_debug_unzip.py - Synology debug file extractor and analyzer
+Python port of synology_debug_unzip.sh by Thomas Feldmann
 Runs on Windows, Linux, and macOS.
 
 Requirements: pip install requests
@@ -188,16 +188,20 @@ def update_cpu_list():
             "https://kb.synology.com/de-de/DSM/tutorial/What_kind_of_CPU_does_my_NAS_have",
             timeout=(5, 30),
         )
-        m = re.search(r'"content":"(.*?)(?<!\\)"', r.text, re.S)
-        if not m:
+        import json as _json
+        pos = r.text.find('"content":')
+        if pos < 0:
             print(" error: content field not found")
             return
-        import json as _json
-        content = _json.loads('"' + m.group(1) + '"')
-        rows = re.findall(r"<tr>(.*?)</tr>", content, re.S)
+        try:
+            content, _ = _json.JSONDecoder().raw_decode(r.text[pos + len('"content":'):])
+        except Exception as e:
+            print(f" error: JSON decode failed: {e}")
+            return
+        rows = re.findall(r"<tr>(.*?)<\/tr>", content, re.S)
         lines = ["System Model\tCPU-Model\tCores\tThreads\tFPU\tArchitecture\tRAM"]
         for row in rows:
-            cells = re.findall(r"<td>(.*?)</td>", row, re.S)
+            cells = re.findall(r"<td>(.*?)<\/td>", row, re.S)
             cells = [re.sub(r"<[^>]+>", "", c).strip() for c in cells]
             if len(cells) >= 7:
                 fpu = "Ja" if "&check;" in cells[4] or "✓" in cells[4] else "Nein"
@@ -1184,6 +1188,18 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
         else:
             synopkg_text = read_file(synopkg_path)
 
+    # packages_onoff.list - seed with packages_ver.list, then grep syno_service.result
+    if installed_pkgs:
+        onoff_lines = list(installed_pkgs)
+        syno_service_path = dsm_dir / "result" / "syno_service.result"
+        syno_service_text = read_file(syno_service_path) if syno_service_path.exists() else ""
+        if syno_service_text:
+            for pkg in installed_pkgs:
+                for line in syno_service_text.splitlines():
+                    if pkg.lower() in line.lower():
+                        onoff_lines.append(line)
+        (dsm_dir / "packages_onoff.list").write_text("\n".join(onoff_lines) + "\n")
+
     # SMART files
     result_dir = dsm_dir / "result"
     smart_txz_dir = dsm_dir / "var" / "log" / "smart_result"
@@ -1462,20 +1478,30 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
             pass
 
     # ============================================================
-    # Write sm.log
+    # Write sm.log — section buffers
     # ============================================================
-    sm.parent.mkdir(parents=True, exist_ok=True)
-    sm.write_text("", encoding="utf-8")  # truncate
+    _S = {
+        "updates": [],
+        "storage": [],
+        "smart": [],
+        "net": [],
+        "pkgs": [],
+        "overview": [],
+        "docker": [],
+        "extended": [],
+        "issues": [],
+    }
+    _cur = ["storage"]  # mutable current-section pointer
 
-    _sm_fh = open(sm, "a", encoding="utf-8")
+    def w(s="", section=None):
+        target = section if section else _cur[0]
+        _S[target].append(str(s))
 
-    def w(s="", end="\n"):
-        _sm_fh.write(str(s) + end)
+    def setcur(name):
+        _cur[0] = name
 
-    if sm_prefix:
-        w(sm_prefix)
-        w()
-
+    # ─── STORAGE ────────────────────────────────────────────────
+    setcur("storage")
     for issue in vol_16tb:
         w(issue)
 
@@ -1487,36 +1513,71 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
             if re.match(r"^md0\b", lines[i]):
                 ctx = lines[i: i + 3]
                 if any("E" in l for l in ctx[1:]):
+                    w("RAID:")
                     for l in ctx:
-                        w(l)
+                        w(f"  {l}")
             elif re.match(r"^md[^01]\b", lines[i]):
+                w("RAID:")
                 for l in lines[i: i + 3]:
-                    w(l)
+                    w(f"  {l}")
             i += 1
 
     w("ExtensionUnits:")
     if ext_units:
         for u in ext_units:
-            w(u)
+            w(f"  {u}")
     else:
-        w("none")
+        w("  none")
 
     if upnp_etc and upnp_etc != upnp_model:
         w(f"DSM was migrated from {upnp_etc} to {upnp_model}")
 
+    # Mountpoints
+    w("Volumes:")
+    vol_mounts = [l.split(",")[0] for l in mounts_text.splitlines() if re.search("volume", l, re.I)]
+    if vol_mounts:
+        for l in vol_mounts:
+            w(f"  {l}")
+    else:
+        w("  No Volumes mounted.")
+
+    # df > 90%
+    if df_text:
+        over90 = []
+        for l in df_text.splitlines():
+            parts = l.split()
+            if len(parts) >= 5:
+                pct = re.sub(r"%", "", parts[4])
+                try:
+                    if int(pct) >= 90:
+                        over90.append(l)
+                except Exception:
+                    pass
+        if over90:
+            w(f"Disk usage (>90% full): ({len(over90)})")
+            for l in over90:
+                w(f"  {l}")
+
+    # ─── SMART ──────────────────────────────────────────────────
+    setcur("smart")
     cpu_header = next((l for l in cpu_file_text.splitlines() if "CPU-Model" in l), "")
     ds_cpu_txt = next((l for l in cpu_file_text.splitlines()
                        if re.match(rf"^{re.escape(upnp_model)}\s", l)), "")
-    w("\nCPUinfo from txt:")
-    w(cpu_header)
-    w(ds_cpu_txt + "\n")
+    if cpu_header or ds_cpu_txt:
+        w("CPUinfo from txt:")
+        if cpu_header:
+            w(f"  {cpu_header}")
+        if ds_cpu_txt:
+            w(f"  {ds_cpu_txt}")
+        w("")
 
-    w(f"Reallocated_Sector_Ct: {bad_sum if bad_sum else 0}" +
+    w(f"Reallocated_Sector_Ct:    {bad_sum if bad_sum else 0}" +
       (f" on {' '.join(bad_hdds)}" if bad_hdds else ""))
-    w(f"Current_Pending_Sector: {pend_sum if pend_sum else 0}" +
+    w(f"Current_Pending_Sector:   {pend_sum if pend_sum else 0}" +
       (f" on {' '.join(pend_hdds)}" if pend_hdds else ""))
-    w(f"Offline_Uncorrectable: {unc_sum if unc_sum else 0}" +
+    w(f"Offline_Uncorrectable:    {unc_sum if unc_sum else 0}" +
       (f" on {' '.join(unc_hdds)}" if unc_hdds else ""))
+    w("")
 
     # Per-HDD SMART summary
     ext_plain_text = read_file(ext_plain_path) if ext_plain_path.exists() else ""
@@ -1559,122 +1620,82 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
             parts.append(f"Sectors: {s['sector_size']}")
         parts.append(f"Size: {s['capacity']}")
 
-        w(f"{sf.name}: {mf}\t{hdd_comp}: PowerOnHours: {poh}")
-        w(", ".join(parts))
+        w(f"{sf.name}: {mf}  {hdd_comp}  PowerOnHours: {poh}")
+        w(f"  {', '.join(parts)}")
 
-    # Memory tests
-    w(f"\nMemory Tests: ", end="")
-    if passed_memtest > 0:
-        w(f"{passed_memtest} Memory tests have passed.")
-        for l in grep_lines("Memtest passed", messages_text):
-            w(l)
-    if failed_memtest > 0:
-        w(f"Found {failed_memtest} failed Memtests:")
-        for l in grep_lines("Memtest failed", messages_text):
-            w(l)
-    if passed_memtest == 0 and failed_memtest == 0:
-        w("No Memory tests have been run.")
+    # Memory tests → overview section
+    if passed_memtest > 0 or failed_memtest > 0:
+        setcur("overview")
+        if passed_memtest > 0:
+            w(f"Memory tests:               {passed_memtest} passed")
+        if failed_memtest > 0:
+            w(f"Memory tests:               {failed_memtest} FAILED")
+    # if both 0, the overview "Memory tests: keine" line is rendered later
 
-    # Mountpoints
-    w("Mountpoints:")
-    vol_mounts = [l.split(",")[0] for l in mounts_text.splitlines() if re.search("volume", l, re.I)]
-    if vol_mounts:
-        for l in vol_mounts:
-            w(l)
-    else:
-        w("No Volumes mounted.")
-
-    # df > 90%
-    if df_text:
-        over90 = []
-        for l in df_text.splitlines():
-            parts = l.split()
-            if len(parts) >= 5:
-                pct = re.sub(r"%", "", parts[4])
-                try:
-                    if int(pct) >= 90:
-                        over90.append(l)
-                except Exception:
-                    pass
-        if over90:
-            w(f"Mountpoints more than 90% full: ({len(over90)})")
-            for l in over90:
-                w(l)
-            w()
-
-    # DSM update
+    # ─── UPDATES ────────────────────────────────────────────────
+    setcur("updates")
     if latest_build_num and dsm_build_num and latest_build_num > dsm_build_num:
-        w("More recent DSM Version available.")
-        w("available major updates:")
+        w("Neuere Version verfügbar:")
         for l in grep_lines(re.escape(ds_upnp_plus), rss_text):
-            w(re.sub(r"<[^>]+>", "", l))
-        w()
+            w(f"  {re.sub(r'<[^>]+>', '', l)}")
+        w(f"  (current: {dsm_version} {dsm_build} {dsm_smallfix})")
     else:
-        w("DSM Version is latest!")
-
+        w("DSM Version is latest.")
     w(f"installed VERSION: {dsm_version}, {dsm_build}, {dsm_smallfix}")
 
-    # RAM comparison
+    # RAM comparison goes to extended
     if ds_mem3_calc_byte and ds_mem_txt_byte:
         if ds_mem3_calc_byte > ds_mem_txt_byte:
-            w(f"More RAM installed! {ds_mem3_calc} vs {ds_mem_txt} preinstalled")
+            w(f"More RAM installed! {ds_mem3_calc} vs {ds_mem_txt} preinstalled",
+              section="extended")
         elif free_mem_kb * 1024 > ds_mem_txt_byte:
-            w(f"More RAM installed! {bytes_to_human(free_mem_kb * 1024)} vs {ds_mem_txt} preinstalled")
+            w(f"More RAM installed! {bytes_to_human(free_mem_kb * 1024)} vs {ds_mem_txt} preinstalled",
+              section="extended")
         elif ds_mem3_calc_byte == ds_mem_txt_byte:
-            w("same RAM installed as preinstalled!")
+            w("same RAM installed as preinstalled!", section="extended")
 
-    w(f"Uptime:  {uptime_text}")
-    w(f"Hostname:  {hostname}")
+    # ─── NETWORK ────────────────────────────────────────────────
+    setcur("net")
+    w(f"IPv6:    {'enabled' if ipv6_count > 0 else 'disabled'}")
+    w(f"Dropped: {dropped_sum}  ·  Errors: {error_sum}")
+    for eth in ethtool_lines:
+        w(f"  {eth}")
+
+    dns_servers = re.findall(r"^nameserver .+", resolv_text, re.M)
+    w(f"DNS:     {', '.join(dns_servers) if dns_servers else '(nicht gefunden)'}")
+
+    # NTP
+    ntp_text_local = read_file(dsm_dir / "etc" / "ntp.conf")
+    ntp_server_line = ""
+    if "time.google.com" in ntp_text_local:
+        ntp_server_line = "time.google.com"
+    elif "pool.ntp.org" in ntp_text_local:
+        ntp_server_line = "pool.ntp.org"
+    else:
+        sm2 = re.search(r"^server (.+)", ntp_text_local, re.M)
+        ntp_server_line = sm2.group(1) if sm2 else "manual / off"
+    w(f"NTP:     {ntp_server_line}")
+    w(f"DDNS:    {'on' if ddns_on else 'off'}")
     if quickconnect_echo:
-        w(quickconnect_echo)
-
+        w(f"  {quickconnect_echo}")
     if ddns_on:
         ddns_host_m = re.search(r"hostname.+", ddns_text)
-        w("DDNS " + (ddns_host_m.group(0) if ddns_host_m else ""))
+        if ddns_host_m:
+            w(f"  DDNS {ddns_host_m.group(0)}")
 
-    w(f"BIOS: {bios_ver}")
-    w(f"Hardware Version: {ds_hwmodel} and Diskstationmodel: {ds_model}")
-    w(f"UPNP Model: {upnp_model}")
-    w(f"Kernel: {kernel_version}")
-    w(f"CPU from logs: {ds_cpu}; Threads: {processor_count} , Cores: {ds_cores}")
-    w(f"Serialnumber: {ds_sn}")
-    w(f"Associated Tickets: \t{ds_sn}")
+    # Samba/NFS/AFP
+    def _state(s):
+        return s.split(" is ")[-1] if " is " in s else "unknown"
+    w(f"Samba:   {_state(samba_st)}  ·  NFS: {_state(nfs_st)}  ·  AFP: {_state(afp_st)}")
 
-    if swap_total_kb > 0:
-        pct = f"{swap_used_kb / swap_total_kb * 100:.2f}"
-        w(f"\nSwap: ({pct}%) used {bytes_to_human(swap_used_kb * 1024)} of {bytes_to_human(swap_total_kb * 1024)}")
+    if bonds:
+        w("Bonding:")
+        for b in bonds:
+            w(f"  {b}")
 
-    if ds_mem3:
-        w(f"\nInstalled RAM-modules:\n{ds_mem3}")
-    if ds_mem3_calc:
-        w(f"RAM, calced: {ds_mem3_calc}")
-    w(f"RAM free.result: {bytes_to_human(free_mem_kb * 1024)}")
-    w()
-
-    # Samba
-    if smb_conf.exists():
-        if smb_paths:
-            w(f"Found Samba-shares:\n{chr(9).join(smb_paths)}\n")
-        else:
-            w("No Samba Shares found.\n")
-
-    # iSCSI
-    if iscsi_lun_path.exists():
-        if not iscsi_lun_text or iscsi_lun_path.stat().st_size < 1:
-            w("\nLUN-Config-file is empty.")
-        else:
-            w("\nFound LUNs:")
-            w(iscsi_lun_text)
-            w(f"Combined LUN Size: {bytes_to_human(iscsi_lun_bytes)}\n")
-
-    for conf_name, label in [("iscsi_mapping.conf", "iSCSI Mapping:"),
-                              ("iscsi_target.conf", "iSCSI Targets:")]:
-        cp = dsm_dir / "usr" / "syno" / "etc" / conf_name
-        if cp.exists():
-            w(label)
-            w(read_file(cp))
-
-    # Package update checks
+    # ─── PACKAGES ───────────────────────────────────────────────
+    setcur("pkgs")
+    pkg_updates = []
     if installed_pkgs:
         for pkg in installed_pkgs:
             avail = re.sub(r"-", ".", pkg_versions.get(pkg, ""))
@@ -1684,235 +1705,232 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
                 if ms:
                     inst = re.sub(r"-", ".", ms[-1])
             if avail and inst and version_compare_gt(avail, inst):
-                w(f"Update for {pkg} from {inst} to {avail} available!")
+                pkg_updates.append(f"Update for {pkg} from {inst} to {avail}")
 
-        w("\n")
-        w("Overview:")
-        if old_dsm_warning:
-            w("(Data may be unreliable, because of old DSM Version)")
+    if pkg_updates:
+        for u in pkg_updates:
+            w(u)
+    else:
+        w("Alle Pakete aktuell.")
 
-        w(f"Third Party packages:\t{'none' if not third_pkgs else len(third_pkgs)}")
-        w(f"Ext4-/Btrfs-Errs:\t\t{'none' if fs_error_ct == 0 else fs_error_ct}")
-        w(f"improper shutdowns:\t\t{'none' if not improper_shutdowns else len(improper_shutdowns)}")
-        w(f"Volume crashes:\t\t\t{'none' if not volume_crashes else len(volume_crashes)}")
-        w(f"degraded volumes:\t\t{'none' if not degraded_volumes else len(degraded_volumes)}")
-        w(f"generic errs:\t\t\t{'none' if not gen_errors else len(gen_errors)}")
-        w(f"DRDY:\t\t\t\t\t{'none' if not drdy_lines else len(drdy_lines)}")
-        w(f"Database is malformed:\t{'none' if db_malformed == 0 else db_malformed}")
-        w(f"Out of Memory kills:\t{'none' if oom_kills == 0 else oom_kills}")
-        w(f"generic crashes:\t\t{'none' if crashes_ct == 0 else crashes_ct}")
-        w(f"Call Traces:\t\t\t{'none' if call_traces == 0 else call_traces}")
-        w(f"Authentication failures:\t{'none' if auth_failures['total'] == 0 else auth_failures['total']}")
-        w(f"BTRFS qgroup warnings:\t{'none' if qgroup_warnings == 0 else qgroup_warnings}")
-        w(f"Docker containers seen:\t{docker_count if docker_count > 0 else 'none'}")
-        if user_grp["users"]:
-            w(f"Non-system users:\t\t{len(user_grp['users'])}")
-        if enc_share_count >= 0:
-            w(f"Encrypted shares:\t\t{enc_share_count}")
-        w()
+    if third_pkgs:
+        w(f"Drittanbieter: {len(third_pkgs)}")
+        for p in third_pkgs:
+            w(f"  {p}")
+    else:
+        w("Drittanbieter: keine")
 
-        # ─── Extended Diagnostics ───────────────────────────────
-        w("Extended Diagnostics:")
-
-        # RAID rebuild status
-        if raid_rebuild:
-            for line in raid_rebuild:
-                w(f"RAID active rebuild: {line}")
+    # Samba shares
+    if smb_conf.exists():
+        if smb_paths:
+            w("Samba-shares:")
+            for p in smb_paths:
+                w(f"  {p}")
         else:
-            w("RAID rebuild:\t\t\tnone in progress")
+            w("No Samba Shares found.")
 
-        # Volume layout summary
-        if volume_layout:
-            w("Volume layout:")
-            for v in volume_layout:
-                enc = " (encrypted)" if v["encrypted"] else ""
-                disks = ", ".join(v["disks"][:4]) if v["disks"] else "?"
-                w(f"  {v['path']}: {v['raid']} / {v['fs']}{enc}, "
-                  f"{bytes_to_human(v['size_bytes'])}, disks: {disks}")
-
-        # HDD temperatures
-        if hdd_temps:
-            for ht in hdd_temps:
-                t = ht["temp"]
-                if t >= 60:
-                    tag = " (ERROR: critical temp)"
-                elif t >= 50:
-                    tag = " (warning: high temp)"
-                else:
-                    tag = ""
-                w(f"HDD temperature: {ht['disk']}: {t}°C{tag}")
-
-        # HDD age warnings (re-scan smart files)
-        for sf in smart_files:
-            s = parse_smart(sf)
-            if s["poh"] and s["poh"].isdigit():
-                hours = int(s["poh"])
-                if hours > 70000:
-                    w(f"HDD age ERROR: {sf.name}: {hours}h (~{hours//8760}y) — replace recommended")
-                elif hours > 50000:
-                    w(f"HDD age warning: {sf.name}: {hours}h (~{hours//8760}y)")
-
-        # Vendor distribution
-        if vendor_summary:
-            w(f"HDD vendor distribution: {vendor_summary}")
-
-        # BTRFS scrub status — drop bookkeeping-only entries
-        real_scrubs = {k: v for k, v in btrfs_scrub.items()
-                       if k != "(scheduled round)" and (v.get("last_start") or v.get("last_finish") or v.get("errors"))}
-        if real_scrubs:
-            for vol, st in real_scrubs.items():
-                start = st.get("last_start", "?")
-                finish = st.get("last_finish", "?")
-                errs = st.get("errors", [])
-                w(f"BTRFS scrub ({vol}): last start={start}, last finish={finish}"
-                  f"{', ERRORS: ' + str(len(errs)) if errs else ''}")
+    # iSCSI
+    if iscsi_lun_path.exists():
+        if not iscsi_lun_text or iscsi_lun_path.stat().st_size < 1:
+            w("LUN-Config-file is empty.")
         else:
-            w("BTRFS scrub: no scrub history found")
+            w("Found LUNs:")
+            for l in iscsi_lun_text.splitlines():
+                w(f"  {l}")
+            w(f"Combined LUN Size: {bytes_to_human(iscsi_lun_bytes)}")
 
-        # Disk health prediction
-        if disk_health:
-            for serial, info in disk_health.items():
-                state = info["status"]
-                tag = ""
-                if state not in ("normal", "unknown"):
-                    tag = " (WARNING)" if state == "warning" else " (CRITICAL)"
-                w(f"Disk Health Prediction: {serial} ({info['model']}): "
-                  f"{state}{info['temp']}{tag}")
+    for conf_name, label in [("iscsi_mapping.conf", "iSCSI Mapping:"),
+                              ("iscsi_target.conf", "iSCSI Targets:")]:
+        cp = dsm_dir / "usr" / "syno" / "etc" / conf_name
+        if cp.exists():
+            w(label)
+            for l in read_file(cp).splitlines():
+                w(f"  {l}")
 
-        # Failed upgrades
-        if dpkg_fails:
-            w(f"Failed dpkg upgrades: {len(dpkg_fails)} entries (showing 3):")
-            for f in dpkg_fails[:3]:
-                w(f"  {f}")
-        else:
-            w("Failed dpkg upgrades:\tnone")
+    # ─── OVERVIEW ───────────────────────────────────────────────
+    setcur("overview")
+    if old_dsm_warning:
+        w("(Data may be unreliable, because of old DSM Version)")
 
-        # Recent DSM upgrade
-        if upgrade_info:
-            d = upgrade_info.get("days_ago", -1)
-            tag = " (RECENT: < 7 days)" if 0 <= d < 7 else ""
-            w(f"Last DSM update activity: {upgrade_info.get('date', '?')} "
-              f"({d} days ago){tag}")
+    def _val(n):
+        return n if n else 0
 
-        # SSH/auth failures detail
-        if auth_failures["total"] > 0:
-            top_user = sorted(auth_failures["by_user"].items(), key=lambda x: -x[1])[:3]
-            top_host = sorted(auth_failures["by_host"].items(), key=lambda x: -x[1])[:3]
-            severity = " (WARNING)" if auth_failures["total"] >= 10 else ""
-            w(f"Auth failures: {auth_failures['total']} total{severity}")
-            if top_user:
-                w(f"  Top targeted users: " +
-                  ", ".join(f"{u}({c})" for u, c in top_user))
-            if top_host:
-                w(f"  Top source hosts: " +
-                  ", ".join(f"{h}({c})" for h, c in top_host))
+    w(f"Improper shutdowns          {_val(len(improper_shutdowns))}")
+    w(f"Volume crashes              {_val(len(volume_crashes))}")
+    w(f"Degraded volumes            {_val(len(degraded_volumes))}")
+    w(f"Ext4/Btrfs errors           {fs_error_ct}")
+    w(f"Generic errors (SYSDB)      {_val(len(gen_errors))}")
+    w(f"DRDY errors                 {_val(len(drdy_lines))}")
+    w(f"Database malformed          {db_malformed}")
+    w(f"Out of Memory kills         {oom_kills}")
+    w(f"Kernel crashes              {crashes_ct}")
+    w(f"Call Traces                 {call_traces}")
+    w(f"Auth failures               {auth_failures['total']}")
+    w(f"BTRFS qgroup warnings       {qgroup_warnings}")
+    if passed_memtest == 0 and failed_memtest == 0:
+        w("Memory tests                keine")
+    if user_grp["users"]:
+        w(f"Non-system users            {len(user_grp['users'])}")
+    if enc_share_count >= 0:
+        w(f"Encrypted shares            {enc_share_count}")
 
-        # UPS
-        if ups_events:
-            w("UPS events:")
-            for e in ups_events:
-                w(f"  {e}")
+    # ─── DOCKER ─────────────────────────────────────────────────
+    setcur("docker")
+    if docker_count > 0:
+        w(f"Container gesehen:  {docker_count}")
+    else:
+        w("Container gesehen:  keine")
 
-        # HyperBackup tasks
-        if backup_tasks:
-            w("HyperBackup tasks:")
-            for t in backup_tasks[:8]:
-                tag = " (ERROR)" if t["level"] == "err" else \
-                      " (warning)" if t["level"] == "warning" else ""
-                w(f"  {t['name']}: {t['date']} - {t['action'][:120]}{tag}")
+    # ─── EXTENDED DIAGNOSTICS ───────────────────────────────────
+    setcur("extended")
+    if raid_rebuild:
+        for line in raid_rebuild:
+            w(f"RAID rebuild:    {line}")
+    else:
+        w("RAID rebuild:    keiner aktiv")
 
-        # Bonding
-        if bonds:
-            w("Network bonding:")
-            for b in bonds:
-                w(f"  {b}")
+    if volume_layout:
+        w("Volume layout:")
+        for v in volume_layout:
+            enc = " (encrypted)" if v["encrypted"] else ""
+            disks = ", ".join(v["disks"][:4]) if v["disks"] else "?"
+            w(f"  {v['path']}: {v['raid']} / {v['fs']}{enc}, "
+              f"{bytes_to_human(v['size_bytes'])}, disks: {disks}")
 
-        # Load avg
-        if load_avg_warning:
-            w(load_avg_warning)
+    if hdd_temps:
+        parts = []
+        for ht in hdd_temps:
+            t = ht["temp"]
+            tag = ""
+            if t >= 60:
+                tag = " (CRIT)"
+            elif t >= 50:
+                tag = " (warn)"
+            parts.append(f"{ht['disk']}: {t}°C{tag}")
+        w(f"HDD-Temperaturen: {'  ·  '.join(parts)}")
 
-        # Region
-        if region:
-            w(f"DSM region: timezone={region.get('timezone', '?')}, "
-              f"language={region.get('language', '?')}")
+    for sf in smart_files:
+        s = parse_smart(sf)
+        if s["poh"] and s["poh"].isdigit():
+            hours = int(s["poh"])
+            if hours > 70000:
+                w(f"HDD age ERROR: {sf.name}: {hours}h (~{hours//8760}y) — replace recommended")
+            elif hours > 50000:
+                w(f"HDD age warning: {sf.name}: {hours}h (~{hours//8760}y)")
 
-        # SMART self-test schedule
-        w(smart_sched)
-        if smart_test_history:
-            w(f"SMART tests in history: {smart_test_history['count']} "
-              f"(newest: {smart_test_history['newest']})")
+    if vendor_summary:
+        w(f"Hersteller: {vendor_summary}")
 
-        w()  # blank line
-        # ─── End Extended Diagnostics ────────────────────────────
+    real_scrubs = {k: v for k, v in btrfs_scrub.items()
+                   if k != "(scheduled round)" and (v.get("last_start") or v.get("last_finish") or v.get("errors"))}
+    if real_scrubs:
+        for vol, st in real_scrubs.items():
+            start = st.get("last_start", "?")
+            finish = st.get("last_finish", "?")
+            errs = st.get("errors", [])
+            w(f"BTRFS scrub ({vol}): last start={start}, last finish={finish}"
+              f"{', ERRORS: ' + str(len(errs)) if errs else ''}")
+    else:
+        w("BTRFS scrub:     kein Verlauf")
 
-        w("Third Party packages:", end="")
-        if not third_pkgs:
-            w("\tnone")
-        else:
-            w("\n" + "\n".join(third_pkgs) + "\n")
+    if disk_health:
+        for serial, info in disk_health.items():
+            state = info["status"]
+            tag = ""
+            if state not in ("normal", "unknown"):
+                tag = " (WARNING)" if state == "warning" else " (CRITICAL)"
+            w(f"Disk Health: {serial} ({info['model']}): {state}{info['temp']}{tag}")
+
+    if dpkg_fails:
+        w(f"dpkg-Upgrades:   {len(dpkg_fails)} fehlgeschlagen (showing 3):")
+        for f in dpkg_fails[:3]:
+            w(f"  {f}")
+    else:
+        w("dpkg-Upgrades:   keine fehlgeschlagen")
+
+    if upgrade_info:
+        d = upgrade_info.get("days_ago", -1)
+        tag = " (RECENT: < 7 days)" if 0 <= d < 7 else ""
+        w(f"Last DSM update activity: {upgrade_info.get('date', '?')} ({d} days ago){tag}")
+
+    if auth_failures["total"] > 0:
+        top_user = sorted(auth_failures["by_user"].items(), key=lambda x: -x[1])[:3]
+        top_host = sorted(auth_failures["by_host"].items(), key=lambda x: -x[1])[:3]
+        severity = " (WARNING)" if auth_failures["total"] >= 10 else ""
+        w(f"Auth failures: {auth_failures['total']} total{severity}")
+        if top_user:
+            w("  Top targeted users: " +
+              ", ".join(f"{u}({c})" for u, c in top_user))
+        if top_host:
+            w("  Top source hosts: " +
+              ", ".join(f"{h}({c})" for h, c in top_host))
+
+    if ups_events:
+        w("UPS events:")
+        for e in ups_events:
+            w(f"  {e}")
+
+    if backup_tasks:
+        w("HyperBackup tasks:")
+        for t in backup_tasks[:8]:
+            tag = " (ERROR)" if t["level"] == "err" else \
+                  " (warning)" if t["level"] == "warning" else ""
+            w(f"  {t['name']}: {t['date']} - {t['action'][:120]}{tag}")
+
+    if load_avg_warning:
+        w(load_avg_warning)
+
+    if region:
+        w(f"DSM region: timezone={region.get('timezone', '?')}, "
+          f"language={region.get('language', '?')}")
+
+    sched_str = smart_sched.replace("SMART self-test schedule: ", "")
+    w(f"SMART-Schedule:  {sched_str}")
+    if smart_test_history:
+        w(f"SMART tests in history: {smart_test_history['count']} "
+          f"(newest: {smart_test_history['newest']})")
+
+    # ─── ISSUES ─────────────────────────────────────────────────
+    setcur("issues")
+    for ki in known_issues:
+        if ki.strip():
+            w(ki)
 
     # FS errors detail — newest 20 only
     all_fs = btrfs_kern + ext4_kern + btrfs_msg + ext4_msg
-    if not all_fs:
-        w("Ext4-/Btrfs-Errs:\t\tnone")
-    else:
+    if all_fs:
         all_fs_uniq = list(dict.fromkeys(all_fs))
         ts_re = re.compile(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})")
         all_fs_uniq.sort(key=lambda l: (ts_re.match(l).group(1) if ts_re.match(l) else ""))
         shown = all_fs_uniq[-20:]
         hidden = len(all_fs_uniq) - len(shown)
         if hidden > 0:
-            w(f"\nExt4-/Btrfs-Errors: {len(all_fs_uniq)} total — showing newest 20 ({hidden} omitted)")
+            w(f"Ext4-/Btrfs-Errors: {len(all_fs_uniq)} total — showing newest 20 ({hidden} omitted)")
         else:
-            w("\nExt4-/Btrfs-Errors:")
+            w("Ext4-/Btrfs-Errors:")
         for l in shown:
-            w(l)
+            w(f"  {l}")
 
-    w("IPv6 enabled" if ipv6_count > 0 else "IPv6 disabled")
-    w(f"found {dropped_sum} dropped Packages in ifconfig.result.")
-    w(f"found {error_sum} bugged Packages in ifconfig.result.")
-    for eth in ethtool_lines:
-        w(eth)
-
-    w("DNS Servers:")
-    dns_servers = re.findall(r"^nameserver .+", resolv_text, re.M)
-    w(", ".join(dns_servers) if dns_servers else "/etc/resolv.conf not found.")
-
-    w(samba_st)
-    w(nfs_st)
-    w(afp_st)
-
-    for ki in known_issues:
-        w(ki)
-
-    # SYSDB details
-    if not improper_shutdowns:
-        w("improper shutdowns:\t\tnone")
-    else:
+    # SYSDB details (only non-empty)
+    if improper_shutdowns:
         w("improper shutdowns:")
-        w("\n".join(improper_shutdowns))
-        w()
+        for l in improper_shutdowns:
+            w(f"  {l}")
 
-    if not volume_crashes:
-        w("Volume crashes:\t\t\tnone")
-    else:
+    if volume_crashes:
         w("Volume crashes:")
-        w("\n".join(volume_crashes))
-        w()
+        for l in volume_crashes:
+            w(f"  {l}")
 
-    if not degraded_volumes:
-        w("degraded volumes:\t\tnone")
-    else:
+    if degraded_volumes:
         w("degraded volumes:")
-        w("\n".join(degraded_volumes))
-        w()
+        for l in degraded_volumes:
+            w(f"  {l}")
 
-    if not gen_errors:
-        w("generic errs:\t\t\tnone")
-    else:
+    if gen_errors:
         w(f"{len(gen_errors)} generic errs:")
-        w("\n".join(gen_errors))
-        w()
+        for l in gen_errors:
+            w(f"  {l}")
 
     # Messages detail — each section capped at newest 20
     def _emit_capped(label, lines):
@@ -1923,45 +1941,135 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
             hdr += f" ({omitted} omitted)"
         w(hdr + ":")
         for l in shown:
-            w(l)
-        w()
+            w(f"  {l}")
 
     if messages_text:
-        if not drdy_lines:
-            w("DRDY:\t\t\t\t\tnone")
-        else:
+        if drdy_lines:
             _emit_capped("DRDY", drdy_lines)
-
-        if db_malformed == 0:
-            w("Database is malformed:\tnone")
-        else:
+        if db_malformed > 0:
             _emit_capped("Database is malformed",
                          grep_lines("database disk image is malformed", messages_text))
-
-        if oom_kills == 0:
-            w("Out of Memory kills:\tnone")
-        else:
+        if oom_kills > 0:
             _emit_capped("Out of Memory kills",
                          grep_lines("out_of_memory", messages_text))
-
-        if crashes_ct == 0:
-            w("generic crashes:\t\tnone")
-        else:
+        if crashes_ct > 0:
             _emit_capped("generic crashes",
                          grep_lines("crash", messages_text))
-
-        if call_traces == 0:
-            w("Call Traces:\t\t\tnone")
-        else:
-            w(f"{call_traces} Call traces, showing 20 most recent + next 25 lines:")
+        if call_traces > 0:
+            w(f"{call_traces} Call traces, showing last one:")
             all_lines = messages_text.splitlines()
-            ct_count = 0
+            last_ct_idx = None
             for i, line in enumerate(all_lines):
-                if re.search("Call Trace", line, re.I) and ct_count < 20:
-                    for l in all_lines[i: i + 26]:
-                        w(l)
-                    w()
-                    ct_count += 1
+                if re.search("Call Trace", line, re.I):
+                    last_ct_idx = i
+            if last_ct_idx is not None:
+                for l in all_lines[last_ct_idx: last_ct_idx + 26]:
+                    w(f"  {l}")
+
+    # ─── Render to sm.log ───────────────────────────────────────
+    sm.parent.mkdir(parents=True, exist_ok=True)
+
+    border = "═" * 80
+
+    def _section_header(title):
+        return f"\n── {title} " + "─" * max(2, 79 - len(title) - 3)
+
+    def _indent(line, prefix="  "):
+        if line == "" or line.startswith("  "):
+            return line
+        return prefix + line
+
+    # Parse productversion value
+    def _ver_val(s):
+        m = re.search(r'"([^"]+)"', s)
+        return m.group(1) if m else s
+
+    dsm_version_clean = _ver_val(dsm_version)
+    dsm_build_clean = _ver_val(dsm_build)
+    dsm_smallfix_clean = _ver_val(dsm_smallfix)
+    dsm_full = dsm_version_clean
+    if dsm_build_clean:
+        dsm_full += f"-{dsm_build_clean}"
+    if dsm_smallfix_clean and dsm_smallfix_clean != "0":
+        dsm_full += f" Update {dsm_smallfix_clean}"
+
+    cpu_clean = re.sub(r".*:\s*", "", ds_cpu).strip() if ds_cpu else "(unknown)"
+
+    # Uptime parse
+    up_m = re.search(r"up\s+(.+?),\s*load average:\s*([\d., ]+)", uptime_text)
+    if up_m:
+        up_str = up_m.group(1).strip()
+        load_str = up_m.group(2).strip()
+    else:
+        up_str = uptime_text.strip() or "(unknown)"
+        load_str = ""
+
+    ram_str = bytes_to_human(free_mem_kb * 1024) if free_mem_kb else "(unknown)"
+    if swap_total_kb > 0:
+        swap_pct = swap_used_kb / swap_total_kb * 100
+        ram_str += f"  ·  Swap: {swap_pct:.2f}% ({bytes_to_human(swap_used_kb * 1024)} / {bytes_to_human(swap_total_kb * 1024)})"
+
+    with open(sm, "w", encoding="utf-8") as _sm_fh:
+        def W(s=""):
+            _sm_fh.write(str(s) + "\n")
+
+        if sm_prefix:
+            W(sm_prefix)
+            W()
+
+        # ─── HEADER ─────────────────────────────────────────────
+        W(border)
+        title_bits = [b for b in [upnp_model, hostname, f"S/N: {ds_sn}" if ds_sn else ""] if b]
+        W(f"  {'  |  '.join(title_bits)}")
+        W(border)
+        W(f"  DSM:    {dsm_full}")
+        W(f"  Kernel: {kernel_version}")
+        cpu_line = f"  CPU:    {cpu_clean}"
+        if processor_count or ds_cores:
+            cpu_line += f"  ·  {processor_count} Threads / {ds_cores} Cores"
+        W(cpu_line)
+        W(f"  RAM:    {ram_str}")
+        up_line = f"  Uptime: {up_str}"
+        if load_str:
+            up_line += f"  ·  Load: {load_str}"
+        W(up_line)
+        if bios_ver:
+            W(f"  BIOS:   {bios_ver}")
+        if ds_hwmodel or ds_model:
+            W(f"  HW:     {ds_hwmodel}  ·  Model: {ds_model}")
+        if ds_mem3:
+            W(f"  RAM-modules:")
+            for line in ds_mem3.splitlines():
+                W(f"    {line}")
+            if ds_mem3_calc:
+                W(f"  RAM, calced: {ds_mem3_calc}")
+        W(border)
+
+        # ─── SECTIONS ───────────────────────────────────────────
+        section_order = [
+            ("updates", "DSM UPDATES"),
+            ("storage", "STORAGE"),
+            ("smart", "SMART"),
+            ("net", "NETZWERK"),
+            ("pkgs", "PAKETE"),
+            ("overview", "OVERVIEW"),
+            ("docker", "DOCKER"),
+            ("extended", "EXTENDED DIAGNOSTICS"),
+            ("issues", "PROBLEME & BEKANNTE FEHLER"),
+        ]
+        for key, title in section_order:
+            W(_section_header(title))
+            lines = _S[key]
+            if not lines:
+                continue
+            for line in lines:
+                if line == "":
+                    W("")
+                elif line.startswith("  "):
+                    W(line)
+                else:
+                    W(f"  {line}")
+        W(border)
 
     # ============================================================
     # Write smartgrep
@@ -2109,7 +2217,6 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
 
         wh(samba_st)
 
-    _sm_fh.close()
     print(f"{datetime.now():%d. %B %H:%M:%S}: analysis complete → {sm}")
     return sm, sg, hb, dsm_dir
 
@@ -2242,7 +2349,7 @@ def process_file(filepath: Path, download_dir: Path):
         shutil.move(str(filepath), str(kapott / f"debug_{ts}.dat"))
         return
 
-    shutil.move(str(filepath), str(debug_dir))
+    os.replace(str(filepath), str(debug_dir / filepath.name))
     print(f"{datetime.now():%d. %B %H:%M:%S}: extracted to {debug_dir}")
 
     sm_prefix = ""
@@ -2339,7 +2446,7 @@ def main():
         print("\t-u : Update DSM-Updates, HDD-(in-)compatibility-lists, package updates")
         print("\t-v : Be Verbose")
         print("\t-d : Set Download directory to scan (use absolute path) [required]")
-        print('\t     example: entpacker.py -d "/home/thomas/Downloads/neu"')
+        print('\t     example: synology_debug_unzip.py -d "/home/thomas/Downloads/neu"')
         print()
         sys.exit(0)
 

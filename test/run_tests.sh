@@ -1,5 +1,5 @@
 #!/bin/bash
-# Automated test runner for entpacker.sh and entpacker.py
+# Automated test runner for synology_debug_unzip.sh and synology_debug_unzip.py
 # Creates a synthetic Synology debug archive and validates the sm.log output.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -100,15 +100,15 @@ run_and_wait() {
 }
 
 # ---------------------------------------------------------------------------
-# Test entpacker.sh
+# Test synology_debug_unzip.sh
 # ---------------------------------------------------------------------------
 echo ""
-echo "=== Testing entpacker.sh ==="
-SM_SH=$(run_and_wait "bash" bash "$SCRIPT_DIR/entpacker.sh")
+echo "=== Testing synology_debug_unzip.sh ==="
+SM_SH=$(run_and_wait "bash" bash "$SCRIPT_DIR/synology_debug_unzip.sh")
 
 if [[ -z "$SM_SH" ]]; then
-    fail "sm.log was not created by entpacker.sh"
-    echo "  --- entpacker.sh stdout ---"
+    fail "sm.log was not created by synology_debug_unzip.sh"
+    echo "  --- synology_debug_unzip.sh stdout ---"
     head -40 "$WORK_DIR/bash.stdout" | sed 's/^/  /'
 else
     ok "sm.log created"
@@ -126,15 +126,15 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Test entpacker.py
+# Test synology_debug_unzip.py
 # ---------------------------------------------------------------------------
 echo ""
-echo "=== Testing entpacker.py ==="
-SM_PY=$(run_and_wait "py" python3 "$SCRIPT_DIR/entpacker.py")
+echo "=== Testing synology_debug_unzip.py ==="
+SM_PY=$(run_and_wait "py" python3 "$SCRIPT_DIR/synology_debug_unzip.py")
 
 if [[ -z "$SM_PY" ]]; then
-    fail "sm.log was not created by entpacker.py"
-    echo "  --- entpacker.py stdout ---"
+    fail "sm.log was not created by synology_debug_unzip.py"
+    echo "  --- synology_debug_unzip.py stdout ---"
     head -40 "$WORK_DIR/py.stdout" | sed 's/^/  /'
 else
     ok "sm.log created"

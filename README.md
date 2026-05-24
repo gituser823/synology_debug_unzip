@@ -29,8 +29,8 @@ Compatibility and package version data is downloaded from Synology's servers and
 
 | File | Language | Requires |
 |------|----------|----------|
-| `entpacker.sh` | Bash | `bsdtar`, `lftp`, `jq`, `sqlite3`, `unzip` |
-| `entpacker.py` | Python 3 | `pip install requests` |
+| `synology_debug_unzip.sh` | Bash | `bsdtar`, `lftp`, `jq`, `sqlite3`, `unzip` |
+| `synology_debug_unzip.py` | Python 3 | `pip install requests` |
 
 Both versions are feature-equivalent. The Python version runs on Windows natively in addition to Linux and WSL.
 
@@ -67,13 +67,13 @@ On WSL, file paths are automatically converted to Windows format (`wslpath -w`) 
 ### Bash
 
 ```bash
-bash entpacker.sh -d "/path/to/download/directory"
+bash synology_debug_unzip.sh -d "/path/to/download/directory"
 ```
 
 ### Python
 
 ```bash
-python3 entpacker.py -d "/path/to/download/directory"
+python3 synology_debug_unzip.py -d "/path/to/download/directory"
 ```
 
 The script waits for `*.dat` files to appear in that directory. Download a debug file from your NAS via **DSM → Support Center → Debug** and save it to the watched folder.
@@ -91,10 +91,10 @@ The script waits for `*.dat` files to appear in that directory. Download a debug
 
 ```bash
 # Start watching
-bash entpacker.sh -d "$HOME/Downloads/synology"
+bash synology_debug_unzip.sh -d "$HOME/Downloads/synology"
 
 # Force-update all cached data from Synology's servers
-bash entpacker.sh -d "$HOME/Downloads/synology" -u
+bash synology_debug_unzip.sh -d "$HOME/Downloads/synology" -u
 ```
 
 ## Cached data (downloaded automatically)

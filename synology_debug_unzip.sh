@@ -112,6 +112,211 @@ decode_power_sched() {
     printf "Scheduled Time: %02d:%02d\n" "$((16#$hour_hex))" "$((16#$min_hex))"
 }
 
+# Render sectioned sm.log from collected $_sm_raw + shell variables.
+# Heuristically buckets lines of $_sm_raw into sections by content patterns.
+render_sm_log() {
+    [[ -z "${sm:-}" || -z "${_sm_raw:-}" ]] && return 0
+    [[ ! -f "$_sm_raw" ]] && return 0
+
+    local border
+    border=$(printf '═%.0s' {1..80})
+
+    # Build per-section buffers in awk by routing $_sm_raw lines
+    local raw_sections
+    raw_sections=$(awk -v border="$border" '
+        function flush() {
+            if (cur != "") buf[cur] = buf[cur] line "\n"
+        }
+        BEGIN {
+            cur = "storage"
+        }
+        {
+            line = $0
+            l = tolower($0)
+            if (l ~ /16 terabyte volume limitation/ ||
+                l ~ /^md[0-9]/ || l ~ /extensionunits/ ||
+                l ~ /mountpoints/ || l ~ /no volumes mounted/ ||
+                l ~ /^\/dev/ || l ~ /dsm was migrated/ ||
+                l ~ /^mountpoints more than/) cur = "storage"
+            else if (l ~ /more recent dsm version available/ ||
+                     l ~ /available major updates/ || l ~ /dsm version is latest/ ||
+                     l ~ /installed version:/) cur = "updates"
+            else if (l ~ /cpuinfo from txt/ || l ~ /cpu-model/ ||
+                     l ~ /reallocated_sector_ct/ || l ~ /current_pending_sector/ ||
+                     l ~ /offline_uncorrectable/ ||
+                     l ~ /poweronhours|powerOnHours/ ||
+                     l ~ /last extended smart-test/ ||
+                     l ~ /^sd[a-z]+(\.result)?:/ ||
+                     l ~ /^smart_/ || l ~ /^nv[a-z]/ || l ~ /^sas[0-9]/) cur = "smart"
+            else if (l ~ /ipv6 (en|dis)abled/ ||
+                     l ~ /dropped packages|bugged packages/ ||
+                     l ~ /^ethtool\./ ||
+                     l ~ /dns servers:/ || l ~ /^nameserver/ ||
+                     l ~ /quickconnect/ || l ~ /^ddns / ||
+                     l ~ /samba is|nfs is|afp is/ || l ~ /samba status|nfs status|afp status/ ||
+                     l ~ /network bonding/) cur = "net"
+            else if (l ~ /third party packages/ || l ~ /update for / ||
+                     l ~ /found samba-shares|no samba shares/ ||
+                     l ~ /lun-config|found luns|combined lun|iscsi mapping|iscsi targets/) cur = "pkgs"
+            else if (l ~ /^overview:/ || l ~ /^improper shutdowns:[\t ]+(none|[0-9])/ ||
+                     l ~ /^volume crashes:[\t ]+(none|[0-9])/ ||
+                     l ~ /^degraded volumes:[\t ]+(none|[0-9])/ ||
+                     l ~ /^generic errs:[\t ]+(none|[0-9])/ ||
+                     l ~ /^drdy:[\t ]+(none|[0-9])/ ||
+                     l ~ /^database is malformed:[\t ]+(none|[0-9])/ ||
+                     l ~ /^out of memory kills:[\t ]+(none|[0-9])/ ||
+                     l ~ /^generic crashes:[\t ]+(none|[0-9])/ ||
+                     l ~ /^call traces:[\t ]+(none|[0-9])/ ||
+                     l ~ /^authentication failures:[\t ]+/ ||
+                     l ~ /^btrfs qgroup warnings:[\t ]+/ ||
+                     l ~ /^non-system users:[\t ]+/ ||
+                     l ~ /^encrypted shares:[\t ]+/ ||
+                     l ~ /^memory tests/ || l ~ /memory tests have passed/ ||
+                     l ~ /no memory tests/ || l ~ /failed memtests/ ||
+                     l ~ /^ext4-\/btrfs-errs:[\t ]+(none|[0-9])/) cur = "overview"
+            else if (l ~ /^docker containers seen/) cur = "docker"
+            else if (l ~ /^extended diagnostics:/ ||
+                     l ~ /raid (active )?rebuild/ ||
+                     l ~ /^volume layout:/ ||
+                     l ~ /hdd temperature|hdd age|hdd vendor distribution/ ||
+                     l ~ /btrfs scrub/ ||
+                     l ~ /disk health prediction/ ||
+                     l ~ /failed dpkg upgrades/ ||
+                     l ~ /last dsm update activity/ ||
+                     l ~ /auth failures:/ ||
+                     l ~ /^ups events|^hyperbackup tasks/ ||
+                     l ~ /^dsm region/ ||
+                     l ~ /smart self-test schedule/ ||
+                     l ~ /smart tests in history/ ||
+                     l ~ /high load average|elevated load average/ ||
+                     l ~ /more ram installed|same ram installed/ ||
+                     l ~ /uptime: |hostname: |bios:|hardware version|upnp model|^kernel:|cpu from logs|serialnumber:|associated tickets|swap:|installed ram-modules|ram, calced|ram free.result/) cur = "extended"
+            else if (l ~ /known issue|possible known issue|^cpu is overheating|^cpu or disk is overheating/ ||
+                     l ~ /^ext4-\/btrfs-errors:/ ||
+                     l ~ /^improper shutdowns:$/ ||
+                     l ~ /^volume crashes:$/ ||
+                     l ~ /^degraded volumes:$/ ||
+                     l ~ /generic errs:$/ ||
+                     l ~ /database is malformed:/ && l ~ /total/ ||
+                     l ~ /^drdy:/ && l ~ /total/ ||
+                     l ~ /^out of memory kills:/ && l ~ /total/ ||
+                     l ~ /^generic crashes:/ && l ~ /total/ ||
+                     l ~ /call traces, showing/) cur = "issues"
+            flush()
+        }
+        END {
+            for (k in buf) {
+                printf "===SECTION:%s===\n%s", k, buf[k]
+            }
+        }
+    ' "$_sm_raw")
+
+    # Compute formatted header values
+    local productver buildnum smallfix dsm_full cpu_clean
+    productver=$(echo "$DSM_VERSION" | grep -oE '"[^"]+"' | head -1 | tr -d '"')
+    buildnum=$(echo "$DSM_BuildVERSION" | grep -oE '"[^"]+"' | head -1 | tr -d '"')
+    smallfix=$(echo "$DSM_smallfixVERSION" | grep -oE '"[^"]+"' | head -1 | tr -d '"')
+    dsm_full="$productver"
+    [[ -n "$buildnum" ]] && dsm_full="${dsm_full}-${buildnum}"
+    [[ -n "$smallfix" && "$smallfix" != "0" ]] && dsm_full="${dsm_full} Update ${smallfix}"
+    cpu_clean=$(echo "$DS_CPU" | sed 's/.*:\s*//')
+
+    # Uptime + load
+    local up_str load_str
+    if [[ "$UPTIME" =~ up[[:space:]]+(.*),[[:space:]]*load[[:space:]]average:[[:space:]]+(.*) ]]; then
+        up_str="${BASH_REMATCH[1]}"
+        load_str="${BASH_REMATCH[2]}"
+    else
+        up_str="$UPTIME"
+        load_str=""
+    fi
+
+    # RAM
+    local ram_str swap_pct
+    ram_str=$(bytesToHuman $((${free_mem_kbyte:-0} * 1024)) 2>/dev/null)
+    if [[ -n "$swap_total_kbyte" && "$swap_total_kbyte" -gt 0 ]]; then
+        swap_pct=$(awk "BEGIN {printf \"%.2f\", ${swap_used_kbyte:-0}/${swap_total_kbyte}*100}")
+        local swap_used_h swap_total_h
+        swap_used_h=$(bytesToHuman $((swap_used_kbyte * 1024)))
+        swap_total_h=$(bytesToHuman $((swap_total_kbyte * 1024)))
+        ram_str="${ram_str}  ·  Swap: ${swap_pct}% (${swap_used_h} / ${swap_total_h})"
+    fi
+
+    # Helper to render one section
+    _emit_section() {
+        local key="$1" title="$2"
+        local content
+        content=$(awk -v key="$key" '
+            /^===SECTION:/ {
+                in_sec = ($0 == "===SECTION:" key "===")
+                next
+            }
+            in_sec { print }
+        ' <<< "$raw_sections")
+        # Section header
+        local pad=$(( 79 - ${#title} - 3 ))
+        (( pad < 2 )) && pad=2
+        local dashes
+        dashes=$(printf '─%.0s' $(seq 1 $pad))
+        echo ""
+        echo "── ${title} ${dashes}"
+        if [[ -z "$content" ]]; then
+            return
+        fi
+        while IFS= read -r ln; do
+            [[ -z "$ln" ]] && { echo ""; continue; }
+            if [[ "$ln" =~ ^[[:space:]]{2,} ]]; then
+                echo "$ln"
+            else
+                echo "  $ln"
+            fi
+        done <<< "$content"
+    }
+
+    # Write the formatted sm.log
+    {
+        # HA/UC prefix from raw (first non-storage routing-special lines)
+        local prefix
+        prefix=$(grep -m1 -E "^Synology (HA|UC): Detected" "$_sm_raw" 2>/dev/null || true)
+        if [[ -n "$prefix" ]]; then
+            echo "$prefix"
+            echo ""
+        fi
+
+        echo "$border"
+        local title_parts="${UpnpModel}"
+        [[ -n "$Hostname" ]] && title_parts="${title_parts}  |  ${Hostname}"
+        [[ -n "$DS_SN" ]] && title_parts="${title_parts}  |  S/N: ${DS_SN}"
+        echo "  ${title_parts}"
+        echo "$border"
+        echo "  DSM:    ${dsm_full}"
+        echo "  Kernel: ${Kernel_version}"
+        local cpu_line="  CPU:    ${cpu_clean}"
+        [[ -n "${Processor_count:-}" && -n "${DS_Cores:-}" ]] && \
+            cpu_line="${cpu_line}  ·  ${Processor_count} Threads / ${DS_Cores} Cores"
+        echo "$cpu_line"
+        echo "  RAM:    ${ram_str}"
+        local up_line="  Uptime: ${up_str}"
+        [[ -n "$load_str" ]] && up_line="${up_line}  ·  Load: ${load_str}"
+        echo "$up_line"
+        [[ -n "$BIOS_V_CUT" ]] && echo "  BIOS:   ${BIOS_V_CUT}"
+        [[ -n "${DS_HWMODEL:-}" || -n "${DS_MODEL:-}" ]] && \
+            echo "  HW:     ${DS_HWMODEL}  ·  Model: ${DS_MODEL}"
+        echo "$border"
+
+        _emit_section "updates"  "DSM UPDATES"
+        _emit_section "storage"  "STORAGE"
+        _emit_section "smart"    "SMART"
+        _emit_section "net"      "NETZWERK"
+        _emit_section "pkgs"     "PAKETE"
+        _emit_section "overview" "OVERVIEW"
+        _emit_section "docker"   "DOCKER"
+        _emit_section "extended" "EXTENDED DIAGNOSTICS"
+        _emit_section "issues"   "PROBLEME & BEKANNTE FEHLER"
+        echo "$border"
+    } > "$sm"
+}
+
 convertJson() {
     while ps -aux |grep -v grep | grep -q lftp ; do #wait for lftp to finish downloading
     sleep 1
@@ -145,15 +350,19 @@ updateCPUList() {
     errmsg=$(python3 -c "
 import sys, re, json
 raw = open(sys.argv[1]).read()
-m = re.search(r'\"content\":\"(.*?)(?<!\\\\\\\\)\"', raw, re.S)
-if not m:
-    print('error: content not found', file=sys.stderr); sys.exit(1)
-content = json.loads('\"' + m.group(1) + '\"')
-rows = re.findall(r'<tr>(.*?)</tr>', content, re.S)
+pos = raw.find('\"content\":')
+if pos < 0:
+    print('error: content key not found', file=sys.stderr); sys.exit(1)
+pos += len('\"content\":')
+try:
+    content, _ = json.JSONDecoder().raw_decode(raw[pos:])
+except Exception as e:
+    print(f'error: JSON decode failed: {e}', file=sys.stderr); sys.exit(1)
+rows = re.findall(r'<tr>(.*?)<\/tr>', content, re.S)
 print('System Model\tCPU-Model\tCores\tThreads\tFPU\tArchitecture\tRAM')
 count = 0
 for row in rows:
-    cells = re.findall(r'<td>(.*?)</td>', row, re.S)
+    cells = re.findall(r'<td>(.*?)<\/td>', row, re.S)
     cells = [re.sub(r'<[^>]+>', '', c).strip() for c in cells]
     if len(cells) >= 7:
         fpu = 'Ja' if '&check;' in cells[4] or chr(10003) in cells[4] else 'Nein'
@@ -355,7 +564,7 @@ while getopts ":uhvd:" opt; do
         echo -e "\t-u : Update DSM-Updates, HDD-(in-)compatibility-lists, package updates"
         echo -e "\t-v : Be Verbose"
         echo -e "\t-d : Set Download directory to scan (use absolute path) [required]"
-        echo -e "\t     example: entpacker.sh -d \"/home/thomas/Downloads/neu\""
+        echo -e "\t     example: synology_debug_unzip.sh -d \"/home/thomas/Downloads/neu\""
         echo -e "\t     alternatively set variable DOWNLOAD_DIR in $(basename -- "$0")"
         echo -e "\n"
         exit 1
@@ -514,18 +723,18 @@ do
                 then
                     if [[ -f "$DOWNLOAD_DIR/debug_$DATE/HighAvailability/passive_debug.dat" ]]
                     then
-                        sm="$DOWNLOAD_DIR/debug_$DATE/$DSM/sm.log"
-                        echo -e "Synology HA: Detected, this is the ACTIVE Server-log\n" >> "$sm"
+                        sm="$DOWNLOAD_DIR/debug_$DATE/$DSM/sm.log"; _sm_raw="$DOWNLOAD_DIR/debug_$DATE/$DSM/_sm_raw"; : > "$_sm_raw" 2>/dev/null
+                        echo -e "Synology HA: Detected, this is the ACTIVE Server-log\n" >> "$_sm_raw"
                         mv "$DOWNLOAD_DIR/debug_$DATE/HighAvailability/passive_debug.dat" "$DOWNLOAD_DIR/passive_debugfile.dat" #"$DOWNLOAD_DIR/passive_debugfile.dat"
                         sleep 2
                     fi
                 fi
                 if [[ "$file" = "$DOWNLOAD_DIR/passive_debugfile.dat" ]]; then #passive debug of HA-Cluster
                     DSM=dsm
-                    sm="$DOWNLOAD_DIR/debug_$DATE/$DSM/sm.log"
-                    echo -e "Synology HA: Detected, this is the PASSIVE Server-log\n" >> "$sm"
+                    sm="$DOWNLOAD_DIR/debug_$DATE/$DSM/sm.log"; _sm_raw="$DOWNLOAD_DIR/debug_$DATE/$DSM/_sm_raw"; : > "$_sm_raw" 2>/dev/null
+                    echo -e "Synology HA: Detected, this is the PASSIVE Server-log\n" >> "$_sm_raw"
                 else
-                    sm="$DOWNLOAD_DIR/debug_$DATE/$DSM/sm.log"
+                    sm="$DOWNLOAD_DIR/debug_$DATE/$DSM/sm.log"; _sm_raw="$DOWNLOAD_DIR/debug_$DATE/$DSM/_sm_raw"; : > "$_sm_raw" 2>/dev/null
                 fi
 
 
@@ -533,8 +742,8 @@ do
                 then
                     if [[ -f "$DOWNLOAD_DIR/debug_$DATE/remote.debug.dat" ]]
                     then
-                        sm="$DOWNLOAD_DIR/debug_$DATE/$DSM/sm.log"
-                        echo -e "Synology UC: Detected, this is the ACTIVE Server-log\n" >> "$sm"
+                        sm="$DOWNLOAD_DIR/debug_$DATE/$DSM/sm.log"; _sm_raw="$DOWNLOAD_DIR/debug_$DATE/$DSM/_sm_raw"; : > "$_sm_raw" 2>/dev/null
+                        echo -e "Synology UC: Detected, this is the ACTIVE Server-log\n" >> "$_sm_raw"
                         mv "$DOWNLOAD_DIR/debug_$DATE/remote.debug.dat" "$DOWNLOAD_DIR/passive_UC.dat"
                         sleep 2
                     fi
@@ -542,15 +751,16 @@ do
 
                 if [[ "$file" = "$DOWNLOAD_DIR/passive_UC.dat" ]]; then #passive debug of UC3200
                     DSM=dsm
-                    sm="$DOWNLOAD_DIR/debug_$DATE/$DSM/sm.log"
-                    echo -e "Synology UC: Detected, this is the PASSIVE Server-log\n" >> "$sm"
+                    sm="$DOWNLOAD_DIR/debug_$DATE/$DSM/sm.log"; _sm_raw="$DOWNLOAD_DIR/debug_$DATE/$DSM/_sm_raw"; : > "$_sm_raw" 2>/dev/null
+                    echo -e "Synology UC: Detected, this is the PASSIVE Server-log\n" >> "$_sm_raw"
                 else
-                    sm="$DOWNLOAD_DIR/debug_$DATE/$DSM/sm.log"
+                    sm="$DOWNLOAD_DIR/debug_$DATE/$DSM/sm.log"; _sm_raw="$DOWNLOAD_DIR/debug_$DATE/$DSM/_sm_raw"; : > "$_sm_raw" 2>/dev/null
                 fi
 
 
                 sg=$DOWNLOAD_DIR/debug_$DATE/$DSM/smartgrep
                 hb_debug=$DOWNLOAD_DIR/debug_$DATE/$DSM/hibernation_debug.log
+                mkdir -p "$(dirname "$_sm_raw")" 2>/dev/null
                 #Debug_root=$DOWNLOAD_DIR/debug_$DATE
                 DEBUG_DIR=$DOWNLOAD_DIR/debug_$DATE
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc.defaults/synoinfo.conf" ]]
@@ -593,14 +803,14 @@ do
                         full_number=$(awk '0+$5 >= 90 { count++ } END{print 0+count}' "$DF")
                         if [[ "$full_number" -gt 0 ]]
                         then
-                            echo -e "Mountpoints more than 90% full: (""$full_number"")" >> "$sm"
-                            awk '0+$5>90 { printf "%s\n",$0 }' "$DF" >> "$sm"
-                            echo -e "\n" >> "$sm"
+                            echo -e "Mountpoints more than 90% full: (""$full_number"")" >> "$_sm_raw"
+                            awk '0+$5>90 { printf "%s\n",$0 }' "$DF" >> "$_sm_raw"
+                            echo -e "\n" >> "$_sm_raw"
                             echo -n "Mountpoints more than 90% full: (""$full_number"")" >> "$sg"
                             awk '0+$5>90 { printf "\n%s",$0 }' "$DF" >> "$sg"
                         else
                             echo "Mountpoints more than 90% full: (""$full_number"")" >> "$sg"
-                            #echo " No full Mountpoints found." >> "$sm"
+                            #echo " No full Mountpoints found." >> "$_sm_raw"
                             echo "No full Mountpoints found." >> "$sg"
                         fi
                         echo -e "\n"  >> "$sg"
@@ -622,7 +832,7 @@ do
                                     if  [ "$Volume_x64" ]; then
                                         log "$(basename -- "$vgfile") has x64"
                                     else
-                                        echo -e "$(basename -- "$vgfile" | cut -d '.' -f2) has 16 Terabyte Volume Limitation.\n" >> "$sm"
+                                        echo -e "$(basename -- "$vgfile" | cut -d '.' -f2) has 16 Terabyte Volume Limitation.\n" >> "$_sm_raw"
                                     fi
                                 fi
                         done
@@ -633,9 +843,9 @@ do
                         md0E=$(cat "$MDSTAT" | grep -E 'md0' -A2 | grep -q 'E')
                         md0ExitCode=$?
                         if [[ "$md0ExitCode" -eq 0 ]]; then
-                            cat "$MDSTAT" | grep -E 'md0' -A2 >> "$sm"
+                            cat "$MDSTAT" | grep -E 'md0' -A2 >> "$_sm_raw"
                         fi
-                        cat "$MDSTAT" | grep -E 'md[^01]' -A2 | sed -r '/^\s*$/d' >> "$sm"
+                        cat "$MDSTAT" | grep -E 'md[^01]' -A2 | sed -r '/^\s*$/d' >> "$_sm_raw"
                 fi
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/bash_history.log" ]]
                 then    Bash_history=$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/bash_history.log
@@ -645,12 +855,12 @@ do
                         echo -e "\nMountpoints:" >> "$sg"
                         cat "$MOUNTS" >> "$sg"
                         echo -e " \n"  >> "$sg"
-                        echo -e "Mountpoints:" >> "$sm"
+                        echo -e "Mountpoints:" >> "$_sm_raw"
                         grepmounts=$(grep -i "volume" "$MOUNTS" | cut -f1 -d",")
                         grepmounts_c=$(grep -i -c "volume" "$MOUNTS" | cut -f1 -d",")
                         if [ "$grepmounts_c" -ne 0 ]
-                            then echo "$grepmounts" >> "$sm"
-                        else echo "No Volumes mounted." >> "$sm"
+                            then echo "$grepmounts" >> "$_sm_raw"
+                        else echo "No Volumes mounted." >> "$_sm_raw"
                         fi
 
                 fi
@@ -720,7 +930,7 @@ do
 
                 #Analyze ExtensionUnits
                 ExtCt=0
-                echo "ExtensionUnits:" >> "$sm"
+                echo "ExtensionUnits:" >> "$_sm_raw"
                 OIFS=$IFS
                 IFS=","
                 for pmfile in "$DOWNLOAD_DIR/debug_$DATE/$DSM/sys/class/scsi_host/host"*"/syno_pm_info"
@@ -737,26 +947,26 @@ do
                             done
                             ExtensionUnit=$(grep "Unique" "$pmfile" | cut -d "\"" -f2)
                             if [ -n "$ExtensionUnit" ]; then
-                                echo "$ExtensionUnit with $ExtensionHdds" >> "$sm"
+                                echo "$ExtensionUnit with $ExtensionHdds" >> "$_sm_raw"
                                 echo "$ExtensionUnit:$ExtensionHdds" >> "$DOWNLOAD_DIR/debug_$DATE/$DSM/Ext_plain"
                                 let "ExtCt=ExtCt+1"
                             fi
                         done
                 IFS=$OIFS
                 if [ "$ExtCt" -eq 0 ]; then
-                    echo "none" >> "$sm"
+                    echo "none" >> "$_sm_raw"
                 fi
 
                 if [ "$UpnpModel_migrated_from" != "$UpnpModel" ]; then
-                    echo "DSM was migrated from $UpnpModel_migrated_from to $UpnpModel" >> "$sm"
+                    echo "DSM was migrated from $UpnpModel_migrated_from to $UpnpModel" >> "$_sm_raw"
                 fi
 
                 log "ExtensionHDDs: $ExtensionHdds"
                # if [[ -f $DOWNLOAD_DIR/debug_$DATE/$DSM/etc/private/domain_info ]]
                # then    windomain=$(grep "ads:domain_name" $DOWNLOAD_DIR/debug_$DATE/$DSM/etc/private/domain_info)
                # if [[ -z "$windomain" ]]; then
-               #     echo "Not in a AD." >> "$sm"
-               #     else echo "Domainname: $windomain" >> "$sm"
+               #     echo "Not in a AD." >> "$_sm_raw"
+               #     else echo "Domainname: $windomain" >> "$_sm_raw"
                # fi
                # fi
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/uptime.result" ]]
@@ -835,7 +1045,7 @@ do
                 done
 
                 if [ -z "${UpnpModel}" ]; then
-                    echo "CPUinfo from txt: no model detected." >> "$sm"
+                    echo "CPUinfo from txt: no model detected." >> "$_sm_raw"
                 fi
 
                 log "${UpnpModel}"
@@ -846,29 +1056,29 @@ do
                 echo -e "\nCPUinfo from txt:"
                 echo "$DS_CPU_TXTINFO"
                 echo -e "$DS_CPU_TXT\n"
-                }  >> "$sm"
+                }  >> "$_sm_raw"
 
-                #echo -e "\nUPNP Model: $UpnpModel\n$counter HDDs:" >> "$sm"
+                #echo -e "\nUPNP Model: $UpnpModel\n$counter HDDs:" >> "$_sm_raw"
                 if [ -z "${BadSector_sum+x}" ]; then
-                    echo "Reallocated_Sector_Ct: error" >> "$sm"
+                    echo "Reallocated_Sector_Ct: error" >> "$_sm_raw"
                     elif [[ "${BadSector_sum}" -eq 0 ]]; then
-                    echo "Reallocated_Sector_Ct: 0" >> "$sm"
+                    echo "Reallocated_Sector_Ct: 0" >> "$_sm_raw"
                     else
-                    echo "Reallocated_Sector_Ct:" "$BadSector_sum on ${BadSectors_HDD_Array[@]}" >> "$sm"
+                    echo "Reallocated_Sector_Ct:" "$BadSector_sum on ${BadSectors_HDD_Array[@]}" >> "$_sm_raw"
                 fi
                 if [ -z "${PendingSectors_sum+x}" ]; then
-                    echo "Current_Pending_Sector: error" >> "$sm"
+                    echo "Current_Pending_Sector: error" >> "$_sm_raw"
                     elif [[ "${PendingSectors_sum}" -eq 0 ]]; then
-                    echo "Current_Pending_Sector: 0" >> "$sm"
+                    echo "Current_Pending_Sector: 0" >> "$_sm_raw"
                     else
-                    echo "Current_Pending_Sector:" "$PendingSectors_sum on ${PendingSectors_HDD_Array[@]}" >> "$sm"
+                    echo "Current_Pending_Sector:" "$PendingSectors_sum on ${PendingSectors_HDD_Array[@]}" >> "$_sm_raw"
                 fi
                 if [ -z "${OfflineUncorrectable_sum+x}" ]; then
-                    echo "Offline_Uncorrectable: error" >> "$sm"
+                    echo "Offline_Uncorrectable: error" >> "$_sm_raw"
                     elif [[ "${OfflineUncorrectable_sum}" -eq 0 ]]; then
-                    echo "Offline_Uncorrectable: 0" >> "$sm"
+                    echo "Offline_Uncorrectable: 0" >> "$_sm_raw"
                     else
-                    echo "Offline_Uncorrectable:" "$OfflineUncorrectable_sum on ${OfflineUncorrectable_HDD_Array[@]}" >> "$sm"
+                    echo "Offline_Uncorrectable:" "$OfflineUncorrectable_sum on ${OfflineUncorrectable_HDD_Array[@]}" >> "$_sm_raw"
                 fi
 
 
@@ -931,7 +1141,7 @@ do
                         } >&3
                     else
                         echo -e "\e[31mCompatibility-list for ${UpnpModelCASE} not found! should be ${Script_dir}/comp/${UpnpModelCASE}_hdds_compatible.json\e[0m"
-                        echo -e "Compatibility-list for ${UpnpModelCASE} not found! should be ${Script_dir}/comp/${UpnpModelCASE}_hdds_compatible.json\nTHE FOLLOWING COMPATIBILITY RESULTS ARE WRONG:" >> "$sm"
+                        echo -e "Compatibility-list for ${UpnpModelCASE} not found! should be ${Script_dir}/comp/${UpnpModelCASE}_hdds_compatible.json\nTHE FOLLOWING COMPATIBILITY RESULTS ARE WRONG:" >> "$_sm_raw"
                     fi
 
                     if [[ -f "${Script_dir}/comp/${UpnpModelCASE}_hdds_incompatible.json" ]]; then
@@ -942,7 +1152,7 @@ do
                         } >&3
                     else
                         echo -e "\e[31mIncompatibility-list for ${UpnpModelCASE} not found! should be ${Script_dir}/comp/${UpnpModelCASE}_hdds_incompatible.json\e[0m"
-                        echo -e "Incompatibility-list for ${UpnpModelCASE} not found! should be ${Script_dir}/comp/${UpnpModelCASE}_hdds_incompatible.json\nTHE FOLLOWING COMPATIBILITY RESULTS ARE WRONG:" >> "$sm"
+                        echo -e "Incompatibility-list for ${UpnpModelCASE} not found! should be ${Script_dir}/comp/${UpnpModelCASE}_hdds_incompatible.json\nTHE FOLLOWING COMPATIBILITY RESULTS ARE WRONG:" >> "$_sm_raw"
                     fi
 
                     if [[ -z "${modelname}" ]]; then
@@ -1003,8 +1213,8 @@ do
                     #log "compatibility check for ${hddname} grepped for \"${modelname}\" , \"${modelname//-/ - }\" and \"${modelname%-*}\"; HDD Size: ${modelname_hdd_size}"
                     #} >&3
                     PoH=$(grep -iE "Power(_|-)on(_|-)(Hours|Hour_Count|Time)" "$smartResultfile" | sed -e "s/ ([^()]*)//g" | rev | cut -d " " -f1 | rev | sed 's/h.*//' )
-                    echo -e "$hddname: $hddname2\t$HDDComp: PowerOnHours: ${PoH}" #>> "$sm"
-                    echo -n "Last Extended SMART-Test: " #>> "$sm"
+                    echo -e "$hddname: $hddname2\t$HDDComp: PowerOnHours: ${PoH}" #>> "$_sm_raw"
+                    echo -n "Last Extended SMART-Test: " #>> "$_sm_raw"
                     LastSmartTest=$(grep -i -m1 "Extended Offline" "$smartResultfile" | sed -n '/Extended offline/s/ \+/ /gp' | rev | cut -d " " -f2 | rev )
                     LastSmartResult=$(grep -i -m1 "Extended Offline" "$smartResultfile" | sed -n '/Extended offline/s/ \+/ /gp' | sed 's/[^0-9]*[0-9] *//' | sed 's/ [0-9].*$//' | sed 's/^Extended offline //' )
                     re='^[0-9]+$'
@@ -1027,23 +1237,23 @@ do
                     else
                         if [[ "$CalculatePoH" != 0 ]];then
                             LastSmartExpr=$(expr "${PoH}" - "${LastSmartTest}" )
-                            echo -n "$LastSmartExpr hours ago" #>> "$sm"
+                            echo -n "$LastSmartExpr hours ago" #>> "$_sm_raw"
                         else
-                            echo -n "unknown when run" #>> "$sm"
+                            echo -n "unknown when run" #>> "$_sm_raw"
                         fi
                     fi
                     if [[ -n "${LastSmartResult}" ]]; then
-                        echo -n ", $LastSmartResult" #>> "$sm"
+                        echo -n ", $LastSmartResult" #>> "$_sm_raw"
                     fi
                     if [[ -n "${SectorSize}" ]]; then
-                        echo -n ", Sectors: $SectorSize" #>> "$sm"
+                        echo -n ", Sectors: $SectorSize" #>> "$_sm_raw"
                     fi
-                    echo ", Size: $modelname_hdd_size" #>> "$sm"
-                done 3>&1 > >(column -t -s$'\t' >> "$sm") | cat
-                #done | column -t -s$'\t' >> "$sm"
-                #done 3>&1 >> "$sm" | column -t -s$'\t' >> "$sm"
+                    echo ", Size: $modelname_hdd_size" #>> "$_sm_raw"
+                done 3>&1 > >(column -t -s$'\t' >> "$_sm_raw") | cat
+                #done | column -t -s$'\t' >> "$_sm_raw"
+                #done 3>&1 >> "$_sm_raw" | column -t -s$'\t' >> "$_sm_raw"
                 #mehr smart-kram
-                #echo -e "\n" >> "$sm"
+                #echo -e "\n" >> "$_sm_raw"
 
                 for smartfile3 in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/"{sd,nv,sas[0-9],smart}*
                 do
@@ -1188,19 +1398,19 @@ do
 
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/messages.log" ]]
                 then
-                    echo -ne "\nMemory Tests: " >> "$sm"
+                    echo -ne "\nMemory Tests: " >> "$_sm_raw"
                     Passed_Memtest=$( grep -a "Memtest passed" "$MESSAGES" | sort -u | grep -c "")
                     Failed_Memtest=$( grep -a "Memtest failed" "$MESSAGES" | sort -u | grep -c "")
                     if [ "$Passed_Memtest" -gt 0 ]; then
-                        echo "$Passed_Memtest" "Memory tests have passed." >> "$sm"
-                        grep -a "Memtest passed" "$MESSAGES" | sort -u >> "$sm"
+                        echo "$Passed_Memtest" "Memory tests have passed." >> "$_sm_raw"
+                        grep -a "Memtest passed" "$MESSAGES" | sort -u >> "$_sm_raw"
                     fi
                     if [ "$Failed_Memtest" -gt 0 ]; then
-                        echo "Found $Failed_Memtest failed Memtests:" >> "$sm"
-                        grep -a "Memtest failed" "$MESSAGES" | sort -u >> "$sm"
+                        echo "Found $Failed_Memtest failed Memtests:" >> "$_sm_raw"
+                        grep -a "Memtest failed" "$MESSAGES" | sort -u >> "$_sm_raw"
                     fi
                     if [[ "$Passed_Memtest" -eq 0 ]] && [[ "$Failed_Memtest" -eq 0 ]]; then #MEMTESTS
-                        echo "No Memory tests have been run." >> "$sm"
+                        echo "No Memory tests have been run." >> "$_sm_raw"
                     fi
                     DSM_VERSION=$( cat "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc.defaults/VERSION" | grep "productversion" ) #DSM Version
                     DSM_BuildVERSION=$( cat "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc.defaults/VERSION" | grep "buildnumber" )
@@ -1210,23 +1420,23 @@ do
                     #Hardware-specific things
 
                 if [ "$UpnpModel" = "DS216+" ]; then
-                    echo -e "\nPossible Known Issue: BIOS:" >> "$sm"
-                    echo "Bugged Versions are less than M.616" >> "$sm"
-                    echo -e "This Machines BIOS-Version: $BIOS_V_CUT" >> "$sm"
+                    echo -e "\nPossible Known Issue: BIOS:" >> "$_sm_raw"
+                    echo "Bugged Versions are less than M.616" >> "$_sm_raw"
+                    echo -e "This Machines BIOS-Version: $BIOS_V_CUT" >> "$_sm_raw"
                 fi
 
                 if [ "$UpnpModel" = "DS718+" ]; then
                     grep_cputemp=$( grep -c "<cpu_temperature> is over" "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/scemd.log" )
                     if [ "$grep_cputemp" -gt 0 ]; then
-                    echo -e "\nCPU is overheating, RMA unit:" >> "$sm"
-                    grep -i "<cpu_temperature> is over" "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/scemd.log" >> "$sm"
+                    echo -e "\nCPU is overheating, RMA unit:" >> "$_sm_raw"
+                    grep -i "<cpu_temperature> is over" "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/scemd.log" >> "$_sm_raw"
                     fi
                 fi
 
                 grep_hddissue=$( grep -c "core_clear_root_int_from_queue Error Interrupt\|Issued IDENTIFY to non-existent device ?!" "$MESSAGES" )
                 if [ "$grep_hddissue" -gt 0 ]; then
-                    echo -e "\nKnown Issue: random HDD drops of WD or HGST HDDs, update HDD Firmware:" >> "$sm"
-                    grep -ia "core_clear_root_int_from_queue Error Interrupt: PHY Decoding Error\|Issued IDENTIFY to non-existent device ?!" "$MESSAGES" >> "$sm"
+                    echo -e "\nKnown Issue: random HDD drops of WD or HGST HDDs, update HDD Firmware:" >> "$_sm_raw"
+                    grep -ia "core_clear_root_int_from_queue Error Interrupt: PHY Decoding Error\|Issued IDENTIFY to non-existent device ?!" "$MESSAGES" >> "$_sm_raw"
                 fi
 
 
@@ -1236,7 +1446,7 @@ do
                             echo -e "\nKnown Issue: BIOS:"
                             echo "Update to DSM 6.1.3-15152 Update 7 to update the BIOS."
                             echo -e "This Machines BIOS-Version: $UpnpModel $BIOS_V_CUT"
-                        } >> "$sm"
+                        } >> "$_sm_raw"
                     else
                             log "installed BIOS version ĺater than M.024"
                     fi
@@ -1248,7 +1458,7 @@ do
                             echo -e "\nKnown Issue: BIOS:"
                             echo "Update to DSM 6.1.3-15152 Update 7 to update the BIOS."
                             echo -e "This Machines BIOS-Version: $UpnpModel $BIOS_V_CUT"
-                        } >> "$sm"
+                        } >> "$_sm_raw"
                     else
                             log "installed BIOS version ĺater than M.220"
                     fi
@@ -1260,7 +1470,7 @@ do
                             echo -e "\nKnown Issue: BIOS:"
                             echo "Update to DSM 6.1.3-15152 Update 7 to update the BIOS."
                             echo -e "This Machines BIOS-Version: $UpnpModel $BIOS_V_CUT"
-                        } >> "$sm"
+                        } >> "$_sm_raw"
                     else
                             log "installed BIOS version ĺater than M.124"
                     fi
@@ -1272,7 +1482,7 @@ do
                             echo -e "\nKnown Issue: BIOS:"
                             echo "Update to DSM 6.1.3-15152 Update 7 to update the BIOS."
                             echo -e "This Machines BIOS-Version: $UpnpModel $BIOS_V_CUT"
-                        } >> "$sm"
+                        } >> "$_sm_raw"
                     else
                             log "installed BIOS version ĺater than M.310"
                     fi
@@ -1283,7 +1493,7 @@ do
                 echo -e "\nKnown Issue: with 10GbE E10G15-F1 Card detected."
                 echo "See"
                 grep -ia "tn40xx" "$KERN" | grep memory | tail -n20
-                } >> "$sm"
+                } >> "$_sm_raw"
                 fi
 
                 if grep -ia "tn40xx" "$KERN" | grep Link Up 10G &> /dev/null ; then
@@ -1292,15 +1502,15 @@ do
                 echo "If Times are above 600s after Boot, please check SOP."
                 echo "See"
                 grep -ia "tn40xx" "$KERN" | grep "Link Up 10G\|Link Down" | tail -n20
-                } >> "$sm"
+                } >> "$_sm_raw"
                 fi
 
                 if grep -ia '"faulty_communication":true' "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/var/log/ha.log &> /dev/null ; then
                 Issue25154Ct=$(grep -iac '"faulty_communication":true' "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/var/log/ha.log)
-                echo -e "\nKnown Issue: Lots of error messages 'High system usage detected' show up under HA Manager." >> "$sm"
-                echo "Showing only latest of $Issue25154Ct occurences." >> "$sm"
-                echo "See" >> "$sm"
-                grep -ia '"faulty_communication":true' "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/var/log/ha.log | tail -n1 >> "$sm"
+                echo -e "\nKnown Issue: Lots of error messages 'High system usage detected' show up under HA Manager." >> "$_sm_raw"
+                echo "Showing only latest of $Issue25154Ct occurences." >> "$_sm_raw"
+                echo "See" >> "$_sm_raw"
+                grep -ia '"faulty_communication":true' "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/var/log/ha.log | tail -n1 >> "$_sm_raw"
                 fi
 
                 if grep -ia "btrfs_wait_pending_ordered" "$MESSAGES" &> /dev/null; then
@@ -1308,7 +1518,7 @@ do
                 echo -e "\nPossible Known Issue:"
                 echo "After updating to DSM6.2.2, the volume might get stuck and with the specific hung task."
                 grep -ia "btrfs_wait_pending_ordered" "$MESSAGES"
-                } >> "$sm"
+                } >> "$_sm_raw"
                 fi
 
                 if [ "$UpnpModel" = "DS218j" ] || [ "$UpnpModel" = "RS217" ] || [ "$UpnpModel" = "RS816" ] || [ "$UpnpModel" = "DS416j" ] || [ "$UpnpModel" = "DS416slim" ] || [ "$UpnpModel" = "DS216" ] || [ "$UpnpModel" = "DS216j" ] || [ "$UpnpModel" = "DS116" ]; then
@@ -1319,7 +1529,7 @@ do
                         echo "[Cause] The marvell model may suffer from memory allocating issue."
                         echo "[Workaround]Add the following command to a bootup task:"
                         echo "/sbin/sysctl -w vm.min_free_kbytes=16384"
-                    } >> "$sm"
+                    } >> "$_sm_raw"
                     fi
                 fi
 
@@ -1331,7 +1541,7 @@ do
                         echo "[Cause] The marvell model may suffer from memory allocating issue."
                         echo "[Workaround]Add the following command to a bootup task:"
                         echo "/sbin/sysctl -w vm.min_free_kbytes=131072"
-                    } >> "$sm"
+                    } >> "$_sm_raw"
                     fi
                 fi
 
@@ -1340,36 +1550,36 @@ do
                 then
                     grep_disktemp=$( grep -c "temperature> is over" "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/var/log/scemd.log )
                         if [ "$grep_disktemp" -gt 0 ]; then
-                        echo -e "\nCPU or Disk is overheating:" >> "$sm"
-                        grep -ia "temperature> is over" "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/scemd.log" >> "$sm"
+                        echo -e "\nCPU or Disk is overheating:" >> "$_sm_raw"
+                        grep -ia "temperature> is over" "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/scemd.log" >> "$_sm_raw"
                         fi
                 fi
 
                 if [ "$ipv6_enabled" -gt 0 ]; then
-                    echo "IPv6 enabled" >> "$sm"
+                    echo "IPv6 enabled" >> "$_sm_raw"
                     echo "IPv6 on NAS is on." >> "$hb_debug"
-                else echo "IPv6 disabled" >> "$sm"
+                else echo "IPv6 disabled" >> "$_sm_raw"
                      echo "IPv6 on NAS is off." >> "$hb_debug"
                 fi
-                echo "found ${ifc_dropped_sum} dropped Packages in ifconfig.result." >> "$sm"
-                echo "found ${ifc_error_sum} bugged Packages in ifconfig.result." >> "$sm"
+                echo "found ${ifc_dropped_sum} dropped Packages in ifconfig.result." >> "$_sm_raw"
+                echo "found ${ifc_error_sum} bugged Packages in ifconfig.result." >> "$_sm_raw"
                 for ethFile in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/"{ethtool.eth,ethtool.bond}*.result
                 do
                     [[ -e "$ethFile" ]] || break  # handle the case of no *.result files
                     ethresult=$(grep "Speed" -H "$ethFile")
-                    echo "${ethresult#$DOWNLOAD_DIR/debug_$DATE/$DSM/result/}" >> "$sm"
+                    echo "${ethresult#$DOWNLOAD_DIR/debug_$DATE/$DSM/result/}" >> "$_sm_raw"
                 done
-                echo "DNS Servers:" >> "$sm"
+                echo "DNS Servers:" >> "$_sm_raw"
                 if [ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/resolv.conf" ]; then
-                cat "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/resolv.conf" | sed ':a;N;$!ba;s/\n/, /g' >> "$sm"
-                    else echo "/etc/resolv.conf not found." >> "$sm"
+                cat "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/resolv.conf" | sed ':a;N;$!ba;s/\n/, /g' >> "$_sm_raw"
+                    else echo "/etc/resolv.conf not found." >> "$_sm_raw"
                 fi
                 cat "$Route" >> "$IFCONFIG"
 
-                serviceIsEnabled Samba samba.cfg  >> "$sm"
+                serviceIsEnabled Samba samba.cfg  >> "$_sm_raw"
                 serviceIsEnabled Samba samba.cfg  >> "$hb_debug"
-                serviceIsEnabled NFS nfsd.cfg  >> "$sm"
-                serviceIsEnabled AFP atalk.cfg  >> "$sm"
+                serviceIsEnabled NFS nfsd.cfg  >> "$_sm_raw"
+                serviceIsEnabled AFP atalk.cfg  >> "$_sm_raw"
 
                 DS_upnp_v="${UpnpModel}"
                 DS_upnp_unter="${DS_upnp_v}_"
@@ -1383,8 +1593,8 @@ do
                     echo "available major updates:"
                     grep -i "$DS_MODEL_plus" "$rss" | sed -e 's/<[^>]*>//g'
                     echo -e " "
-                    } >> "$sm"
-                else echo "DSM Version is latest!" >> "$sm"
+                    } >> "$_sm_raw"
+                else echo "DSM Version is latest!" >> "$_sm_raw"
                 fi
                 {
                 echo "installed VERSION: " "$DSM_VERSION, $DSM_BuildVERSION, $DSM_smallfixVERSION"
@@ -1396,28 +1606,28 @@ do
                 then
                     if [ "$DS_MEM3_calc_byte" -gt "$DS_MEM_TXT_byte" ];
                     then
-                        echo "More RAM installed! $DS_MEM3_calc vs $DS_MEM_TXT preinstalled" >> "$sm"
+                        echo "More RAM installed! $DS_MEM3_calc vs $DS_MEM_TXT preinstalled" >> "$_sm_raw"
                     elif [ "$free_mem_kbyte" -gt "$DS_MEM_TXT_kbyte" ];
                     then
-                        echo "More RAM installed! $free_mem_nocomma vs $DS_MEM_TXT preinstalled" >> "$sm"
+                        echo "More RAM installed! $free_mem_nocomma vs $DS_MEM_TXT preinstalled" >> "$_sm_raw"
                     elif [ "$DS_MEM3_calc_byte" -eq "$DS_MEM_TXT_byte" ];
                     then
-                        echo "same RAM installed as preinstalled!"  >> "$sm"
+                        echo "same RAM installed as preinstalled!"  >> "$_sm_raw"
                     elif [ "$free_mem_kbyte" -eq "$DS_MEM_TXT_kbyte" ];
                     then
-                        echo "same RAM installed as preinstalled!"  >> "$sm"
+                        echo "same RAM installed as preinstalled!"  >> "$_sm_raw"
                     else
-                        echo "error comparing RAM-Size"  >> "$sm"
+                        echo "error comparing RAM-Size"  >> "$_sm_raw"
                     fi
                 fi
 
                 echo "Uptime: " "$UPTIME"
                 echo "Hostname: " "$Hostname"
                 echo "$QuickConnect_echo"
-                }  >> "$sm"
+                }  >> "$_sm_raw"
                 if [ "$ddns" = 1 ]; then
-                    echo -n "DDNS " >> "$sm"
-                        grep "hostname" "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/ddns.conf" >> "$sm"
+                    echo -n "DDNS " >> "$_sm_raw"
+                        grep "hostname" "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/ddns.conf" >> "$_sm_raw"
                 fi
                 {
                 echo "BIOS:" "$BIOS_V_CUT"
@@ -1431,10 +1641,10 @@ do
                 echo "Associated Tickets: $DS_SN"
 
                 swap_percent_kb=$(awk "BEGIN {printf \"%.2f\n\", $swap_used_kbyte/$swap_total_kbyte*100}")
-                echo -ne "\nSwap: ($swap_percent_kb%) used " >> "$sm"
-                bytesToHuman "$swap_used" >> "$sm"
-                echo -ne " of " >> "$sm"
-                bytesToHuman "$swap_total" >> "$sm"
+                echo -ne "\nSwap: ($swap_percent_kb%) used " >> "$_sm_raw"
+                bytesToHuman "$swap_used" >> "$_sm_raw"
+                echo -ne " of " >> "$_sm_raw"
+                bytesToHuman "$swap_total" >> "$_sm_raw"
                 echo -ne "Swap: ($swap_percent_kb%) used ">> "$hb_debug"
                 bytesToHuman "$swap_used" >> "$hb_debug"
                 echo -ne " of " >> "$hb_debug"
@@ -1453,7 +1663,7 @@ do
                 echo -n "RAM free.result: "
                 bytesToHuman "$free_mem"
                 echo -e " "
-                } >> "$sm"
+                } >> "$_sm_raw"
 
                 #log "$DS_MEM3_calc"
                 date_now=$(date +"%d. %B %H:%M:%S: ")
@@ -1462,37 +1672,37 @@ do
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/samba/smb.share.conf" ]]
                 then    SmbShares=$(grep "path=" "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/samba/smb.share.conf" | tr '\n' '\t')
                             if [[ -z "$SmbShares" ]]; then
-                                echo -e "No Samba Shares found.\n" >> "$sm"
+                                echo -e "No Samba Shares found.\n" >> "$_sm_raw"
                             else
-                                echo -e "Found Samba-shares:\n$SmbShares\n" >> "$sm"
+                                echo -e "Found Samba-shares:\n$SmbShares\n" >> "$_sm_raw"
                             fi
                 fi
 
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/usr/syno/etc/iscsi_lun.conf" ]]
                 then    LUNs="$DOWNLOAD_DIR/debug_$DATE/$DSM/usr/syno/etc/iscsi_lun.conf"
                             if [[ -z "$LUNs" ]]; then
-                                echo -e "\nNo LUN-Config found." >> "$sm"
+                                echo -e "\nNo LUN-Config found." >> "$_sm_raw"
                             elif [[ $(stat -c%s "$LUNs") -lt 1 ]]; then
-                                echo -e "\nLUN-Config-file is empty." >> "$sm"
+                                echo -e "\nLUN-Config-file is empty." >> "$_sm_raw"
                             else
-                                echo -e "\nFound LUNs:" >> "$sm"
-                                cat "$LUNs" >> "$sm"
+                                echo -e "\nFound LUNs:" >> "$_sm_raw"
+                                cat "$LUNs" >> "$_sm_raw"
                                 LUNSize_bytesToAdd="$(grep "bytes=" "$LUNs" | cut -d "=" -f2 | sed ':a;N;$!ba;s/\n/+/g')"
                                 LUNSize_byte="$(($LUNSize_bytesToAdd))"
-                                echo -en "Combined LUN Size: " >> "$sm"
-                                bytesToHuman "$LUNSize_byte" >> "$sm"
-                                echo -e "\n" >> "$sm"
+                                echo -en "Combined LUN Size: " >> "$_sm_raw"
+                                bytesToHuman "$LUNSize_byte" >> "$_sm_raw"
+                                echo -e "\n" >> "$_sm_raw"
                             fi
                 fi
 
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/usr/syno/etc/iscsi_mapping.conf" ]]
-                then    echo "iSCSI Mapping:" >> "$sm"
-                        cat "$DOWNLOAD_DIR/debug_$DATE/$DSM/usr/syno/etc/iscsi_mapping.conf" >> "$sm"
+                then    echo "iSCSI Mapping:" >> "$_sm_raw"
+                        cat "$DOWNLOAD_DIR/debug_$DATE/$DSM/usr/syno/etc/iscsi_mapping.conf" >> "$_sm_raw"
                 fi
 
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/usr/syno/etc/iscsi_target.conf" ]]
-                then    echo "iSCSI Targets:" >> "$sm"
-                        cat "$DOWNLOAD_DIR/debug_$DATE/$DSM/usr/syno/etc/iscsi_target.conf" >> "$sm"
+                then    echo "iSCSI Targets:" >> "$_sm_raw"
+                        cat "$DOWNLOAD_DIR/debug_$DATE/$DSM/usr/syno/etc/iscsi_target.conf" >> "$_sm_raw"
                 fi
 
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/packages.list" ]]
@@ -1525,7 +1735,7 @@ do
 
                             if version_compare_gt "$PureVerAvailable" "$PureVerInstalled"; then
                                 log "\e[1;31mUpdate for ${InstalledPackageArray[$counter]} from $PureVerInstalled to $PureVerAvailable available!\e[0m"
-                                echo "Update for ${InstalledPackageArray[$counter]} from $PureVerInstalled to $PureVerAvailable available!" >> "$sm"
+                                echo "Update for ${InstalledPackageArray[$counter]} from $PureVerInstalled to $PureVerAvailable available!" >> "$_sm_raw"
                             elif version_compare_gt "$PureVerInstalled" "$PureVerAvailable"; then
                                 if [[ -z "$PureVerAvailable" ]]; then
                                     log "\e[93mNo latest Version found.\e[0m"
@@ -1543,31 +1753,31 @@ do
                             counter=`expr $counter + 1`
                         done
                         if [[ $counter -gt 0 ]]; then
-                            echo -e "\n" >> "$sm"
+                            echo -e "\n" >> "$_sm_raw"
                         fi
 
-                        echo -e "Overview:" >> "$sm"
+                        echo -e "Overview:" >> "$_sm_raw"
                         if [[ "$TemporaryWorkaround" = 1 ]]; then
-                            echo -e "(Data may be unreliable, because of old DSM Version)" >> "$sm"
+                            echo -e "(Data may be unreliable, because of old DSM Version)" >> "$_sm_raw"
                         fi
-                        echo -en "Third Party packages:" >> "$sm"
+                        echo -en "Third Party packages:" >> "$_sm_raw"
                         third_packages=$(grep -v "AntiVirus\|AudioStation\|Calendar\|CloudStation\|FileStation\|HyperBackup\|LogCenter\|MediaServer\|NoteStation\|PHP[0-9].[0-9]\|PhotoStation\|ProxyServer\|StorageAnalyzer\|SynoFinder\|SynologyApplicationService\|SynologyDrive\|TextEditor\|USBCopy\|VideoStation\|WebDAVServer\|CloudSync\|DownloadStation\|SurveillanceStation\|WebStation\|VPNCenter\|MariaDB\|Chat\|Git\|Node.js_4\|Perl\|ActiveBackup\|ActiveBackup-Office365\|ActiveDirectoryServer\|Apache[0-9].[0-9]\|CMS\|CardDAVServer\|DNSServer\|DiagnosisTool\|Docker\|MailClient\|MailPlus-Server\|OAuthService\|PetaSpace\|PrestoServer\|PythonModule\|SSOServer\|SnapshotReplication\|Spreadsheet\|SynologyMoments\|Virtualization\|iTunesServer\| enabled\|TimeBackup\|Java7\|Java8\|exFAT\|PDFViewer\|DocumentViewer\|HighAvailability\|MailServer\|MailStation\|phpMyAdmin\|total [[:digit:]]\{,3\}" "$PACK")
                         if [ -z "$third_packages" ]; then
-                            echo -e "\tnone" >> "$sm"
+                            echo -e "\tnone" >> "$_sm_raw"
                         else
                             third_packages_count=$(echo "$third_packages" | uniq -u | wc -l)
-                            echo -e "\t$third_packages_count" >> "$sm"
+                            echo -e "\t$third_packages_count" >> "$_sm_raw"
                         fi
-                        echo -en "Ext4-/Btrfs-Errs:" >> "$sm"
+                        echo -en "Ext4-/Btrfs-Errs:" >> "$_sm_raw"
                         btrfserrckern=$(grep -ia "btrfs critical\|btrfs error\|btrfs warning\|btrfs.*failure\|btrfs.*failed\|BTRFS: superblock checksum mismatch" "$KERN" | wc -l)
                         ext4errckern=$(grep -ia "ext-3\|ext-4" "$KERN" | grep -v "scripts/ext-3.4" | wc -l)
                         btrfserrcmsg=$(grep -ia "btrfs critical\|btrfs error\|btrfs warning\|btrfs.*failure\|btrfs.*failed\|BTRFS: superblock checksum mismatch" "$MESSAGES" | wc -l)
                         ext4errcmsg=$(grep -ia "ext-3\|ext-4" "$MESSAGES" | grep -v "scripts/ext-3.4" | wc -l)
                         fserrorct=$(("$btrfserrckern" + "$ext4errckern" + "$btrfserrcmsg" + "$ext4errcmsg"))
                         if [[ -z "$fserrorct" || "$fserrorct" == "0" ]]; then
-                            echo -e "\t\tnone" >> "$sm"
+                            echo -e "\t\tnone" >> "$_sm_raw"
                         else
-                            echo -e "\t\t$fserrorct" >> "$sm"
+                            echo -e "\t\t$fserrorct" >> "$_sm_raw"
                         fi
 
                         if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/synolog/synosys.log" ]]; then
@@ -1580,65 +1790,65 @@ do
                         fi
                         impropershutdown=$(grep -ia "improper shutdown" "$SYSDB")
                         if [[ -z "$impropershutdown" ]]; then
-                            echo -e "improper shutdowns:\t\tnone" >> "$sm"
+                            echo -e "improper shutdowns:\t\tnone" >> "$_sm_raw"
                         else
-                            echo -ne "improper shutdowns:\t\t" >> "$sm"
-                            grep -iac "improper shutdown" "$SYSDB" >> "$sm"
+                            echo -ne "improper shutdowns:\t\t" >> "$_sm_raw"
+                            grep -iac "improper shutdown" "$SYSDB" >> "$_sm_raw"
                         fi
                         volumecrash=$(grep -ia "was crashed" "$SYSDB") #volumecrash
                         if [[ -z "$volumecrash" ]]; then
-                            echo -e "Volume crashes:\t\t\tnone" >> "$sm"
+                            echo -e "Volume crashes:\t\t\tnone" >> "$_sm_raw"
                         else
-                            echo -ne "Volume crashes:\t\t\t" >> "$sm"
-                            grep -iac "was crashed" "$SYSDB" >> "$sm"
+                            echo -ne "Volume crashes:\t\t\t" >> "$_sm_raw"
+                            grep -iac "was crashed" "$SYSDB" >> "$_sm_raw"
                         fi
 
                         degradedvolume=$(grep -ia "degrade" "$SYSDB") #volumecrash
                         if [[ -z "$degradedvolume" ]]; then
-                            echo -e "degraded volumes:\t\tnone" >> "$sm"
+                            echo -e "degraded volumes:\t\tnone" >> "$_sm_raw"
                         else
-                            echo -ne "degraded volumes:\t\t" >> "$sm"
-                            grep -iac "degrade" "$SYSDB" >> "$sm"
+                            echo -ne "degraded volumes:\t\t" >> "$_sm_raw"
+                            grep -iac "degrade" "$SYSDB" >> "$_sm_raw"
                         fi
 
                         generrors=$(grep -ia "error" "$SYSDB" | grep -v "Failed to send email" | uniq -u | wc -l) #volumecrash
                         if [[ "$generrors" -eq 0 ]]; then
-                            echo -e "generic errs:\t\t\tnone" >> "$sm"
+                            echo -e "generic errs:\t\t\tnone" >> "$_sm_raw"
                         else
-                            echo -e "generic errs:\t\t\t$(grep -ia "error" "$SYSDB" | uniq -u | wc -l)" >> "$sm"
+                            echo -e "generic errs:\t\t\t$(grep -ia "error" "$SYSDB" | uniq -u | wc -l)" >> "$_sm_raw"
                         fi
 
                         DRDYErr=$(grep -ia "DRDY" "$MESSAGES" | uniq -u | wc -l)
                         if [[ "$DRDYErr" -eq 0 ]]; then
-                            echo -e "DRDY:\t\t\t\t\tnone" >> "$sm"
+                            echo -e "DRDY:\t\t\t\t\tnone" >> "$_sm_raw"
                         else
-                            echo -e "DRDY:\t\t\t\t\t$(grep -ia "DRDY" "$MESSAGES" | uniq -u | wc -l)" >> "$sm"
+                            echo -e "DRDY:\t\t\t\t\t$(grep -ia "DRDY" "$MESSAGES" | uniq -u | wc -l)" >> "$_sm_raw"
                         fi
                         database_malformed=$(grep -iac "database disk image is malformed" "$MESSAGES")
                         if [[ "$database_malformed" -eq 0 ]]; then
-                            echo -e "Database is malformed:\tnone" >> "$sm"
+                            echo -e "Database is malformed:\tnone" >> "$_sm_raw"
                         else
-                            echo -e "Database is malformed:\t$(grep -iac "database disk image is malformed" "$MESSAGES")"  >> "$sm"
+                            echo -e "Database is malformed:\t$(grep -iac "database disk image is malformed" "$MESSAGES")"  >> "$_sm_raw"
                         fi
 
                         oom_kills=$(grep -iac "out_of_memory" "$MESSAGES")
                         if [[ "$oom_kills" -eq 0 ]]; then
-                            echo -e "Out of Memory kills:\tnone"  >> "$sm"
+                            echo -e "Out of Memory kills:\tnone"  >> "$_sm_raw"
                         else
-                            echo -e "Out of Memory kills:\t$(grep -iac "out_of_memory" "$MESSAGES")" >> "$sm"
+                            echo -e "Out of Memory kills:\t$(grep -iac "out_of_memory" "$MESSAGES")" >> "$_sm_raw"
                         fi
 
                         crashes=$(grep -iac "crash" "$MESSAGES")
                         if [[ "$crashes" -eq 0 ]]; then
-                            echo -e "generic crashes:\t\tnone" >> "$sm"
+                            echo -e "generic crashes:\t\tnone" >> "$_sm_raw"
                         else
-                            echo -e "generic crashes:\t\t$(grep -iac "crash" "$MESSAGES")" >> "$sm"
+                            echo -e "generic crashes:\t\t$(grep -iac "crash" "$MESSAGES")" >> "$_sm_raw"
                         fi
                         CallTraces=$(grep -iac "Call Trace" "$MESSAGES")
                         if [[ "$CallTraces" -eq 0 ]]; then
-                            echo -e "Call Traces:\t\t\tnone" >> "$sm"
+                            echo -e "Call Traces:\t\t\tnone" >> "$_sm_raw"
                         else
-                            echo -e "Call Traces:\t\t\t$(grep -iac "Call Trace" "$MESSAGES")" >> "$sm"
+                            echo -e "Call Traces:\t\t\t$(grep -iac "Call Trace" "$MESSAGES")" >> "$_sm_raw"
                         fi
 
                         # ── auth failures count ─────────────────────────────
@@ -1649,58 +1859,58 @@ do
                             auth_fail_ct=0
                         fi
                         if [[ "$auth_fail_ct" -eq 0 ]]; then
-                            echo -e "Authentication failures:\tnone" >> "$sm"
+                            echo -e "Authentication failures:\tnone" >> "$_sm_raw"
                         else
-                            echo -e "Authentication failures:\t$auth_fail_ct" >> "$sm"
+                            echo -e "Authentication failures:\t$auth_fail_ct" >> "$_sm_raw"
                         fi
 
                         # ── BTRFS qgroup warnings ───────────────────────────
                         qgroup_ct=$(grep -ic "qgroup.*\(over\|exceed\|limit reach\)" "$MESSAGES" "$KERN" 2>/dev/null | awk -F: '{s+=$NF} END{print s+0}')
                         if [[ "$qgroup_ct" -eq 0 ]]; then
-                            echo -e "BTRFS qgroup warnings:\tnone" >> "$sm"
+                            echo -e "BTRFS qgroup warnings:\tnone" >> "$_sm_raw"
                         else
-                            echo -e "BTRFS qgroup warnings:\t$qgroup_ct" >> "$sm"
+                            echo -e "BTRFS qgroup warnings:\t$qgroup_ct" >> "$_sm_raw"
                         fi
 
                         # ── docker container count ──────────────────────────
                         docker_ct=$(ls "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/ethtool.docker"*[a-f0-9]*.result 2>/dev/null | wc -l)
                         if [[ "$docker_ct" -gt 0 ]]; then
-                            echo -e "Docker containers seen:\t$docker_ct" >> "$sm"
+                            echo -e "Docker containers seen:\t$docker_ct" >> "$_sm_raw"
                         else
-                            echo -e "Docker containers seen:\tnone" >> "$sm"
+                            echo -e "Docker containers seen:\tnone" >> "$_sm_raw"
                         fi
 
                         # ── non-system users / encrypted shares ─────────────
                         PWD_FILE="$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/passwd"
                         if [[ -f "$PWD_FILE" ]]; then
                             users_ct=$(awk -F: '$3>=1000 && $1!="nobody"' "$PWD_FILE" | wc -l)
-                            echo -e "Non-system users:\t\t$users_ct" >> "$sm"
+                            echo -e "Non-system users:\t\t$users_ct" >> "$_sm_raw"
                         fi
                         SHARE_DIR="$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/synoshare"
                         if [[ -d "$SHARE_DIR" ]]; then
                             enc_share_ct=$(grep -lE 'encryption[[:space:]]*=[[:space:]]*"?(yes|true|1)"?' "$SHARE_DIR"/* 2>/dev/null | wc -l)
-                            echo -e "Encrypted shares:\t\t$enc_share_ct" >> "$sm"
+                            echo -e "Encrypted shares:\t\t$enc_share_ct" >> "$_sm_raw"
                         fi
 
-                        echo "" >> "$sm"
+                        echo "" >> "$_sm_raw"
 
                         # ── Extended Diagnostics block ──────────────────────
-                        echo "Extended Diagnostics:" >> "$sm"
+                        echo "Extended Diagnostics:" >> "$_sm_raw"
 
                         # 1. RAID rebuild/resync/check
                         raid_rebuild=$(grep -E "(recovery|resync|check|reshape)\s*=\s*[0-9.]+%" "$MDSTAT" 2>/dev/null)
                         if [[ -n "$raid_rebuild" ]]; then
                             echo "$raid_rebuild" | while read -r l; do
-                                echo "RAID active rebuild: $l" >> "$sm"
+                                echo "RAID active rebuild: $l" >> "$_sm_raw"
                             done
                         else
-                            echo -e "RAID rebuild:\t\t\tnone in progress" >> "$sm"
+                            echo -e "RAID rebuild:\t\t\tnone in progress" >> "$_sm_raw"
                         fi
 
                         # 2. Volume layout from newest space_history_*.xml
                         sp_hist=$(ls -t "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/space/space_history_"*.xml 2>/dev/null | head -1)
                         if [[ -n "$sp_hist" && -f "$sp_hist" ]]; then
-                            echo "Volume layout:" >> "$sm"
+                            echo "Volume layout:" >> "$_sm_raw"
                             awk '
                             /<space[[:space:]]/ { in_sp=1; vp=""; vt=""; vr=""; vs=""; venc="" }
                             in_sp && /<volume[[:space:]]+path=/ {
@@ -1724,7 +1934,7 @@ do
                                     else printf "  %s: %s / %s%s, %.2f GiB\n", vp, vr, vt, venc, gib
                                 }
                                 in_sp=0
-                            }' "$sp_hist" >> "$sm"
+                            }' "$sp_hist" >> "$_sm_raw"
                         fi
 
                         # 3. HDD temperatures (warn >50, error >60)
@@ -1738,7 +1948,7 @@ do
                             if   [[ "$temp" -ge 60 ]]; then tag=" (ERROR: critical temp)"
                             elif [[ "$temp" -ge 50 ]]; then tag=" (warning: high temp)"
                             fi
-                            echo "HDD temperature: $(basename -- "$sf"): ${temp}°C${tag}" >> "$sm"
+                            echo "HDD temperature: $(basename -- "$sf"): ${temp}°C${tag}" >> "$_sm_raw"
                         done
 
                         # 4. HDD age warning from SMART files
@@ -1750,9 +1960,9 @@ do
                             [[ ! "$hours" =~ ^[0-9]+$ ]] && continue
                             years=$((hours / 8760))
                             if   [[ "$hours" -gt 70000 ]]; then
-                                echo "HDD age ERROR: $(basename -- "$sf"): ${hours}h (~${years}y) — replace recommended" >> "$sm"
+                                echo "HDD age ERROR: $(basename -- "$sf"): ${hours}h (~${years}y) — replace recommended" >> "$_sm_raw"
                             elif [[ "$hours" -gt 50000 ]]; then
-                                echo "HDD age warning: $(basename -- "$sf"): ${hours}h (~${years}y)" >> "$sm"
+                                echo "HDD age warning: $(basename -- "$sf"): ${hours}h (~${years}y)" >> "$_sm_raw"
                             fi
                         done
 
@@ -1772,7 +1982,7 @@ do
                         done
                         if [[ -s "$vendor_tmp" ]]; then
                             summary=$(sort "$vendor_tmp" | uniq -c | sort -rn | awk '{printf "%dx %s, ", $1, $2}' | sed 's/, $//')
-                            echo "HDD vendor distribution: $summary" >> "$sm"
+                            echo "HDD vendor distribution: $summary" >> "$_sm_raw"
                         fi
                         rm -f "$vendor_tmp"
 
@@ -1796,12 +2006,12 @@ do
                                 END {
                                     for (v in starts) printf "BTRFS scrub (%s): last start=%s, last finish=%s\n", v, starts[v], (finishes[v] ? finishes[v] : "?")
                                     for (v in finishes) if (!(v in starts)) printf "BTRFS scrub (%s): last start=?, last finish=%s\n", v, finishes[v]
-                                }' "$SCRUB_LOG" >> "$sm"
+                                }' "$SCRUB_LOG" >> "$_sm_raw"
                             else
-                                echo "BTRFS scrub: no scrub history found" >> "$sm"
+                                echo "BTRFS scrub: no scrub history found" >> "$_sm_raw"
                             fi
                         else
-                            echo "BTRFS scrub: no scrub log present" >> "$sm"
+                            echo "BTRFS scrub: no scrub log present" >> "$_sm_raw"
                         fi
 
                         # 7. Disk Health Prediction (via jq)
@@ -1816,7 +2026,7 @@ do
                                 ($latest.value.cache.temperature // "") as $temp |
                                 "Disk Health Prediction: \($sn) (\($model)): \($st)\(if $temp != "" then ", temp=\($temp)°C" else "" end)" +
                                 (if $st == "warning" then " (WARNING)" elif $st != "normal" and $st != "?" then " (CRITICAL)" else "" end)
-                            ' "$HEALTH_JSON" 2>/dev/null >> "$sm"
+                            ' "$HEALTH_JSON" 2>/dev/null >> "$_sm_raw"
                         fi
 
                         # 8. Failed dpkg upgrades
@@ -1825,13 +2035,13 @@ do
                             dpkg_fails=$(grep -iE "error|failed|not authenticated" "$DPKG_LOG" 2>/dev/null | grep -vi passed | tail -3)
                             if [[ -n "$dpkg_fails" ]]; then
                                 fail_count=$(grep -ciE "error|failed|not authenticated" "$DPKG_LOG" 2>/dev/null)
-                                echo "Failed dpkg upgrades: $fail_count entries (showing 3):" >> "$sm"
-                                echo "$dpkg_fails" | sed 's/^/  /' >> "$sm"
+                                echo "Failed dpkg upgrades: $fail_count entries (showing 3):" >> "$_sm_raw"
+                                echo "$dpkg_fails" | sed 's/^/  /' >> "$_sm_raw"
                             else
-                                echo -e "Failed dpkg upgrades:\tnone" >> "$sm"
+                                echo -e "Failed dpkg upgrades:\tnone" >> "$_sm_raw"
                             fi
                         else
-                            echo -e "Failed dpkg upgrades:\tnone" >> "$sm"
+                            echo -e "Failed dpkg upgrades:\tnone" >> "$_sm_raw"
                         fi
 
                         # 9. Recent DSM update
@@ -1845,7 +2055,7 @@ do
                                 days_ago=$(( (now_epoch - last_upd_epoch) / 86400 ))
                                 tag=""
                                 if [[ "$days_ago" -ge 0 && "$days_ago" -lt 7 ]]; then tag=" (RECENT: < 7 days)"; fi
-                                echo "Last DSM update activity: $ts (${days_ago} days ago)${tag}" >> "$sm"
+                                echo "Last DSM update activity: $ts (${days_ago} days ago)${tag}" >> "$_sm_raw"
                             fi
                         fi
 
@@ -1853,7 +2063,7 @@ do
                         if [[ "$auth_fail_ct" -gt 0 && -f "$AUTH_LOG" ]]; then
                             severity=""
                             [[ "$auth_fail_ct" -ge 10 ]] && severity=" (WARNING)"
-                            echo "Auth failures: ${auth_fail_ct} total${severity}" >> "$sm"
+                            echo "Auth failures: ${auth_fail_ct} total${severity}" >> "$_sm_raw"
                             top_user=$(grep -E "Failed password|authentication failure|Invalid user" "$AUTH_LOG" 2>/dev/null \
                                 | grep -oE '(^|[[:space:]])user=[^ ]+' | sed 's/.*user=//' \
                                 | sort | uniq -c | sort -rn | head -3 \
@@ -1867,15 +2077,15 @@ do
                                 | grep -oE 'rhost=[^ ]+' | sed 's/rhost=//' \
                                 | grep -v '^$' | sort | uniq -c | sort -rn | head -3 \
                                 | awk '{printf "%s(%d), ", $2, $1}' | sed 's/, $//')
-                            [[ -n "$top_user" ]] && echo "  Top targeted users: $top_user" >> "$sm"
-                            [[ -n "$top_host" ]] && echo "  Top source hosts: $top_host" >> "$sm"
+                            [[ -n "$top_user" ]] && echo "  Top targeted users: $top_user" >> "$_sm_raw"
+                            [[ -n "$top_host" ]] && echo "  Top source hosts: $top_host" >> "$_sm_raw"
                         fi
 
                         # 11. UPS events from messages
                         ups_events=$(grep -iE "on battery|power failure|low battery|battery low|ups.*replace|apcupsd|upsmon" "$MESSAGES" 2>/dev/null | tail -3)
                         if [[ -n "$ups_events" ]]; then
-                            echo "UPS events:" >> "$sm"
-                            echo "$ups_events" | sed 's/^/  /' >> "$sm"
+                            echo "UPS events:" >> "$_sm_raw"
+                            echo "$ups_events" | sed 's/^/  /' >> "$_sm_raw"
                         fi
 
                         # 12. HyperBackup task summary
@@ -1892,21 +2102,21 @@ do
                                         }
                                     }' | head -5)
                             if [[ -n "$backup_summary" ]]; then
-                                echo "HyperBackup tasks:" >> "$sm"
-                                echo "$backup_summary" | sed 's/^/  /' >> "$sm"
+                                echo "HyperBackup tasks:" >> "$_sm_raw"
+                                echo "$backup_summary" | sed 's/^/  /' >> "$_sm_raw"
                             fi
                         fi
 
                         # 13. Bonding/LAG
                         BOND_DIR="$DOWNLOAD_DIR/debug_$DATE/$DSM/proc/net/bonding"
                         if [[ -d "$BOND_DIR" ]]; then
-                            echo "Network bonding:" >> "$sm"
+                            echo "Network bonding:" >> "$_sm_raw"
                             for bf in "$BOND_DIR"/*; do
                                 [[ -f "$bf" ]] || continue
                                 mode=$(grep "Bonding Mode:" "$bf" | sed 's/.*: //')
                                 slaves=$(grep "Slave Interface:" "$bf" | sed 's/.*: //' | tr '\n' ',' | sed 's/,$//')
                                 states=$(grep "MII Status:" "$bf" | sed 's/.*: //' | tr '\n' ',' | sed 's/,$//')
-                                echo "  $(basename -- "$bf"): mode=$mode, slaves=$slaves, states=$states" >> "$sm"
+                                echo "  $(basename -- "$bf"): mode=$mode, slaves=$slaves, states=$states" >> "$_sm_raw"
                             done
                         fi
 
@@ -1916,9 +2126,9 @@ do
                             if [[ -n "$la" ]]; then
                                 la_int=${la%.*}
                                 if [[ "$la_int" -gt 10 ]] 2>/dev/null; then
-                                    echo "High load average detected: $la (critical)" >> "$sm"
+                                    echo "High load average detected: $la (critical)" >> "$_sm_raw"
                                 elif [[ "$la_int" -gt 5 ]] 2>/dev/null; then
-                                    echo "Elevated load average: $la (warning)" >> "$sm"
+                                    echo "Elevated load average: $la (warning)" >> "$_sm_raw"
                                 fi
                             fi
                         fi
@@ -1928,7 +2138,7 @@ do
                             tz=$(grep -oE 'timezone\s*=\s*"[^"]*"' "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/synoinfo.conf" 2>/dev/null | head -1 | sed 's/.*"\(.*\)"/\1/')
                             lang=$(grep -oE 'language\s*=\s*"[^"]*"' "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/synoinfo.conf" 2>/dev/null | head -1 | sed 's/.*"\(.*\)"/\1/')
                             if [[ -n "$tz" || -n "$lang" ]]; then
-                                echo "DSM region: timezone=${tz:-?}, language=${lang:-?}" >> "$sm"
+                                echo "DSM region: timezone=${tz:-?}, language=${lang:-?}" >> "$_sm_raw"
                             fi
                         fi
 
@@ -1936,22 +2146,22 @@ do
                         SMART_TEST_LOG="$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/disk_smart_test_log.xml"
                         smart_sched=$(grep -oE "smart_test_period\s*=\s*\"[^\"]+\"|disk_smart_test_schedule\s*=\s*\"[^\"]+\"" "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/synoinfo.conf" 2>/dev/null | sed 's/.*"\(.*\)"/\1/')
                         if [[ -n "$smart_sched" && "$smart_sched" != "none" && "$smart_sched" != "no" ]]; then
-                            echo "SMART self-test schedule: $smart_sched" >> "$sm"
+                            echo "SMART self-test schedule: $smart_sched" >> "$_sm_raw"
                         elif [[ -f "$SMART_TEST_LOG" && $(stat -c%s "$SMART_TEST_LOG" 2>/dev/null || echo 0) -gt 100 ]]; then
-                            echo "SMART self-test schedule: history present (recent tests detected)" >> "$sm"
+                            echo "SMART self-test schedule: history present (recent tests detected)" >> "$_sm_raw"
                         else
-                            echo "SMART self-test schedule: not configured" >> "$sm"
+                            echo "SMART self-test schedule: not configured" >> "$_sm_raw"
                         fi
 
-                        echo "" >> "$sm"
+                        echo "" >> "$_sm_raw"
                         # ── End Extended Diagnostics ───────────────────────
 
-                        echo -e "\n" >> "$sm"
-                        echo -en "Third Party packages:" >> "$sm"
+                        echo -e "\n" >> "$_sm_raw"
+                        echo -en "Third Party packages:" >> "$_sm_raw"
                         if [ -z "$third_packages" ]; then
-                            echo -e "\tnone" >> "$sm"
+                            echo -e "\tnone" >> "$_sm_raw"
                         else
-                            echo -e "\n$third_packages\n" >> "$sm"
+                            echo -e "\n$third_packages\n" >> "$_sm_raw"
                         fi
                 fi
 
@@ -1960,7 +2170,7 @@ do
                 btrfserrmsg=$(grep -ia "btrfs critical\|btrfs error\|btrfs warning\|btrfs.*failure\|btrfs.*failed\|BTRFS: superblock checksum mismatch" "$MESSAGES")
                 ext4errmsg=$(grep -ia "ext-3\|ext-4" "$MESSAGES" | grep -v "scripts/ext-3.4" )
                 if [[ -z "$btrfserrkern" ]] && [[ -z "$ext4errkern" ]] && [[ -z "$btrfserrmsg" ]] && [[ -z "$ext4errmsg" ]]; then
-                    echo -e "Ext4-/Btrfs-Errs:\t\tnone" >> "$sm"
+                    echo -e "Ext4-/Btrfs-Errs:\t\tnone" >> "$_sm_raw"
                 else
                     # Combine, dedupe, sort by leading ISO timestamp, keep newest 20
                     all_fs=$(printf '%s\n%s\n%s\n%s\n' \
@@ -1970,11 +2180,11 @@ do
                     shown=$(echo "$all_fs" | tail -n 20)
                     if [[ "$total" -gt 20 ]]; then
                         hidden=$((total - 20))
-                        echo -e "\nExt4-/Btrfs-Errors: $total total — showing newest 20 ($hidden omitted)" >> "$sm"
+                        echo -e "\nExt4-/Btrfs-Errors: $total total — showing newest 20 ($hidden omitted)" >> "$_sm_raw"
                     else
-                        echo -e "\nExt4-/Btrfs-Errors:" >> "$sm"
+                        echo -e "\nExt4-/Btrfs-Errors:" >> "$_sm_raw"
                     fi
-                    echo "$shown" >> "$sm"
+                    echo "$shown" >> "$_sm_raw"
                 fi
 
                     tac "$SYSDB" >> "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/synolog/synosystac.log"
@@ -1982,37 +2192,37 @@ do
 
                     impropershutdown=$(grep -ia "improper shutdown" "$SYSDB") #improper shutdowns
                     if [[ -z "$impropershutdown" ]]; then
-                        echo -e "improper shutdowns:\t\tnone" >> "$sm"
+                        echo -e "improper shutdowns:\t\tnone" >> "$_sm_raw"
                     else
-                        echo -e "improper shutdowns:" >> "$sm"
-                        echo "$impropershutdown" >> "$sm"
-                        echo -e "\n" >> "$sm"
+                        echo -e "improper shutdowns:" >> "$_sm_raw"
+                        echo "$impropershutdown" >> "$_sm_raw"
+                        echo -e "\n" >> "$_sm_raw"
                     fi
                     volumecrash=$(grep -ia "was crashed" "$SYSDB") #volumecrash
                     if [[ -z "$volumecrash" ]]; then
-                        echo -e "Volume crashes:\t\t\tnone" >> "$sm"
+                        echo -e "Volume crashes:\t\t\tnone" >> "$_sm_raw"
                     else
-                        echo -e "Volume crashes:" >> "$sm"
-                        echo "$volumecrash" >> "$sm"
-                        echo -e "\n" >> "$sm"
+                        echo -e "Volume crashes:" >> "$_sm_raw"
+                        echo "$volumecrash" >> "$_sm_raw"
+                        echo -e "\n" >> "$_sm_raw"
                     fi
 
                     degradedvolume=$(grep -ia "degrade" "$SYSDB") #volumedegradation
                     if [[ -z "$degradedvolume" ]]; then
-                        echo -e "degraded volumes:\t\tnone" >> "$sm"
+                        echo -e "degraded volumes:\t\tnone" >> "$_sm_raw"
                     else
-                        echo -e "degraded volumes:" >> "$sm"
-                        echo "$degradedvolume" >> "$sm"
-                        echo -e "\n" >> "$sm"
+                        echo -e "degraded volumes:" >> "$_sm_raw"
+                        echo "$degradedvolume" >> "$_sm_raw"
+                        echo -e "\n" >> "$_sm_raw"
                     fi
 
                     generrors=$(grep -ia "error" "$SYSDB" | uniq -u | wc -l) #generic errors
                     if [[ "$generrors" -eq 0 ]]; then
-                        echo -e "generic errs:\t\t\tnone" >> "$sm"
+                        echo -e "generic errs:\t\t\tnone" >> "$_sm_raw"
                     else
-                        echo -e "$(grep -ia "error" "$SYSDB" | grep -v "Failed to send email" | uniq -u | wc -l) generic errs:" >> "$sm"
-                        echo "$(grep -ia "error" "$SYSDB" | grep -v "Failed to send email" | uniq -u)" >> "$sm"
-                        echo -e "\n" >> "$sm"
+                        echo -e "$(grep -ia "error" "$SYSDB" | grep -v "Failed to send email" | uniq -u | wc -l) generic errs:" >> "$_sm_raw"
+                        echo "$(grep -ia "error" "$SYSDB" | grep -v "Failed to send email" | uniq -u)" >> "$_sm_raw"
+                        echo -e "\n" >> "$_sm_raw"
                     fi
 
                 log "todo: fix old debugs here"
@@ -2055,8 +2265,8 @@ do
                             if [[ "$CallTraces" -eq 0 ]]; then
                                 echo -e "Call Traces:\t\t\tnone"
                             else
-                                echo -e "$(grep -iac "Call Trace" "$MESSAGES") Call traces, showing 20 most recent + next 25 lines:"
-                                grep -ia -m20 "Call Trace" -A25 "$MESSAGES"
+                                echo -e "$(grep -iac "Call Trace" "$MESSAGES") Call traces, showing last one:"
+                                tac "$MESSAGES" | grep -ia -m1 "Call Trace" -B25 | tac
                                 # grep -ia "Call Trace" "$MESSAGES" | while read l; do
                                 #   # Get seconds-since-startup timestamp from Call Trace line
                                 #   log "1681" >&3
@@ -2069,9 +2279,13 @@ do
                                 #   fi
                                 #done
                             fi
-                        } >>  "$sm"
+                        } >>  "$_sm_raw"
                     fi
                 fi
+
+                # Render sectioned sm.log, then remove temp file
+                render_sm_log
+                rm -f "$_sm_raw" 2>/dev/null
 
                 #write hibernation info:
                 satadeepsleep=$(grep -c "satadeepsleeptimer=\"1\"" "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/etc/synoinfo.conf)
@@ -2205,9 +2419,13 @@ do
             time(
                 source "${Script_dir}/config.sh" #load OpenFiles[] Array from config.sh
                 #log "Array before unsetting: ${OpenFiles[@]}"
-                for i in "${!OpenFiles[@]}"; do #remove empty vars from array [@]
-                    [ -n "${OpenFiles[$i]}" ] || log "OpenFiles[$i] unset, because empty!"
-                    [ -n "${OpenFiles[$i]}" ] || unset "OpenFiles[$i]"
+                for i in "${!OpenFiles[@]}"; do #remove empty/missing entries from array [@]
+                    _f="${OpenFiles[$i]}"
+                    _base="${_f%%:*}"  # strip :100000 Sublime suffix before checking existence
+                    if [[ -z "$_f" || ! -e "$_base" ]]; then
+                        log "OpenFiles[$i] unset, because empty or not found: ${_f}"
+                        unset "OpenFiles[$i]"
+                    fi
                 done
                 if [[ "$os" == "win" ]]; then
                     # Convert all paths to Windows format and open in one Sublime call

@@ -84,28 +84,67 @@ def version_compare_gt(a, b):
     return version_key(a) > version_key(b)
 
 
+def _is_wsl() -> bool:
+    try:
+        with open("/proc/version") as f:
+            return bool(re.search(r"Microsoft|WSL", f.read()))
+    except Exception:
+        return False
+
+
+def _find_win_subl() -> str:
+    """Search for Sublime Text on the Windows side from WSL."""
+    for cmd in ("sublime_text.exe", "subl.exe"):
+        found = shutil.which(cmd)
+        if found:
+            return found
+    try:
+        win_user = subprocess.run(
+            ["cmd.exe", "/c", "echo %USERNAME%"],
+            capture_output=True, text=True, timeout=3,
+        ).stdout.strip()
+    except Exception:
+        win_user = ""
+    candidates = [
+        "/mnt/c/Program Files/Sublime Text/sublime_text.exe",
+        "/mnt/c/Program Files/Sublime Text 4/sublime_text.exe",
+        "/mnt/c/Program Files/Sublime Text 3/sublime_text.exe",
+        "/mnt/c/Program Files/Sublime Text/subl.exe",
+        "/mnt/c/Program Files/Sublime Text 4/subl.exe",
+        "/mnt/c/Program Files/Sublime Text 3/subl.exe",
+    ]
+    if win_user:
+        candidates += [
+            f"/mnt/c/Users/{win_user}/AppData/Local/Programs/Sublime Text/sublime_text.exe",
+            f"/mnt/c/Users/{win_user}/AppData/Local/Programs/Sublime Text 3/sublime_text.exe",
+            f"/mnt/c/Users/{win_user}/AppData/Local/Programs/Sublime Text 4/sublime_text.exe",
+        ]
+    for c in candidates:
+        if Path(c).exists():
+            return c
+    return ""
+
+
 def find_editor():
     system = platform.system()
     if system == "Windows":
         for c in [
+            r"C:\Program Files\Sublime Text\sublime_text.exe",
+            r"C:\Program Files\Sublime Text 4\sublime_text.exe",
+            r"C:\Program Files\Sublime Text 3\sublime_text.exe",
             r"C:\Program Files\Sublime Text\subl.exe",
             r"C:\Program Files\Sublime Text 4\subl.exe",
             r"C:\Program Files\Sublime Text 3\subl.exe",
-            r"C:\Program Files\Sublime Text\sublime_text.exe",
-            r"C:\Program Files\Sublime Text 4\sublime_text.exe",
         ]:
             if Path(c).exists():
                 return c
-        found = shutil.which("subl") or shutil.which("sublime_text")
+        found = shutil.which("sublime_text") or shutil.which("subl")
         if found:
             return found
         return "notepad.exe"
-    try:
-        with open("/proc/version") as f:
-            if re.search(r"Microsoft|WSL", f.read()):
-                return r"/mnt/c/Program Files/Sublime Text 3/subl.exe"
-    except Exception:
-        pass
+    if _is_wsl():
+        found = _find_win_subl()
+        return found if found else "explorer.exe"
     # Prefer Flatpak Sublime Text (carries user's Log Highlight settings)
     flatpak = shutil.which("flatpak")
     if flatpak:
@@ -116,7 +155,7 @@ def find_editor():
                 return "flatpak:com.sublimehq.SublimeText"
         except Exception:
             pass
-    for candidate in ["subl", "sublime_text", "gedit", "xdg-open"]:
+    for candidate in ["subl", "sublime_text", "gedit", "kate", "mousepad", "xed", "pluma", "xdg-open"]:
         if shutil.which(candidate):
             return candidate
     return None
@@ -2082,7 +2121,17 @@ def open_in_editor(files: list):
 
     print(f"Opening editor: {editor}")
     try:
-        if editor == "notepad.exe":
+        if _is_wsl():
+            # Convert Linux paths to Windows paths and open all at once
+            win_paths = []
+            for f in existing:
+                try:
+                    r = subprocess.run(["wslpath", "-w", f], capture_output=True, text=True)
+                    win_paths.append(r.stdout.strip())
+                except Exception:
+                    win_paths.append(f)
+            subprocess.Popen([editor] + win_paths)
+        elif editor == "notepad.exe":
             for f in existing:
                 subprocess.Popen([editor, f])
         elif editor.startswith("flatpak:"):

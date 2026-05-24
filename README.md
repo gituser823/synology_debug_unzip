@@ -102,7 +102,6 @@ bash entpacker.sh -d "$HOME/Downloads/synology" -u
 | File | Source | Refresh interval |
 |------|--------|-----------------|
 | `tmp/genRSS.php` | DSM update feed | 10 hours |
-| `tmp/SRS.php` | SRS list (discontinued) | 10 hours |
 | `comp/<Model>_hdds_compatible.json` | Synology HCL API | 24 hours |
 | `comp/<Model>_hdds_incompatible.json` | Synology HCL API | 24 hours |
 | `tmp/package_versions.txt` | archive.synology.com | 24 hours |
@@ -122,4 +121,4 @@ Run with `-u` to force an immediate refresh.
 - An absolute path is required for `-d`. Relative paths are rejected.
 - Firefox `.part` files are detected; the script waits for the download to complete before extracting.
 - Multiple HCL download jobs run in parallel to speed up the initial data fetch.
-- SRS (Synology Replacement Service) has been discontinued by Synology and is no longer checked.
+- SRS (Synology Replacement Service) has been discontinued by Synology and is not checked.

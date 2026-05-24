@@ -36,8 +36,6 @@ DSM=dsm
 CPU_FILE="${Script_dir}/files/CPU.txt"
 PShedPy="${Script_dir}/files/power_shed.py"
 rss="${Script_dir}/tmp/genRSS.php"
-srs="${Script_dir}/tmp/SRS.php"
-srsde="${Script_dir}/tmp/SRS-de.php"
 available_packages_pre="${Script_dir}/tmp/available_packages_pre.txt"
 available_packages="${Script_dir}/tmp/available_packages.txt"
 package_versions="${Script_dir}/tmp/package_versions.txt"
@@ -112,10 +110,6 @@ convertJson() {
     echo "done"
 }
 
-updateSRSList() {
-    echo "SRS-Liste entfällt (Synology hat SRS eingestellt)."
-    touch "$srs" "$srsde"
-}
 
 updateDSMUpdatesList() {
     	echo -en "Downloading latest genRSS.php..."
@@ -296,7 +290,6 @@ while getopts ":uhvd:" opt; do
     u)
         echo "updating files:" >&2
         updateDSMUpdatesList
-        updateSRSList
         updateCompatibilityLists
         updateLatestPackageVersionsList
         convertJson
@@ -304,7 +297,7 @@ while getopts ":uhvd:" opt; do
     h)
         echo -e "\navailable commandline-arguments are:\n"
         echo -e "\t-h : Show this help"
-        echo -e "\t-u : Update SRS-List, DSM-Updates, HDD-(in-)compatibility-lists, package updates"
+        echo -e "\t-u : Update DSM-Updates, HDD-(in-)compatibility-lists, package updates"
         echo -e "\t-v : Be Verbose"
         echo -e "\t-d : Set Download directory to scan (use absolute path) [required]"
         echo -e "\t     example: entpacker.sh -d \"/home/thomas/Downloads/neu\""
@@ -351,11 +344,6 @@ fi
         #curl "https://www.synology.com/de-de/knowledgebase/DSM/tutorial/General/What_kind_of_CPU_does_my_NAS_have" -# --output "$cputxt_file"
                 #awk '/<table id="b_4">/{f=1;next} /<\/table>/{f=0} f' "$cputxt_file" > "$cputxt_file2"
 #fi
-
-if [[ "$(find "${Script_dir}"/tmp/ -name SRS.php -mmin +600)" ]] || [[ -z "$(find "${Script_dir}"/tmp/ -name SRS.php)" ]]; then  #update, if no file found or older than 10 hours
-        touch "${Script_dir}/tmp/SRS.php"
-        updateSRSList
-fi
 
 if [[ "$(find "${Script_dir}"/tmp/lftp/ -name config_no_00.cfg -mmin +1440)" ]] || [[ -z "$(find "${Script_dir}"/tmp/lftp/ -name config_no_00.cfg)" ]]; then  #update, if no file found or older than 24 hours
         touch "${Script_dir}/tmp/lftp/config_no_00.cfg"
@@ -1316,11 +1304,6 @@ do
                         fi
                 fi
 
-                if grep -wi "$UpnpModel" "$srsde" &> /dev/null ; then
-                    echo -e "\nNAS can be SRSed in DE! ( enabled )" >> "$sm"
-                else
-                    echo -e "\nno DE-SRS possible. ( disabled )" >> "$sm"
-                fi
                 if [ "$ipv6_enabled" -gt 0 ]; then
                     echo "IPv6 enabled" >> "$sm"
                     echo "IPv6 on NAS is on." >> "$hb_debug"

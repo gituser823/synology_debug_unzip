@@ -35,8 +35,6 @@ SCRIPT_DIR = Path(__file__).parent.resolve()
 CPU_FILE = SCRIPT_DIR / "files" / "CPU.txt"
 POWER_SCHED_PY = SCRIPT_DIR / "files" / "power_shed.py"
 RSS_FILE = SCRIPT_DIR / "tmp" / "genRSS.php"
-SRS_FILE = SCRIPT_DIR / "tmp" / "SRS.php"
-SRS_DE_FILE = SCRIPT_DIR / "tmp" / "SRS-de.php"
 AVAILABLE_PACKAGES = SCRIPT_DIR / "tmp" / "available_packages.txt"
 PACKAGE_VERSIONS = SCRIPT_DIR / "tmp" / "package_versions.txt"
 PRODUCT_LIST = SCRIPT_DIR / "tmp" / "ProductList.json"
@@ -193,12 +191,6 @@ def update_dsm_updates_list():
         print(f" error: {e}")
 
 
-def update_srs_list():
-    print("SRS-Liste entfällt (Synology hat SRS eingestellt).")
-    SRS_FILE.touch()
-    SRS_DE_FILE.touch()
-
-
 def update_package_versions_list():
     TMP_DIR.mkdir(parents=True, exist_ok=True)
     try:
@@ -303,11 +295,6 @@ def check_and_update():
     if rss_age > 600 * 60:
         RSS_FILE.touch()
         update_dsm_updates_list()
-
-    srs_age = now - SRS_FILE.stat().st_mtime if SRS_FILE.exists() else float("inf")
-    if srs_age > 600 * 60:
-        SRS_FILE.touch()
-        update_srs_list()
 
     pv_age = now - PACKAGE_VERSIONS.stat().st_mtime if PACKAGE_VERSIONS.exists() else float("inf")
     if pv_age > 24 * 60 * 60:
@@ -965,7 +952,6 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
     resolv_text = read_file(dsm_dir / "etc" / "resolv.conf")
     rss_text = read_file(RSS_FILE)
     cpu_file_text = read_file(CPU_FILE)
-    srs_de_text = read_file(SRS_DE_FILE)
     pack_text = read_file(dsm_dir / "packages.list")
     version_text = read_file(dsm_dir / "etc.defaults" / "VERSION")
     disk_xml = read_file(dsm_dir / "var" / "log" / "disk_overview.xml")
@@ -1852,12 +1838,6 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
         for l in shown:
             w(l)
 
-    # SRS
-    if upnp_model and upnp_model in srs_de_text:
-        w("\nNAS can be SRSed in DE! ( enabled )")
-    else:
-        w("\nno DE-SRS possible. ( disabled )")
-
     w("IPv6 enabled" if ipv6_count > 0 else "IPv6 disabled")
     w(f"found {dropped_sum} dropped Packages in ifconfig.result.")
     w(f"found {error_sum} bugged Packages in ifconfig.result.")
@@ -2326,7 +2306,7 @@ def main():
     if args.h:
         print("\navailable commandline-arguments are:\n")
         print("\t-h : Show this help")
-        print("\t-u : Update SRS-List, DSM-Updates, HDD-(in-)compatibility-lists, package updates")
+        print("\t-u : Update DSM-Updates, HDD-(in-)compatibility-lists, package updates")
         print("\t-v : Be Verbose")
         print("\t-d : Set Download directory to scan (use absolute path) [required]")
         print('\t     example: entpacker.py -d "/home/thomas/Downloads/neu"')
@@ -2339,7 +2319,6 @@ def main():
     if args.u:
         print("updating files:")
         update_dsm_updates_list()
-        update_srs_list()
         update_compatibility_lists()
         update_package_versions_list()
         sys.exit(0)

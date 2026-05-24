@@ -13,7 +13,7 @@ if [ "$ThomasModus" -eq 1 ]; then
 fi
 
 
-required_packages="bsdtar lftp jq sqlite3 ps"
+required_packages="bsdtar lftp jq sqlite3 ps unzip"
 for package in $required_packages; do
     command -v "$package" > /dev/null || {
         echo "Please install $package to proceed."
@@ -1492,7 +1492,7 @@ do
                         for i in "${InstalledPackageArray[@]}"
                         do
                             #tac "$synopkgfile" | grep -ia "${InstalledPackageArray[$counter]}:" | grep -ia "start version\|stop version" | grep -ia -m1 "successfully" >> "$DOWNLOAD_DIR/debug_$DATE/$DSM/packages_onoff.list"
-                            grep -ia "${InstalledPackageArray[$counter]}" "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/syno_service.result" >> "$DOWNLOAD_DIR/debug_$DATE/$DSM/packages_onoff.list"
+                            grep -ia "${InstalledPackageArray[$counter]}" "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/syno_service.result" >> "$DOWNLOAD_DIR/debug_$DATE/$DSM/packages_onoff.list" 2>/dev/null
                             PACK_ONOFF="$DOWNLOAD_DIR/debug_$DATE/$DSM/packages_onoff.list"
                             aver=$(grep "^$i " "$package_versions")
                             PureVerAvailable=$(echo "${aver}" | rev | cut -d " " -f1 | rev | sed 's/\-/./g')
@@ -2147,7 +2147,7 @@ do
                     while read p; do
                         re='^[0-9]+$'
                         if [[ $p =~ $re ]] ; then
-                           python "${PShedPy}" "$p" >> "$hb_debug";
+                           python3 "${PShedPy}" "$p" >> "$hb_debug";
                         fi
                         done < "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/power_sched.conf"
                     else
@@ -2185,16 +2185,24 @@ do
                     [ -n "${OpenFiles[$i]}" ] || log "OpenFiles[$i] unset, because empty!"
                     [ -n "${OpenFiles[$i]}" ] || unset "OpenFiles[$i]"
                 done
-                for i in "${OpenFiles[@]}"; do # open single files
-                    # $subl may be a multi-word command (e.g. "flatpak run …"),
-                    # so use unquoted expansion to split into argv elements.
-                    $subl "$i"
-                    sleep 0.1
-                done
+                if [[ "$os" == "win" ]]; then
+                    # Convert all paths to Windows format and open in one Sublime call
+                    declare -a _win_paths
+                    for i in "${OpenFiles[@]}"; do
+                        _win_paths+=("$(wslpath -w "$i")")
+                    done
+                    "${subl[@]}" "${_win_paths[@]}" 2>/dev/null
+                    unset _win_paths
+                else
+                    for i in "${OpenFiles[@]}"; do # open single files
+                        "${subl[@]}" "$i"
+                        sleep 0.1
+                    done
+                fi
 
-                echo -n "${subl} "
+                echo -n "${subl[*]} "
                 if [[ "$writeLastDebugToFile" = 1 ]]; then
-                	echo -n "${subl} " > "${LastDebugFile}"
+                	echo -n "${subl[*]} " > "${LastDebugFile}"
             	fi
                 for arg in "${OpenFiles[@]}"
                     do echo -n "\"$arg\" "

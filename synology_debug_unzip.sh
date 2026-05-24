@@ -62,7 +62,7 @@ bytesToHuman() {
     while ((b > 1024)); do
         d="$(printf ".%02d" $((b % 1024 * 100 / 1024)))"
         b=$((b / 1024))
-        let s++
+        (( s++ ))
     done
     echo -n "$b$d ${S[$s]}"
 }
@@ -318,7 +318,7 @@ render_sm_log() {
 }
 
 convertJson() {
-    while ps -aux |grep -v grep | grep -q lftp ; do #wait for lftp to finish downloading
+    while ps aux | grep -v grep | grep -q lftp ; do #wait for lftp to finish downloading
     sleep 1
     done
 	printf "Converting Json-files"
@@ -393,7 +393,7 @@ updateLatestPackageVersionsList() {
         echo "set ssl:verify-certificate false" > "${Script_dir}/tmp/lftp2.cfg"
         echo "set net:connection-limit 20" >> "${Script_dir}/tmp/lftp2.cfg"
         echo "set xfer:clobber yes" >> "${Script_dir}/tmp/lftp2.cfg"
-        cat "${available_packages_pre}" | awk -v OFS="\\\ " '$1=$1' > "${available_packages}"
+        awk -v OFS="\\\ " '$1=$1' "${available_packages_pre}" > "${available_packages}"
         rm "${available_packages_pre}"
         declare -a "PackageArray"
         readarray -t "PackageArray" < "${available_packages}"
@@ -423,10 +423,10 @@ updateCompatibilityLists() {
         stat --printf="Size: %s" "$ProductList"
         fi
         IFS=","
-        counter="0"
-        for v in $(cat "$ProductList")
+        counter=0
+        for v in $(< "$ProductList")
         do  Models["${counter}"]="${v//\"}"
-            counter=`expr $counter + 1`
+            (( counter++ ))
         done
         IFS=$' \t\n'
 
@@ -451,7 +451,7 @@ updateCompatibilityLists() {
                     echo 'get "https://www.synology.com/api/compatibility/findHclList?lang=en-global&tab=drives&model='"${m//+/%2B}"'&category=hdds_no_ssd_trim&recommend=f" -o "'"${Script_dir}"'/comp/'"${m}"'_hdds_incompatible.json"'
                     #stat --printf=", Size: %s" "${Script_dir}/comp/${m}_hdds_compatible.json"
                     } >> "${confs[$ind]}"
-                    let ind++
+                    (( ind++ ))
                     [ "$ind" -ge ${#confs[@]} ] && ind=0 #split to multiple files in confs[@]
                 done
             echo "bye" |tee -a "${confs[@]}" 1>/dev/null
@@ -740,13 +740,10 @@ do
 
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/remote.debug.dat" ]] #for UC3200
                 then
-                    if [[ -f "$DOWNLOAD_DIR/debug_$DATE/remote.debug.dat" ]]
-                    then
-                        sm="$DOWNLOAD_DIR/debug_$DATE/$DSM/sm.log"; _sm_raw="$DOWNLOAD_DIR/debug_$DATE/$DSM/_sm_raw"; : > "$_sm_raw" 2>/dev/null
-                        echo -e "Synology UC: Detected, this is the ACTIVE Server-log\n" >> "$_sm_raw"
-                        mv "$DOWNLOAD_DIR/debug_$DATE/remote.debug.dat" "$DOWNLOAD_DIR/passive_UC.dat"
-                        sleep 2
-                    fi
+                    sm="$DOWNLOAD_DIR/debug_$DATE/$DSM/sm.log"; _sm_raw="$DOWNLOAD_DIR/debug_$DATE/$DSM/_sm_raw"; : > "$_sm_raw" 2>/dev/null
+                    echo -e "Synology UC: Detected, this is the ACTIVE Server-log\n" >> "$_sm_raw"
+                    mv "$DOWNLOAD_DIR/debug_$DATE/remote.debug.dat" "$DOWNLOAD_DIR/passive_UC.dat"
+                    sleep 2
                 fi
 
                 if [[ "$file" = "$DOWNLOAD_DIR/passive_UC.dat" ]]; then #passive debug of UC3200
@@ -840,12 +837,10 @@ do
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/proc/mdstat" ]]
                 then    MDSTAT=$DOWNLOAD_DIR/debug_$DATE/$DSM/proc/mdstat
                         cat "$MDSTAT" >> "$sg"
-                        md0E=$(cat "$MDSTAT" | grep -E 'md0' -A2 | grep -q 'E')
-                        md0ExitCode=$?
-                        if [[ "$md0ExitCode" -eq 0 ]]; then
-                            cat "$MDSTAT" | grep -E 'md0' -A2 >> "$_sm_raw"
+                        if grep -E 'md0' -A2 "$MDSTAT" | grep -q 'E'; then
+                            grep -E 'md0' -A2 "$MDSTAT" >> "$_sm_raw"
                         fi
-                        cat "$MDSTAT" | grep -E 'md[^01]' -A2 | sed -r '/^\s*$/d' >> "$_sm_raw"
+                        grep -E 'md[^01]' -A2 "$MDSTAT" | sed -r '/^\s*$/d' >> "$_sm_raw"
                 fi
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/bash_history.log" ]]
                 then    Bash_history=$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/bash_history.log
@@ -869,18 +864,15 @@ do
                 then    IFCONFIG=$DOWNLOAD_DIR/debug_$DATE/$DSM/result/ifconfig.result
                     ipv6_enabled=$(grep eth -A7 "$IFCONFIG" | grep -c "inet6 addr")
                     declare -a ifc_dropped
-                    ifc_dropped=$(grep "dropped" "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/ifconfig.result" | sed 's/.*dropped://' | cut -d " " -f1)
                     ifc_dropped_sum=0
-                    for i in "${ifc_dropped[@]}"; do
-                        let ifc_dropped_sum+=$i
-                    done
+                    while IFS= read -r val; do
+                        (( ifc_dropped_sum += val ))
+                    done < <(grep "dropped" "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/ifconfig.result" | sed 's/.*dropped://' | cut -d " " -f1)
 
-                    declare -a ifc_error
-                    ifc_error=$(grep "errors" "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/ifconfig.result" | sed 's/.*errors://' | cut -d " " -f1)
                     ifc_error_sum=0
-                    for i in "${ifc_error[@]}"; do
-                        let ifc_error_sum+=$i
-                    done
+                    while IFS= read -r val; do
+                        (( ifc_error_sum += val ))
+                    done < <(grep "errors" "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/ifconfig.result" | sed 's/.*errors://' | cut -d " " -f1)
                 fi
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/ntp.conf" ]]
                 then    ntp=$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/ntp.conf
@@ -949,7 +941,7 @@ do
                             if [ -n "$ExtensionUnit" ]; then
                                 echo "$ExtensionUnit with $ExtensionHdds" >> "$_sm_raw"
                                 echo "$ExtensionUnit:$ExtensionHdds" >> "$DOWNLOAD_DIR/debug_$DATE/$DSM/Ext_plain"
-                                let "ExtCt=ExtCt+1"
+                                (( ExtCt++ ))
                             fi
                         done
                 IFS=$OIFS
@@ -1014,8 +1006,7 @@ do
                 for smartResultfile in "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/"{sd,smart,nv,sas[0-9]}*
                 do
                     [[ -e "$smartResultfile" ]] || break #no smart-files
-                    #counter=$((counter + 1))
-                    counter=`expr $counter + 1`
+                    (( counter++ ))
                     declare -a BadSectors
                     declare -a PendingSectors
                     declare -a OfflineUncorrectable
@@ -1162,42 +1153,42 @@ do
                         } >&3
                     elif grep "${modelname}" "${incomp_list}" &> /dev/null; then
                         HDDComp="(incompatible)"
-                        jq_found=$(cat "${incomp_list}" | jq '.list[] | {model_number: .model_number, recognized_name: .dsm_recognized_name}' | grep "${modelname}")
+                        jq_found=$(jq '.list[] | {model_number: .model_number, recognized_name: .dsm_recognized_name}' "${incomp_list}" | grep "${modelname}")
                         {
                         log "\"\e[1;31m${modelname}\e[0m\" found in ${incomp_list##*/}"
                         log "jq: $jq_found"
                         } >&3
                     elif grep "${modelname//-/ - }" "${incomp_list}" &> /dev/null; then
                         HDDComp="(incompatible)"
-                        jq_found=$(cat "${incomp_list}" | jq '.list[] | {model_number: .model_number, recognized_name: .dsm_recognized_name}' | grep "${modelname//-/ - }")
+                        jq_found=$(jq '.list[] | {model_number: .model_number, recognized_name: .dsm_recognized_name}' "${incomp_list}" | grep "${modelname//-/ - }")
                         {
                         log "$\"\e[32m${modelname//-/ - }\e[0m\" found in ${incomp_list##*/}"
                         log "jq: $jq_found"
                         } >&3
                     elif grep  "${modelname}" "${comp_list}" &> /dev/null; then
                         HDDComp="(compatible)"
-                        jq_found=$(cat "${comp_list}" | jq '.list[] | {model_number: .model_number, recognized_name: .dsm_recognized_name}' | grep "${modelname}")
+                        jq_found=$(jq '.list[] | {model_number: .model_number, recognized_name: .dsm_recognized_name}' "${comp_list}" | grep "${modelname}")
                         {
                         log "\"\e[32m${modelname}\e[0m\" found in ${comp_list##*/}"
                         log "jq: $jq_found"
                         } >&3
                     elif grep  "${modelname//-/ - }" "${comp_list}" &> /dev/null; then
                         HDDComp="(compatible)"
-                        jq_found=$(cat "${comp_list}" | jq '.list[] | {model_number: .model_number, recognized_name: .dsm_recognized_name}' | grep "${modelname//-/ - }")
+                        jq_found=$(jq '.list[] | {model_number: .model_number, recognized_name: .dsm_recognized_name}' "${comp_list}" | grep "${modelname//-/ - }")
                         {
                         log "$\"\e[32m${modelname//-/ - }\e[0m\" found in ${comp_list##*/}"
                         log "jq: $jq_found"
                         } >&3
                     elif grep  "${modelname%-*}" "${incomp_list}" &> /dev/null; then # remove part after "-"
                         HDDComp="(incompatible)"
-                        jq_found=$(cat "${incomp_list}" | jq '.list[] | {model_number: .model_number, recognized_name: .dsm_recognized_name}' | grep "${modelname%-*}")
+                        jq_found=$(jq '.list[] | {model_number: .model_number, recognized_name: .dsm_recognized_name}' "${incomp_list}" | grep "${modelname%-*}")
                         {
                         log "\"\e[1;31m${modelname%-*}\e[0m\" found in ${incomp_list##*/}"
                         log "jq: $jq_found"
                         } >&3
                     elif grep  "${modelname%-*}" "${comp_list}" &> /dev/null; then # remove part after "-"
                         HDDComp="(compatible)"
-                        jq_found=$(cat "${comp_list}" | jq '.list[] | {model_number: .model_number, recognized_name: .dsm_recognized_name}' | grep "${modelname%-*}")
+                        jq_found=$(jq '.list[] | {model_number: .model_number, recognized_name: .dsm_recognized_name}' "${comp_list}" | grep "${modelname%-*}")
                         {
                         log "\"\e[32m${modelname%-*}\e[0m\" found in ${comp_list##*/}"
                         log "jq: $jq_found"
@@ -1341,8 +1332,8 @@ do
                         DS_MEM3=$(grep -A6 "Memory Device$" "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/dmidecode.result" | grep Size)
                         DS_MEM3_cut=$(grep -A6 "Memory Device$" "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/dmidecode.result" | grep Size | cut -d " " -f2 |  sed 's/[^0-9]*//g'| sed '/^\s*$/d' | sed ':a;N;$!ba;s/\n//g')
                             if [[ "$DS_MEM3_cut" =~ $re ]] ; then
-                            DS_MEM3_calc=$(cat "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/dmidecode.result" | sed -nr '/^Memory Device$/,/^$/ { /^\s*Size:\s*/ { s///; /No Module/! { s/ //; s/B//; p } } }' | numfmt --from=iec | awk '{ sum += $1 } END{ print sum }' | numfmt --to=iec | sed -r 's/([A-Z])/ \1B/')
-                            DS_MEM3_calc_byte=$(cat "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/dmidecode.result" | sed -nr '/^Memory Device$/,/^$/ { /^\s*Size:\s*/ { s///; /No Module/! { s/ //; s/B//; p } } }' | numfmt --from=iec | awk '{ sum += $1 } END{ print sum }')
+                            DS_MEM3_calc=$(sed -nr '/^Memory Device$/,/^$/ { /^\s*Size:\s*/ { s///; /No Module/! { s/ //; s/B//; p } } }' "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/dmidecode.result" | numfmt --from=iec | awk '{ sum += $1 } END{ print sum }' | numfmt --to=iec | sed -r 's/([A-Z])/ \1B/')
+                            DS_MEM3_calc_byte=$(sed -nr '/^Memory Device$/,/^$/ { /^\s*Size:\s*/ { s///; /No Module/! { s/ //; s/B//; p } } }' "$DOWNLOAD_DIR/debug_$DATE/$DSM/result/dmidecode.result" | numfmt --from=iec | awk '{ sum += $1 } END{ print sum }')
                             else
                                 DS_MEM3_calc="Error calculating RAM-Size"
                                 DS_MEM3_calc_byte="Error"
@@ -1412,9 +1403,9 @@ do
                     if [[ "$Passed_Memtest" -eq 0 ]] && [[ "$Failed_Memtest" -eq 0 ]]; then #MEMTESTS
                         echo "No Memory tests have been run." >> "$_sm_raw"
                     fi
-                    DSM_VERSION=$( cat "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc.defaults/VERSION" | grep "productversion" ) #DSM Version
-                    DSM_BuildVERSION=$( cat "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc.defaults/VERSION" | grep "buildnumber" )
-                    DSM_smallfixVERSION=$( cat "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc.defaults/VERSION" | grep "smallfixnumber" )
+                    DSM_VERSION=$( grep "productversion" "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc.defaults/VERSION" ) #DSM Version
+                    DSM_BuildVERSION=$( grep "buildnumber" "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc.defaults/VERSION" )
+                    DSM_smallfixVERSION=$( grep "smallfixnumber" "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc.defaults/VERSION" )
                 fi
 
                     #Hardware-specific things
@@ -1571,7 +1562,7 @@ do
                 done
                 echo "DNS Servers:" >> "$_sm_raw"
                 if [ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/resolv.conf" ]; then
-                cat "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/resolv.conf" | sed ':a;N;$!ba;s/\n/, /g' >> "$_sm_raw"
+                sed ':a;N;$!ba;s/\n/, /g' "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/resolv.conf" >> "$_sm_raw"
                     else echo "/etc/resolv.conf not found." >> "$_sm_raw"
                 fi
                 cat "$Route" >> "$IFCONFIG"
@@ -1708,7 +1699,7 @@ do
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/packages.list" ]]
                 then    PACK=$DOWNLOAD_DIR/debug_$DATE/$DSM/packages.list
                         declare -a InstalledPackageArray
-                        sed '1d' "${PACK}" | awk '{for(i=NF;i>1;i=i-1) printf "%s ", $i; printf "%s\n", $1}' | cut -d " " -f1 > "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/packages_ver.list
+                        awk '{for(i=NF;i>1;i=i-1) printf "%s ", $i; printf "%s\n", $1}' "${PACK}" | tail -n +2 | cut -d " " -f1 > "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/packages_ver.list
 
                         #synopkgfile="$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/var/log/synopkg.log
                         if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/synopkg.log" ]]; then
@@ -1749,8 +1740,7 @@ do
                                 echo -e "${InstalledPackageArray[$counter]}: Installed: $PureVerInstalled vs. available: $PureVerAvailable\e[0m"
                             fi
 
-                            #counter=$((counter + 1))
-                            counter=`expr $counter + 1`
+                            (( counter++ ))
                         done
                         if [[ $counter -gt 0 ]]; then
                             echo -e "\n" >> "$_sm_raw"
@@ -2397,8 +2387,7 @@ do
                 declare -a PicArray
                 for pic in "${allpics}"
                 do  PicArray["${counter}"]="${pic}"
-                    counter=`expr $counter + 1`
-                    #counter=$((counter + 1))
+                    (( counter++ ))
                 done
 
                 #if file does not exist, set var to empty string (lazy fix for router debugs):

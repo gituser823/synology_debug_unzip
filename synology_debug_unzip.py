@@ -1052,10 +1052,10 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
         mm = re.search(r"^Mem:\s+(\d+)", free_text, re.M)
         if mm:
             free_mem_kb = int(mm.group(1))
-        sm2 = re.search(r"^Swap:\s+(\d+)\s+(\d+)", free_text, re.M)
-        if sm2:
-            swap_total_kb = int(sm2.group(1))
-            swap_used_kb = int(sm2.group(2))
+        swap_m = re.search(r"^Swap:\s+(\d+)\s+(\d+)", free_text, re.M)
+        if swap_m:
+            swap_total_kb = int(swap_m.group(1))
+            swap_used_kb = int(swap_m.group(2))
 
     # CPU.txt memory spec
     ds_mem_txt = ""
@@ -1226,7 +1226,6 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
 
     # Aggregate SMART
     bad_sum = pend_sum = unc_sum = 0
-    bad_hdds = pend_hdds = unc_hdds = []
     bad_hdds, pend_hdds, unc_hdds = [], [], []
 
     for sf in smart_files:
@@ -1244,21 +1243,21 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
     # FS errors
     btrfs_pat = r"btrfs (?:critical|error|warning)|btrfs.*(?:failure|failed)|BTRFS: superblock checksum mismatch"
     ext4_pat = r"ext-[34]"
-    btrfs_kern = [l for l in kern_text.splitlines() if re.search(btrfs_pat, l, re.I)]
-    ext4_kern = [l for l in kern_text.splitlines() if re.search(ext4_pat, l, re.I) and "scripts/ext-3.4" not in l]
-    btrfs_msg = [l for l in messages_text.splitlines() if re.search(btrfs_pat, l, re.I)]
-    ext4_msg = [l for l in messages_text.splitlines() if re.search(ext4_pat, l, re.I) and "scripts/ext-3.4" not in l]
+    btrfs_kern = [line for line in kern_text.splitlines() if re.search(btrfs_pat, line, re.I)]
+    ext4_kern = [line for line in kern_text.splitlines() if re.search(ext4_pat, line, re.I) and "scripts/ext-3.4" not in line]
+    btrfs_msg = [line for line in messages_text.splitlines() if re.search(btrfs_pat, line, re.I)]
+    ext4_msg = [line for line in messages_text.splitlines() if re.search(ext4_pat, line, re.I) and "scripts/ext-3.4" not in line]
     fs_error_ct = len(btrfs_kern) + len(ext4_kern) + len(btrfs_msg) + len(ext4_msg)
 
     # SYSDB events
     def sdb_lines(pattern):
-        return [l for l in sysdb_text.splitlines() if re.search(pattern, l, re.I)]
+        return [line for line in sysdb_text.splitlines() if re.search(pattern, line, re.I)]
 
     improper_shutdowns = sdb_lines("improper shutdown")
     volume_crashes = sdb_lines("was crashed")
     degraded_volumes = sdb_lines("degrade")
-    gen_errors_all = [l for l in sysdb_text.splitlines()
-                      if re.search("error", l, re.I) and "Failed to send email" not in l]
+    gen_errors_all = [line for line in sysdb_text.splitlines()
+                      if re.search("error", line, re.I) and "Failed to send email" not in line]
     gen_errors = list(dict.fromkeys(gen_errors_all))
 
     drdy_lines = list(dict.fromkeys(grep_lines("DRDY", messages_text)))
@@ -1285,8 +1284,8 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
         r"MailStation|phpMyAdmin|total \d"
     )
     third_pkgs = [
-        l for l in pack_text.splitlines()
-        if l.strip() and not re.search(first_party, l) and "enabled" not in l.lower()
+        line for line in pack_text.splitlines()
+        if line.strip() and not re.search(first_party, line) and "enabled" not in line.lower()
     ]
 
     # Samba shares
@@ -1337,7 +1336,7 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
         r"CloudSync|DownloadStation|SurveillanceStation|CMS|Docker|MailClient|"
         r"MailPlus|MailPlus-Server|PetaSpace|Virtualization|MailStation"
     )
-    hb_packages = [l for l in pack_text.splitlines() if re.search(hb_pkg_pat, l)]
+    hb_packages = [line for line in pack_text.splitlines() if re.search(hb_pkg_pat, line)]
 
     # 16TB volume limitation
     vol_16tb = []
@@ -1480,7 +1479,7 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
     # ============================================================
     # Write sm.log — section buffers
     # ============================================================
-    _S = {
+    _sections = {
         "updates": [],
         "storage": [],
         "smart": [],
@@ -1491,17 +1490,17 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
         "extended": [],
         "issues": [],
     }
-    _cur = ["storage"]  # mutable current-section pointer
+    _current_section = "storage"
 
     def w(s="", section=None):
-        target = section if section else _cur[0]
-        _S[target].append(str(s))
+        _sections[section or _current_section].append(str(s))
 
-    def setcur(name):
-        _cur[0] = name
+    def set_section(name):
+        nonlocal _current_section
+        _current_section = name
 
     # ─── STORAGE ────────────────────────────────────────────────
-    setcur("storage")
+    set_section("storage")
     for issue in vol_16tb:
         w(issue)
 
@@ -1512,14 +1511,14 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
         while i < len(lines):
             if re.match(r"^md0\b", lines[i]):
                 ctx = lines[i: i + 3]
-                if any("E" in l for l in ctx[1:]):
+                if any("E" in line for line in ctx[1:]):
                     w("RAID:")
-                    for l in ctx:
-                        w(f"  {l}")
+                    for line in ctx:
+                        w(f"  {line}")
             elif re.match(r"^md[^01]\b", lines[i]):
                 w("RAID:")
-                for l in lines[i: i + 3]:
-                    w(f"  {l}")
+                for line in lines[i: i + 3]:
+                    w(f"  {line}")
             i += 1
 
     w("ExtensionUnits:")
@@ -1534,35 +1533,35 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
 
     # Mountpoints
     w("Volumes:")
-    vol_mounts = [l.split(",")[0] for l in mounts_text.splitlines() if re.search("volume", l, re.I)]
+    vol_mounts = [line.split(",")[0] for line in mounts_text.splitlines() if re.search("volume", line, re.I)]
     if vol_mounts:
-        for l in vol_mounts:
-            w(f"  {l}")
+        for line in vol_mounts:
+            w(f"  {line}")
     else:
         w("  No Volumes mounted.")
 
     # df > 90%
     if df_text:
         over90 = []
-        for l in df_text.splitlines():
-            parts = l.split()
+        for line in df_text.splitlines():
+            parts = line.split()
             if len(parts) >= 5:
                 pct = re.sub(r"%", "", parts[4])
                 try:
                     if int(pct) >= 90:
-                        over90.append(l)
+                        over90.append(line)
                 except Exception:
                     pass
         if over90:
             w(f"Disk usage (>90% full): ({len(over90)})")
-            for l in over90:
-                w(f"  {l}")
+            for line in over90:
+                w(f"  {line}")
 
     # ─── SMART ──────────────────────────────────────────────────
-    setcur("smart")
-    cpu_header = next((l for l in cpu_file_text.splitlines() if "CPU-Model" in l), "")
-    ds_cpu_txt = next((l for l in cpu_file_text.splitlines()
-                       if re.match(rf"^{re.escape(upnp_model)}\s", l)), "")
+    set_section("smart")
+    cpu_header = next((line for line in cpu_file_text.splitlines() if "CPU-Model" in line), "")
+    ds_cpu_txt = next((line for line in cpu_file_text.splitlines()
+                       if re.match(rf"^{re.escape(upnp_model)}\s", line)), "")
     if cpu_header or ds_cpu_txt:
         w("CPUinfo from txt:")
         if cpu_header:
@@ -1625,7 +1624,7 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
 
     # Memory tests → overview section
     if passed_memtest > 0 or failed_memtest > 0:
-        setcur("overview")
+        set_section("overview")
         if passed_memtest > 0:
             w(f"Memory tests:               {passed_memtest} passed")
         if failed_memtest > 0:
@@ -1633,11 +1632,11 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
     # if both 0, the overview "Memory tests: keine" line is rendered later
 
     # ─── UPDATES ────────────────────────────────────────────────
-    setcur("updates")
+    set_section("updates")
     if latest_build_num and dsm_build_num and latest_build_num > dsm_build_num:
         w("Neuere Version verfügbar:")
-        for l in grep_lines(re.escape(ds_upnp_plus), rss_text):
-            w(f"  {re.sub(r'<[^>]+>', '', l)}")
+        for line in grep_lines(re.escape(ds_upnp_plus), rss_text):
+            w(f"  {re.sub(r'<[^>]+>', '', line)}")
         w(f"  (current: {dsm_version} {dsm_build} {dsm_smallfix})")
     else:
         w("DSM Version is latest.")
@@ -1655,7 +1654,7 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
             w("same RAM installed as preinstalled!", section="extended")
 
     # ─── NETWORK ────────────────────────────────────────────────
-    setcur("net")
+    set_section("net")
     w(f"IPv6:    {'enabled' if ipv6_count > 0 else 'disabled'}")
     w(f"Dropped: {dropped_sum}  ·  Errors: {error_sum}")
     for eth in ethtool_lines:
@@ -1672,8 +1671,8 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
     elif "pool.ntp.org" in ntp_text_local:
         ntp_server_line = "pool.ntp.org"
     else:
-        sm2 = re.search(r"^server (.+)", ntp_text_local, re.M)
-        ntp_server_line = sm2.group(1) if sm2 else "manual / off"
+        ntp_m = re.search(r"^server (.+)", ntp_text_local, re.M)
+        ntp_server_line = ntp_m.group(1) if ntp_m else "manual / off"
     w(f"NTP:     {ntp_server_line}")
     w(f"DDNS:    {'on' if ddns_on else 'off'}")
     if quickconnect_echo:
@@ -1694,7 +1693,7 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
             w(f"  {b}")
 
     # ─── PACKAGES ───────────────────────────────────────────────
-    setcur("pkgs")
+    set_section("pkgs")
     pkg_updates = []
     if installed_pkgs:
         for pkg in installed_pkgs:
@@ -1735,8 +1734,8 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
             w("LUN-Config-file is empty.")
         else:
             w("Found LUNs:")
-            for l in iscsi_lun_text.splitlines():
-                w(f"  {l}")
+            for line in iscsi_lun_text.splitlines():
+                w(f"  {line}")
             w(f"Combined LUN Size: {bytes_to_human(iscsi_lun_bytes)}")
 
     for conf_name, label in [("iscsi_mapping.conf", "iSCSI Mapping:"),
@@ -1744,11 +1743,11 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
         cp = dsm_dir / "usr" / "syno" / "etc" / conf_name
         if cp.exists():
             w(label)
-            for l in read_file(cp).splitlines():
-                w(f"  {l}")
+            for line in read_file(cp).splitlines():
+                w(f"  {line}")
 
     # ─── OVERVIEW ───────────────────────────────────────────────
-    setcur("overview")
+    set_section("overview")
     if old_dsm_warning:
         w("(Data may be unreliable, because of old DSM Version)")
 
@@ -1775,14 +1774,14 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
         w(f"Encrypted shares            {enc_share_count}")
 
     # ─── DOCKER ─────────────────────────────────────────────────
-    setcur("docker")
+    set_section("docker")
     if docker_count > 0:
         w(f"Container gesehen:  {docker_count}")
     else:
         w("Container gesehen:  keine")
 
     # ─── EXTENDED DIAGNOSTICS ───────────────────────────────────
-    setcur("extended")
+    set_section("extended")
     if raid_rebuild:
         for line in raid_rebuild:
             w(f"RAID rebuild:    {line}")
@@ -1891,7 +1890,7 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
           f"(newest: {smart_test_history['newest']})")
 
     # ─── ISSUES ─────────────────────────────────────────────────
-    setcur("issues")
+    set_section("issues")
     for ki in known_issues:
         if ki.strip():
             w(ki)
@@ -1901,36 +1900,36 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
     if all_fs:
         all_fs_uniq = list(dict.fromkeys(all_fs))
         ts_re = re.compile(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})")
-        all_fs_uniq.sort(key=lambda l: (ts_re.match(l).group(1) if ts_re.match(l) else ""))
+        all_fs_uniq.sort(key=lambda line: (ts_re.match(line).group(1) if ts_re.match(line) else ""))
         shown = all_fs_uniq[-20:]
         hidden = len(all_fs_uniq) - len(shown)
         if hidden > 0:
             w(f"Ext4-/Btrfs-Errors: {len(all_fs_uniq)} total — showing newest 20 ({hidden} omitted)")
         else:
             w("Ext4-/Btrfs-Errors:")
-        for l in shown:
-            w(f"  {l}")
+        for line in shown:
+            w(f"  {line}")
 
     # SYSDB details (only non-empty)
     if improper_shutdowns:
         w("improper shutdowns:")
-        for l in improper_shutdowns:
-            w(f"  {l}")
+        for line in improper_shutdowns:
+            w(f"  {line}")
 
     if volume_crashes:
         w("Volume crashes:")
-        for l in volume_crashes:
-            w(f"  {l}")
+        for line in volume_crashes:
+            w(f"  {line}")
 
     if degraded_volumes:
         w("degraded volumes:")
-        for l in degraded_volumes:
-            w(f"  {l}")
+        for line in degraded_volumes:
+            w(f"  {line}")
 
     if gen_errors:
         w(f"{len(gen_errors)} generic errs:")
-        for l in gen_errors:
-            w(f"  {l}")
+        for line in gen_errors:
+            w(f"  {line}")
 
     # Messages detail — each section capped at newest 20
     def _emit_capped(label, lines):
@@ -1940,8 +1939,8 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
         if omitted > 0:
             hdr += f" ({omitted} omitted)"
         w(hdr + ":")
-        for l in shown:
-            w(f"  {l}")
+        for line in shown:
+            w(f"  {line}")
 
     if messages_text:
         if drdy_lines:
@@ -1963,8 +1962,8 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
                 if re.search("Call Trace", line, re.I):
                     last_ct_idx = i
             if last_ct_idx is not None:
-                for l in all_lines[last_ct_idx: last_ct_idx + 26]:
-                    w(f"  {l}")
+                for line in all_lines[last_ct_idx: last_ct_idx + 26]:
+                    w(f"  {line}")
 
     # ─── Render to sm.log ───────────────────────────────────────
     sm.parent.mkdir(parents=True, exist_ok=True)
@@ -2010,40 +2009,40 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
         ram_str += f"  ·  Swap: {swap_pct:.2f}% ({bytes_to_human(swap_used_kb * 1024)} / {bytes_to_human(swap_total_kb * 1024)})"
 
     with open(sm, "w", encoding="utf-8") as _sm_fh:
-        def W(s=""):
+        def write_sm(s=""):
             _sm_fh.write(str(s) + "\n")
 
         if sm_prefix:
-            W(sm_prefix)
-            W()
+            write_sm(sm_prefix)
+            write_sm()
 
         # ─── HEADER ─────────────────────────────────────────────
-        W(border)
+        write_sm(border)
         title_bits = [b for b in [upnp_model, hostname, f"S/N: {ds_sn}" if ds_sn else ""] if b]
-        W(f"  {'  |  '.join(title_bits)}")
-        W(border)
-        W(f"  DSM:    {dsm_full}")
-        W(f"  Kernel: {kernel_version}")
+        write_sm(f"  {'  |  '.join(title_bits)}")
+        write_sm(border)
+        write_sm(f"  DSM:    {dsm_full}")
+        write_sm(f"  Kernel: {kernel_version}")
         cpu_line = f"  CPU:    {cpu_clean}"
         if processor_count or ds_cores:
             cpu_line += f"  ·  {processor_count} Threads / {ds_cores} Cores"
-        W(cpu_line)
-        W(f"  RAM:    {ram_str}")
+        write_sm(cpu_line)
+        write_sm(f"  RAM:    {ram_str}")
         up_line = f"  Uptime: {up_str}"
         if load_str:
             up_line += f"  ·  Load: {load_str}"
-        W(up_line)
+        write_sm(up_line)
         if bios_ver:
-            W(f"  BIOS:   {bios_ver}")
+            write_sm(f"  BIOS:   {bios_ver}")
         if ds_hwmodel or ds_model:
-            W(f"  HW:     {ds_hwmodel}  ·  Model: {ds_model}")
+            write_sm(f"  HW:     {ds_hwmodel}  ·  Model: {ds_model}")
         if ds_mem3:
-            W(f"  RAM-modules:")
+            write_sm(f"  RAM-modules:")
             for line in ds_mem3.splitlines():
-                W(f"    {line}")
+                write_sm(f"    {line}")
             if ds_mem3_calc:
-                W(f"  RAM, calced: {ds_mem3_calc}")
-        W(border)
+                write_sm(f"  RAM, calced: {ds_mem3_calc}")
+        write_sm(border)
 
         # ─── SECTIONS ───────────────────────────────────────────
         section_order = [
@@ -2058,57 +2057,57 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
             ("issues", "PROBLEME & BEKANNTE FEHLER"),
         ]
         for key, title in section_order:
-            W(_section_header(title))
-            lines = _S[key]
+            write_sm(_section_header(title))
+            lines = _sections[key]
             if not lines:
                 continue
             for line in lines:
                 if line == "":
-                    W("")
+                    write_sm("")
                 elif line.startswith("  "):
-                    W(line)
+                    write_sm(line)
                 else:
-                    W(f"  {line}")
-        W(border)
+                    write_sm(f"  {line}")
+        write_sm(border)
 
     # ============================================================
     # Write smartgrep
     # ============================================================
     sg.parent.mkdir(parents=True, exist_ok=True)
     with open(sg, "w", encoding="utf-8") as fsg:
-        def ws(s=""):
+        def write_sg(s=""):
             fsg.write(str(s) + "\n")
 
         if df_text:
             over90 = []
-            for l in df_text.splitlines():
-                parts = l.split()
+            for line in df_text.splitlines():
+                parts = line.split()
                 if len(parts) >= 5:
                     try:
                         if int(re.sub(r"%", "", parts[4])) >= 90:
-                            over90.append(l)
+                            over90.append(line)
                     except Exception:
                         pass
             if over90:
-                ws(f"Mountpoints more than 90% full: ({len(over90)})")
-                for l in over90:
-                    ws(l)
+                write_sg(f"Mountpoints more than 90% full: ({len(over90)})")
+                for line in over90:
+                    write_sg(line)
             else:
-                ws("Mountpoints more than 90% full: (0)")
-                ws("No full Mountpoints found.")
-            ws("\n")
+                write_sg("Mountpoints more than 90% full: (0)")
+                write_sg("No full Mountpoints found.")
+            write_sg("\n")
 
-        ws(mdstat_text)
-        ws("\nMountpoints:")
-        ws(mounts_text)
-        ws(" \n")
+        write_sg(mdstat_text)
+        write_sg("\nMountpoints:")
+        write_sg(mounts_text)
+        write_sg(" \n")
 
         for sf in smart_files:
             if sf.is_file():
                 t = read_file(sf)
-                for l in t.splitlines():
-                    if re.search(r"Model Family|Device Model|User Capacity", l, re.I):
-                        ws(l)
+                for line in t.splitlines():
+                    if re.search(r"Model Family|Device Model|User Capacity", line, re.I):
+                        write_sg(line)
 
         smart_grep_attrs = (
             r"overall-health self-assessment|Model Family|Device Model|Serial Number|"
@@ -2127,80 +2126,80 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
             name = sf.name
             is_sas = name.startswith("smart_sas") or bool(re.match(r"sas\d", name))
             t = read_file(sf)
-            ws(f"\n\n{sf}")
+            write_sg(f"\n\n{sf}")
             if is_sas:
-                for l in t.splitlines():
+                for line in t.splitlines():
                     if re.search(
                         r"Vendor|Product|Revision|Compliance|User Capacity|block size|"
                         r"Rotation|Form Factor|Serial Number|SMART support is|Temperature Warning",
-                        l, re.I,
+                        line, re.I,
                     ):
-                        ws(l)
+                        write_sg(line)
             else:
-                for l in t.splitlines():
-                    if re.search(smart_grep_attrs, l, re.I):
-                        ws(l)
-                ws()
+                for line in t.splitlines():
+                    if re.search(smart_grep_attrs, line, re.I):
+                        write_sg(line)
+                write_sg()
                 in_err = False
-                for l in t.splitlines():
-                    if re.match(r"SMART Error Log Version: 1", l):
+                for line in t.splitlines():
+                    if re.match(r"SMART Error Log Version: 1", line):
                         in_err = True
                         continue
                     if in_err:
-                        if "Selective self-test flags" in l:
+                        if "Selective self-test flags" in line:
                             break
-                        ws(l)
-            ws(" \n \n")
+                        write_sg(line)
+            write_sg(" \n \n")
 
     # ============================================================
     # Write hibernation_debug.log
     # ============================================================
     hb.parent.mkdir(parents=True, exist_ok=True)
     with open(hb, "w", encoding="utf-8") as fhb:
-        def wh(s=""):
+        def write_hb(s=""):
             fhb.write(str(s) + "\n")
 
         if ntp_text:
             if "time.google.com" in ntp_text:
-                wh("NTP-Client on NAS is on. Server is time.google.com")
+                write_hb("NTP-Client on NAS is on. Server is time.google.com")
             elif "pool.ntp.org" in ntp_text:
-                wh("NTP-Client on NAS is on. Server is pool.ntp.org")
+                write_hb("NTP-Client on NAS is on. Server is pool.ntp.org")
             else:
-                sm2 = re.search(r"^server (.+)", ntp_text, re.M)
-                if sm2:
-                    wh(f"NTP-Client on NAS is on. Server is {sm2.group(1)}")
+                ntp_m = re.search(r"^server (.+)", ntp_text, re.M)
+                if ntp_m:
+                    write_hb(f"NTP-Client on NAS is on. Server is {ntp_m.group(1)}")
                 else:
-                    wh("Time set to manual, NTP-Client on NAS is off.")
+                    write_hb("Time set to manual, NTP-Client on NAS is off.")
 
-        wh(ntp_server_st)
-        wh("QuickConnect on NAS is " + ("on." if quickconnect_echo and "No QuickConnect" not in quickconnect_echo else "off."))
-        wh("DDNS on NAS is " + ("on." if ddns_on else "off."))
-        wh("IPv6 on NAS is " + ("on." if ipv6_count > 0 else "off."))
-        wh(f"\nHibernation on NAS is {'on.' if sata_deep else 'off.'}")
-        wh("Fan debug mode on NAS is " + ("on." if fan_debug_on else "off."))
-        wh("Extended kernel logging on NAS is " + ("on." if kernel_log_max else "off."))
-        wh(f"Log system status periodically on NAS is {sys_stat}.")
-        wh(f"Local Master Browser on NAS is {local_master}.")
+        write_hb(ntp_server_st)
+        write_hb("QuickConnect on NAS is " + ("on." if quickconnect_echo and "No QuickConnect" not in quickconnect_echo else "off."))
+        write_hb("DDNS on NAS is " + ("on." if ddns_on else "off."))
+        write_hb("IPv6 on NAS is " + ("on." if ipv6_count > 0 else "off."))
+        write_hb(f"\nHibernation on NAS is {'on.' if sata_deep else 'off.'}")
+        write_hb("Fan debug mode on NAS is " + ("on." if fan_debug_on else "off."))
+        write_hb("Extended kernel logging on NAS is " + ("on." if kernel_log_max else "off."))
+        write_hb(f"Log system status periodically on NAS is {sys_stat}.")
+        write_hb(f"Local Master Browser on NAS is {local_master}.")
 
         if supportrcpower_m:
             val = supportrcpower_m.group(1)
-            wh(f"supportrcpower on NAS is {'on.' if val == 'yes' else 'off.'}")
+            write_hb(f"supportrcpower on NAS is {'on.' if val == 'yes' else 'off.'}")
         if enablercpower_m:
             val = enablercpower_m.group(1)
-            wh(f"enablercpower on NAS is {'on.' if val == 'yes' else 'off.'}")
+            write_hb(f"enablercpower on NAS is {'on.' if val == 'yes' else 'off.'}")
 
         if standbytimer:
-            wh(standbytimer)
+            write_hb(standbytimer)
 
-        wh("Packages interfering with Hibernation:")
+        write_hb("Packages interfering with Hibernation:")
         if not hb_packages:
-            wh("\t\tnone.")
+            write_hb("\t\tnone.")
         else:
-            wh("\n" + "\n".join(hb_packages))
+            write_hb("\n" + "\n".join(hb_packages))
 
         if power_sched_text:
-            wh("\n")
-            wh(power_sched_text)
+            write_hb("\n")
+            write_hb(power_sched_text)
             if POWER_SCHED_PY.exists():
                 for line in power_sched_text.splitlines():
                     if line.strip().isdigit():
@@ -2209,13 +2208,13 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
                                 [sys.executable, str(POWER_SCHED_PY), line.strip()],
                                 capture_output=True, text=True, timeout=5,
                             )
-                            wh(r.stdout.strip())
+                            write_hb(r.stdout.strip())
                         except Exception:
                             pass
         else:
-            wh("power_sched.conf not found.")
+            write_hb("power_sched.conf not found.")
 
-        wh(samba_st)
+        write_hb(samba_st)
 
     print(f"{datetime.now():%d. %B %H:%M:%S}: analysis complete → {sm}")
     return sm, sg, hb, dsm_dir

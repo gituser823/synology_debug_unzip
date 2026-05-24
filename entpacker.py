@@ -1303,7 +1303,7 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
 
     if upnp_model == "DS216+":
         known_issues += [
-            "\nPossible Known Issue: BIOS: https://cssnew.synology.com/issue/4334",
+            "\nPossible Known Issue: BIOS:",
             "Bugged Versions are less than M.616",
             f"This Machines BIOS-Version: {bios_ver}",
         ]
@@ -1311,23 +1311,23 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
     if upnp_model == "DS718+":
         scemd = read_file(dsm_dir / "var" / "log" / "scemd.log")
         if grep_count("<cpu_temperature> is over", scemd) > 0:
-            known_issues.append("\nCPU is overheating, RMA unit: https://cssnew.synology.com/issue/11124")
+            known_issues.append("\nCPU is overheating, RMA unit:")
             known_issues += grep_lines("<cpu_temperature> is over", scemd)
 
     if grep_count(r"core_clear_root_int_from_queue Error Interrupt|Issued IDENTIFY to non-existent device", messages_text) > 0:
-        known_issues.append("\nKnown Issue: random HDD drops of WD or HGST HDDs, update HDD Firmware: https://cssnew.synology.com/issue/9198")
+        known_issues.append("\nKnown Issue: random HDD drops of WD or HGST HDDs, update HDD Firmware:")
 
     bios_checks = {
-        "DS918+": ("M.024", "https://cssnew.synology.com/issue/12026"),
-        "DS718+": ("M.220", "https://cssnew.synology.com/issue/12026"),
-        "DS218+": ("M.124", "https://cssnew.synology.com/issue/12026"),
-        "DS418play": ("M.310", "https://cssnew.synology.com/issue/12026"),
+        "DS918+": "M.024",
+        "DS718+": "M.220",
+        "DS218+": "M.124",
+        "DS418play": "M.310",
     }
     if upnp_model in bios_checks and bios_ver:
-        min_v, url = bios_checks[upnp_model]
+        min_v = bios_checks[upnp_model]
         if version_compare_gt(min_v, bios_ver):
             known_issues += [
-                f"\nKnown Issue: BIOS: {url}",
+                f"\nKnown Issue: BIOS outdated (minimum: {min_v})",
                 "Update to DSM 6.1.3-15152 Update 7 to update the BIOS.",
                 f"This Machines BIOS-Version: {upnp_model} {bios_ver}",
             ]
@@ -1335,14 +1335,14 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
     if re.search(r"tn40xx", kern_text, re.I) and re.search(r"memory", kern_text):
         known_issues += [
             "\nKnown Issue: with 10GbE E10G15-F1 Card detected.",
-            "See https://cssnew.synology.com/issue/5206 Issue B",
+            "See Issue B",
         ]
 
     marvell_models = ["DS218j", "RS217", "RS816", "DS416j", "DS416slim", "DS216", "DS216j", "DS116"]
     if upnp_model in marvell_models:
         if grep_count(r"Can't refill, try to allocate again in cleanup timer", messages_text) > 0:
             known_issues += [
-                "\nKnown Issue: https://cssnew.synology.com/issue/13942",
+                "\nKnown Issue:",
                 "[Cause] The marvell model may suffer from memory allocating issue.",
                 "[Workaround]Add the following command to a bootup task:",
                 "/sbin/sysctl -w vm.min_free_kbytes=16384",
@@ -1350,7 +1350,7 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
 
     if grep_count("btrfs_wait_pending_ordered", messages_text) > 0:
         known_issues += [
-            "\nPossible Known Issue: https://cssnew.synology.com/issue/25294",
+            "\nPossible Known Issue:",
             "After updating to DSM6.2.2, the volume might get stuck.",
         ]
 
@@ -1367,7 +1367,7 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
         known_issues += [
             "\nKnown Issue: Lots of error messages 'High system usage detected' show up under HA Manager.",
             f"Showing only latest of {ct} occurences.",
-            "See https://cssnew.synology.com/issue/25154",
+            "See",
         ]
         lns = grep_lines('"faulty_communication":true', ha_log)
         if lns:
@@ -1603,12 +1603,7 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
     w(f"Kernel: {kernel_version}")
     w(f"CPU from logs: {ds_cpu}; Threads: {processor_count} , Cores: {ds_cores}")
     w(f"Serialnumber: {ds_sn}")
-    ticket_url = (
-        "https://cssnew.synology.com/ticket?list_type=agent_all&sort_by=update_time"
-        "&sort_direction=desc&filter=%7B%22search_column%22%3A%5B%22ticket_id%22%2C"
-        f"%22content%22%5D%2C%22sn%22%3A%22{ds_sn}%22%7D"
-    )
-    w(f"Associated Tickets: \t{ticket_url}")
+    w(f"Associated Tickets: \t{ds_sn}")
 
     if swap_total_kb > 0:
         pct = f"{swap_used_kb / swap_total_kb * 100:.2f}"

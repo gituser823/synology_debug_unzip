@@ -1179,35 +1179,31 @@ do
 
                     #Hardware-specific things
 
-                #https://cssnew.synology.com/issue/4334
                 if [ "$UpnpModel" = "DS216+" ]; then
-                    echo -e "\nPossible Known Issue: BIOS: https://cssnew.synology.com/issue/4334" >> "$sm"
+                    echo -e "\nPossible Known Issue: BIOS:" >> "$sm"
                     echo "Bugged Versions are less than M.616" >> "$sm"
                     echo -e "This Machines BIOS-Version: $BIOS_V_CUT" >> "$sm"
                 fi
 
-                #https://cssnew.synology.com/issue/11124
                 if [ "$UpnpModel" = "DS718+" ]; then
                     grep_cputemp=$( grep -c "<cpu_temperature> is over" "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/scemd.log" )
                     if [ "$grep_cputemp" -gt 0 ]; then
-                    echo -e "\nCPU is overheating, RMA unit: https://cssnew.synology.com/issue/11124" >> "$sm"
+                    echo -e "\nCPU is overheating, RMA unit:" >> "$sm"
                     grep -i "<cpu_temperature> is over" "$DOWNLOAD_DIR/debug_$DATE/$DSM/var/log/scemd.log" >> "$sm"
                     fi
                 fi
 
-                #https://cssnew.synology.com/issue/9198
                 grep_hddissue=$( grep -c "core_clear_root_int_from_queue Error Interrupt\|Issued IDENTIFY to non-existent device ?!" "$MESSAGES" )
                 if [ "$grep_hddissue" -gt 0 ]; then
-                    echo -e "\nKnown Issue: random HDD drops of WD or HGST HDDs, update HDD Firmware: https://cssnew.synology.com/issue/9198" >> "$sm"
+                    echo -e "\nKnown Issue: random HDD drops of WD or HGST HDDs, update HDD Firmware:" >> "$sm"
                     grep -ia "core_clear_root_int_from_queue Error Interrupt: PHY Decoding Error\|Issued IDENTIFY to non-existent device ?!" "$MESSAGES" >> "$sm"
                 fi
 
 
-                #https://cssnew.synology.com/issue/12026
                 if [ "$UpnpModel" = "DS918+" ]; then
                     if version_compare_gt "M.024" "$BIOS_V_CUT"; then
                         {
-                            echo -e "\nKnown Issue: BIOS: https://cssnew.synology.com/issue/12026"
+                            echo -e "\nKnown Issue: BIOS:"
                             echo "Update to DSM 6.1.3-15152 Update 7 to update the BIOS."
                             echo -e "This Machines BIOS-Version: $UpnpModel $BIOS_V_CUT"
                         } >> "$sm"
@@ -1216,11 +1212,10 @@ do
                     fi
                 fi
 
-                #https://cssnew.synology.com/issue/12026
                 if [ "$UpnpModel" = "DS718+" ]; then
                     if version_compare_gt "M.220" "$BIOS_V_CUT"; then
                         {
-                            echo -e "\nKnown Issue: BIOS: https://cssnew.synology.com/issue/12026"
+                            echo -e "\nKnown Issue: BIOS:"
                             echo "Update to DSM 6.1.3-15152 Update 7 to update the BIOS."
                             echo -e "This Machines BIOS-Version: $UpnpModel $BIOS_V_CUT"
                         } >> "$sm"
@@ -1229,11 +1224,10 @@ do
                     fi
                 fi
 
-                #https://cssnew.synology.com/issue/12026
                 if [ "$UpnpModel" = "DS218+" ]; then
                     if version_compare_gt "M.124" "$BIOS_V_CUT"; then
                         {
-                            echo -e "\nKnown Issue: BIOS: https://cssnew.synology.com/issue/12026"
+                            echo -e "\nKnown Issue: BIOS:"
                             echo "Update to DSM 6.1.3-15152 Update 7 to update the BIOS."
                             echo -e "This Machines BIOS-Version: $UpnpModel $BIOS_V_CUT"
                         } >> "$sm"
@@ -1242,11 +1236,10 @@ do
                     fi
                 fi
 
-                #https://cssnew.synology.com/issue/12026
                 if [ "$UpnpModel" = "DS418play" ]; then
                     if version_compare_gt "M.310" "$BIOS_V_CUT"; then
                         {
-                            echo -e "\nKnown Issue: BIOS: https://cssnew.synology.com/issue/12026"
+                            echo -e "\nKnown Issue: BIOS:"
                             echo "Update to DSM 6.1.3-15152 Update 7 to update the BIOS."
                             echo -e "This Machines BIOS-Version: $UpnpModel $BIOS_V_CUT"
                         } >> "$sm"
@@ -1255,49 +1248,44 @@ do
                     fi
                 fi
 
-                #https://cssnew.synology.com/issue/5206 Issue B
                 if grep -ia "tn40xx" "$KERN" | grep memory &> /dev/null ; then
                 {
                 echo -e "\nKnown Issue: with 10GbE E10G15-F1 Card detected."
-                echo "See https://cssnew.synology.com/issue/5206 Issue B"
+                echo "See"
                 grep -ia "tn40xx" "$KERN" | grep memory | tail -n20
                 } >> "$sm"
                 fi
 
-                #https://cssnew.synology.com/issue/5206 Issue A
                 if grep -ia "tn40xx" "$KERN" | grep Link Up 10G &> /dev/null ; then
                 {
                 echo -e "\nKnown Issue: with 10GbE E10G15-F1 Card detected."
                 echo "If Times are above 600s after Boot, please check SOP."
-                echo "See https://cssnew.synology.com/issue/5206 Issue A"
+                echo "See"
                 grep -ia "tn40xx" "$KERN" | grep "Link Up 10G\|Link Down" | tail -n20
                 } >> "$sm"
                 fi
 
-                #https://cssnew.synology.com/issue/25154
                 if grep -ia '"faulty_communication":true' "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/var/log/ha.log &> /dev/null ; then
                 Issue25154Ct=$(grep -iac '"faulty_communication":true' "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/var/log/ha.log)
                 echo -e "\nKnown Issue: Lots of error messages 'High system usage detected' show up under HA Manager." >> "$sm"
                 echo "Showing only latest of $Issue25154Ct occurences." >> "$sm"
-                echo "See https://cssnew.synology.com/issue/25154" >> "$sm"
+                echo "See" >> "$sm"
                 grep -ia '"faulty_communication":true' "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/var/log/ha.log | tail -n1 >> "$sm"
                 fi
 
-                #https://cssnew.synology.com/issue/25294
                 if grep -ia "btrfs_wait_pending_ordered" "$MESSAGES" &> /dev/null; then
                 {
-                echo -e "\nPossible Known Issue: https://cssnew.synology.com/issue/25294"
+                echo -e "\nPossible Known Issue:"
                 echo "After updating to DSM6.2.2, the volume might get stuck and with the specific hung task."
                 grep -ia "btrfs_wait_pending_ordered" "$MESSAGES"
                 } >> "$sm"
                 fi
 
-                #https://cssnew.synology.com/issue/13942
                 if [ "$UpnpModel" = "DS218j" ] || [ "$UpnpModel" = "RS217" ] || [ "$UpnpModel" = "RS816" ] || [ "$UpnpModel" = "DS416j" ] || [ "$UpnpModel" = "DS416slim" ] || [ "$UpnpModel" = "DS216" ] || [ "$UpnpModel" = "DS216j" ] || [ "$UpnpModel" = "DS116" ]; then
                     grep_Issue_13942=$( grep -ca "Linux processing - Can't refill, try to allocate again in cleanup timer" "$MESSAGES" )
                     if [ "$grep_Issue_13942" -gt 0 ]; then
                     {
-                        echo -e "\nKnown Issue: https://cssnew.synology.com/issue/13942"
+                        echo -e "\nKnown Issue:"
                         echo "[Cause] The marvell model may suffer from memory allocating issue."
                         echo "[Workaround]Add the following command to a bootup task:"
                         echo "/sbin/sysctl -w vm.min_free_kbytes=16384"
@@ -1305,12 +1293,11 @@ do
                     fi
                 fi
 
-                #https://cssnew.synology.com/issue/8898
                 if [ "$UpnpModel" = "DS715" ] || [ "$UpnpModel" = "DS1515" ] || [ "$UpnpModel" = "DS1517" ] || [ "$UpnpModel" = "DS2015xs" ] || [ "$UpnpModel" = "DS416" ] || [ "$UpnpModel" = "DS215+" ]; then
                     grep_Issue_13942=$( grep -ca "failed to alloc buffer for rx queue 2" "$MESSAGES" )
                     if [ "$grep_Issue_13942" -gt 0 ]; then
                     {
-                        echo -e "\nKnown Issue: https://cssnew.synology.com/issue/8898"
+                        echo -e "\nKnown Issue:"
                         echo "[Cause] The marvell model may suffer from memory allocating issue."
                         echo "[Workaround]Add the following command to a bootup task:"
                         echo "/sbin/sysctl -w vm.min_free_kbytes=131072"
@@ -1411,7 +1398,7 @@ do
                 echo -n "CPU from logs:" "$DS_CPU"
                 echo "; Threads: $Processor_count , Cores: $DS_Cores"
                 echo "Serialnumber:" "$DS_SN"
-                echo -e 'Associated Tickets: \thttps://cssnew.synology.com/ticket?list_type=agent_all&sort_by=update_time&sort_direction=desc&filter=%7B%22search_column%22%3A%5B%22ticket_id%22%2C%22content%22%5D%2C%22sn%22%3A%22'"$DS_SN"'%22%7D'
+                echo "Associated Tickets: $DS_SN"
 
                 swap_percent_kb=$(awk "BEGIN {printf \"%.2f\n\", $swap_used_kbyte/$swap_total_kbyte*100}")
                 echo -ne "\nSwap: ($swap_percent_kb%) used " >> "$sm"
@@ -1440,7 +1427,7 @@ do
 
                 #log "$DS_MEM3_calc"
                 date_now=$(date +"%d. %B %H:%M:%S: ")
-                echo -e '$date_now Associated Tickets: \nhttps://cssnew.synology.com/ticket?list_type=agent_all&sort_by=update_time&sort_direction=desc&filter=%7B%22search_column%22%3A%5B%22ticket_id%22%2C%22content%22%5D%2C%22sn%22%3A%22'"$DS_SN"'%22%7D'
+                echo -e "$date_now Associated Tickets: $DS_SN"
 
                 if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/samba/smb.share.conf" ]]
                 then    SmbShares=$(grep "path=" "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/samba/smb.share.conf" | tr '\n' '\t')

@@ -25,7 +25,7 @@
                         ["\\(incompatible\\)",                             "[\\r\\n]"],
                         ["Volume crashes:\\s+[1-9]",                       "[\\r\\n]"],
                         ["Out of Memory kills:\\s+[1-9]",                  "[\\r\\n]"],
-                        ["md[0-9]+ : active.*\\[.*_.*\\]",                 "[\\r\\n]"],
+                        ["\\s+[0-9]+ blocks.*\\[.*_.*\\]",                 "[\\r\\n]"],
                         ["BTRFS[: ]+error",                                "[\\r\\n]"],
                         ["IO failure",                                     "[\\r\\n]"],
                         ["errno=-[0-9]+",                                  "[\\r\\n]"],
@@ -35,9 +35,9 @@
                         ["Warning! This is an old DSM",                    "[\\r\\n]"],
                         ["not found! should be",                           "[\\r\\n]"],
                         ["\\[31m",                                         "[\\r\\n]"],
-                        ["Reallocated_Sector_Ct: [1-9]",                   "[\\r\\n]"],
-                        ["Current_Pending_Sector: [1-9]",                  "[\\r\\n]"],
-                        ["Offline_Uncorrectable: [1-9]",                   "[\\r\\n]"],
+                        ["Reallocated_Sector_Ct:\\s+[1-9]",                "[\\r\\n]"],
+                        ["Current_Pending_Sector:\\s+[1-9]",               "[\\r\\n]"],
+                        ["Offline_Uncorrectable:\\s+[1-9]",                "[\\r\\n]"],
                         ["HDD temperature:.*\\(ERROR:",                    "[\\r\\n]"],
                         ["HDD age ERROR:",                                 "[\\r\\n]"],
                         ["RAID active rebuild:",                           "[\\r\\n]"],
@@ -82,7 +82,8 @@
                         ["UPS events:",                     "[\\r\\n]"],
                         ["Low battery|On battery",          "[\\r\\n]"],
                         ["RECENT: < 7 days",                "[\\r\\n]"],
-                        ["SMART self-test schedule: not configured","[\\r\\n]"]
+                        ["SMART self-test schedule: not configured","[\\r\\n]"],
+                        ["BTRFS scrub.*last finish=\\?",       "[\\r\\n]"]
                     ],
                     "color": {
                         "base"  : ["#FD971F", ""],
@@ -98,22 +99,28 @@
                     "pattern": [
                         ["\\(compatible\\)",                   "[\\r\\n]"],
                         ["DSM Version is latest!",             "[\\r\\n]"],
-                        ["Reallocated_Sector_Ct: 0",           "[\\r\\n]"],
-                        ["Current_Pending_Sector: 0",          "[\\r\\n]"],
-                        ["Offline_Uncorrectable: 0",           "[\\r\\n]"],
+                        ["Reallocated_Sector_Ct:\\s+0",         "[\\r\\n]"],
+                        ["Current_Pending_Sector:\\s+0",        "[\\r\\n]"],
+                        ["Offline_Uncorrectable:\\s+0",         "[\\r\\n]"],
                         ["(?i)memtest passed",                 "[\\r\\n]"],
                         ["degraded volumes:\\s+none",          "[\\r\\n]"],
                         ["DRDY:\\s+none",                      "[\\r\\n]"],
                         ["Database is malformed:\\s+none",     "[\\r\\n]"],
                         ["Out of Memory kills:\\s+none",       "[\\r\\n]"],
                         ["Volume crashes:\\s+none",            "[\\r\\n]"],
+                        ["generic crashes:\\s+none",           "[\\r\\n]"],
+                        ["Call Traces:\\s+none",               "[\\r\\n]"],
+                        ["improper shutdowns:\\s+none",        "[\\r\\n]"],
+                        ["generic errs:\\s+none",              "[\\r\\n]"],
+                        ["Ext4-/Btrfs-Errs:\\s+none",         "[\\r\\n]"],
                         ["found 0 (?:dropped|bugged) Packages","[\\r\\n]"],
-                        ["md[0-9]+ : active.*\\[U+\\]",        "[\\r\\n]"],
+                        ["\\s+[0-9]+ blocks.*\\[U+\\]",         "[\\r\\n]"],
                         ["Authentication failures:\\s+none",   "[\\r\\n]"],
                         ["BTRFS qgroup warnings:\\s+none",     "[\\r\\n]"],
                         ["Failed dpkg upgrades:\\s+none",      "[\\r\\n]"],
                         ["RAID rebuild:\\s+none in progress",  "[\\r\\n]"],
-                        ["Disk Health Prediction:.*: normal",  "[\\r\\n]"]
+                        ["Disk Health Prediction:.*: normal",  "[\\r\\n]"],
+                        ["SMART self-test schedule: history present", "[\\r\\n]"]
                     ],
                     "color": {
                         "base"  : ["#A6E22E", ""],
@@ -160,7 +167,10 @@
                         ["^  /volume[0-9]+:",            "[\\r\\n]"],
                         ["^  Top targeted users:",       "[\\r\\n]"],
                         ["^  Top source hosts:",         "[\\r\\n]"],
-                        ["^  [A-Za-z0-9_-]+:[[:space:]]+[0-9]{4}", "[\\r\\n]"]
+                        ["^  [A-Za-z0-9_-]+:[[:space:]]+[0-9]{4}", "[\\r\\n]"],
+                        ["^md[0-9]+ : active",                  "[\\r\\n]"],
+                        ["^Overview:",                          "[\\r\\n]"],
+                        ["^Third Party packages:",              "[\\r\\n]"]
                     ],
                     "color": {
                         "base"  : ["#66D9EF", ""],

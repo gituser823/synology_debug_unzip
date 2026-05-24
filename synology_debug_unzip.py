@@ -1323,7 +1323,8 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
         r"Docker|MailClient|MailPlus-Server|OAuthService|PetaSpace|PrestoServer|PythonModule|"
         r"SSOServer|SnapshotReplication|Spreadsheet|SynologyMoments|Virtualization|iTunesServer|"
         r"TimeBackup|Java7|Java8|exFAT|PDFViewer|DocumentViewer|HighAvailability|MailServer|"
-        r"MailStation|phpMyAdmin|total \d"
+        r"MailStation|phpMyAdmin|synocli-disk|synocli-file|synocli-monitor|synocli-net|"
+        r"SynologyPhotos|SynoOnlinePack_v2|QuickConnect|total \d"
     )
     third_pkgs = [
         line for line in pack_text.splitlines()

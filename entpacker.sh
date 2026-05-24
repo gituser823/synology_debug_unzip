@@ -34,7 +34,6 @@ sleep_extract_zip=0.5 #rescan time for finishing download
 Script_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )" #Scriptdirectory
 DSM=dsm
 CPU_FILE="${Script_dir}/files/CPU.txt"
-PShedPy="${Script_dir}/files/power_shed.py"
 rss="${Script_dir}/tmp/genRSS.php"
 available_packages_pre="${Script_dir}/tmp/available_packages_pre.txt"
 available_packages="${Script_dir}/tmp/available_packages.txt"
@@ -86,6 +85,31 @@ spinDot(){
     echo -ne "."
     sleep 0.2
   done
+}
+
+# Converts a power_sched.conf integer value to a human-readable schedule.
+# Reimplements files/power_shed.py in pure Bash (no python3 required).
+decode_power_sched() {
+    local val=$1
+    local hex
+    hex=$(printf '%07x' "$val")
+    local enabled="${hex:0:1}"
+    local daybyte="${hex:1:2}"
+    local hour_hex="${hex:3:2}"
+    local min_hex="${hex:5:2}"
+    local weekdays=("Saturday" "Friday" "Thursday" "Wednesday" "Tuesday" "Monday" "Sunday")
+    printf "\nPowerSchedule for %d:\n" "$val"
+    if [[ "$enabled" != "0" ]]; then
+        echo "Power Schedule enabled"
+    else
+        echo "Power Schedule disabled"
+    fi
+    local dayval=$((16#$daybyte))
+    for i in {0..6}; do
+        local bit=$(( (dayval >> (6 - i)) & 1 ))
+        [[ $bit -eq 1 ]] && printf "%s:\tx\n" "${weekdays[$i]}" || printf "%s:\n" "${weekdays[$i]}"
+    done
+    printf "Scheduled Time: %02d:%02d\n" "$((16#$hour_hex))" "$((16#$min_hex))"
 }
 
 convertJson() {
@@ -2124,13 +2148,13 @@ do
                             echo -e "\n$hb_packages" >> "$hb_debug"
                         fi
 
-                if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/power_sched.conf" ]]; then #call power_sched.py
+                if [[ -f "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/power_sched.conf" ]]; then
                     echo -e "\n" >> "$hb_debug"
                     cat "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/power_sched.conf" >> "$hb_debug"
                     while read p; do
                         re='^[0-9]+$'
                         if [[ $p =~ $re ]] ; then
-                           python3 "${PShedPy}" "$p" >> "$hb_debug";
+                           decode_power_sched "$p" >> "$hb_debug"
                         fi
                         done < "$DOWNLOAD_DIR/debug_$DATE/$DSM/etc/power_sched.conf"
                     else

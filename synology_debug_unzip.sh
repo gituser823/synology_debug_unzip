@@ -392,9 +392,8 @@ updateLatestPackageVersionsList() {
             echo "open https://archive.synology.com/download/Package/${v//+/%2B}/; echo -n "\""${v//\/}" \""; dir | sed \'s/.* //\' | grep -E \'^[0-9]\' | sort -V -r | head -n1" >> "${Script_dir}/tmp/lftp2.cfg"
         done
         echo "bye" >> "${Script_dir}/tmp/lftp2.cfg"
-        if [ "$ThomasModus" -eq 1 ]; then
+        if [[ "$verbose" == 1 ]]; then
             lftp -f "${Script_dir}/tmp/lftp2.cfg" | tee "${package_versions}"
-            cat "${package_versions}"
         else
             lftp -f "${Script_dir}/tmp/lftp2.cfg" | tee "${package_versions}" 1>/dev/null
         fi
@@ -434,13 +433,13 @@ updateCompatibilityLists() {
             for m in "${Models[@]}"
                 do
                     {
-                    #echo 'echo getting /comp/'"${m}"'_hdds_compatible.json'
                     echo 'get "https://www.synology.com/api/compatibility/findHclList?lang=en-global&tab=drives&model='"${m//+/%2B}"'&category=hdds_no_ssd_trim&recommend=t" -o "'"${Script_dir}"'/comp/'"${m}"'_hdds_compatible.json"'
-                    #stat --printf=", Size: %s" "${Script_dir}/comp/${m}_hdds_compatible.json"
-                    #echo 'echo getting /comp/'"${m}"'_hdds_incompatible.json'
                     echo 'get "https://www.synology.com/api/compatibility/findHclList?lang=en-global&tab=drives&model='"${m//+/%2B}"'&category=hdds_no_ssd_trim&recommend=f" -o "'"${Script_dir}"'/comp/'"${m}"'_hdds_incompatible.json"'
-                    #stat --printf=", Size: %s" "${Script_dir}/comp/${m}_hdds_compatible.json"
                     } >> "${confs[$ind]}"
+                    if [[ "$verbose" == 1 ]]; then
+                        echo "  [verbose] ${m}_hdds_compatible.json"
+                        echo "  [verbose] ${m}_hdds_incompatible.json"
+                    fi
                     (( ind++ ))
                     [ "$ind" -ge ${#confs[@]} ] && ind=0 #split to multiple files in confs[@]
                 done

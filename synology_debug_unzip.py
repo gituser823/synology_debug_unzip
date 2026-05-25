@@ -297,7 +297,9 @@ def update_package_versions_list():
         for i, fut in enumerate(concurrent.futures.as_completed(futures)):
             pkg, ver = fut.result()
             results[pkg] = ver
-            if i % 30 == 0:
+            if verbose:
+                print(f"  {pkg} -> {ver if ver else '(not found)'}")
+            elif i % 30 == 0:
                 print(".", end="", flush=True)
     print(" done")
 
@@ -339,8 +341,9 @@ def update_compatibility_lists():
                     timeout=(5, 15),
                 )
                 out.write_text(resp.text.replace("\\/", "/"))
-            except Exception:
-                pass
+                log(f"  {model}_hdds_{suffix}.json ({len(resp.content)} bytes)")
+            except Exception as e:
+                log(f"  {model}_hdds_{suffix}.json ERROR: {e}")
 
     def _fmt_eta(seconds):
         seconds = int(seconds)
@@ -353,13 +356,17 @@ def update_compatibility_lists():
         futures = {exe.submit(fetch_compat, m): m for m in models}
         for done, fut in enumerate(concurrent.futures.as_completed(futures), 1):
             fut.result()
-            elapsed = time.time() - start
-            rate = done / elapsed
-            eta = _fmt_eta((total - done) / rate) if rate > 0 else "?"
-            pct = done * 100 // total
-            bar = "." * (done * 20 // total)
-            print(f"\r  [{bar:<20}] {done}/{total} ({pct}%) ETA: {eta}   ", end="", flush=True)
-    print(f"\r  [{'.' * 20}] {total}/{total} (100%) done.              ")
+            if not verbose:
+                elapsed = time.time() - start
+                rate = done / elapsed
+                eta = _fmt_eta((total - done) / rate) if rate > 0 else "?"
+                pct = done * 100 // total
+                bar = "." * (done * 20 // total)
+                print(f"\r  [{bar:<20}] {done}/{total} ({pct}%) ETA: {eta}   ", end="", flush=True)
+    if not verbose:
+        print(f"\r  [{'.' * 20}] {total}/{total} (100%) done.              ")
+    else:
+        print(f"  {total}/{total} done.")
 
 
 def check_and_update():

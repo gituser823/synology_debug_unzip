@@ -2314,11 +2314,16 @@ def open_in_editor(files: list):
         elif platform.system() == "Windows":
             # subl.exe opens all files as tabs in one window.
             # Exclude directories — passing a folder creates a separate project window.
+            # DETACHED_PROCESS lets the GUI app reach the interactive desktop even when
+            # this script was launched from an SSH session (Session 0 isolation).
             subl = str(Path(editor).parent / "subl.exe")
             if not Path(subl).exists():
                 subl = editor
             files_only = [f for f in existing if not Path(f).is_dir()]
-            subprocess.Popen([subl] + files_only)
+            subprocess.Popen(
+                [subl] + files_only,
+                creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
+            )
         elif editor.startswith("flatpak:"):
             app_id = editor.split(":", 1)[1]
             subprocess.Popen(["flatpak", "run", "--filesystem=host", app_id] + existing)
@@ -2478,7 +2483,12 @@ def process_file(filepath: Path, download_dir: Path):
 
     def ep_sublime(relpath):
         p = dsm_dir / relpath
-        return f"{p}:100000" if p.exists() else None
+        if not p.exists():
+            return None
+        # On Windows, :100000 is an NTFS alternate-data-stream name → Path.exists() would fail
+        if platform.system() == "Windows":
+            return str(p)
+        return f"{p}:100000"
 
     if _is_wsl():
         file_list = [str(debug_dir)]

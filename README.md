@@ -123,4 +123,4 @@ Run with `-u` to force an immediate refresh.
 - An absolute path is required for `-d`. Relative paths are rejected.
 - Firefox `.part` files are detected; the script waits for the download to complete before extracting.
 - Multiple HCL download jobs run in parallel to speed up the initial data fetch.
-- SRS (Synology Replacement Service) has been discontinued by Synology and is not checked.
+- LogHighlight configuration needs improvement.

@@ -414,7 +414,7 @@ updateCompatibilityLists() {
         counter=0
         for v in $(< "$ProductList")
         do  m="${v//\"}"
-            [[ "$m" == PSU\ * ]] && continue
+            [[ "$m" == PSU\ * || "$m" == ioSafe\ * || "$m" == "Power Cord"* || "$m" == FAN\ * || "$m" == "Disk Tray"* || "$m" == "Drive Tray"* ]] && continue
             Models["${counter}"]="$m"
             (( counter++ ))
         done

@@ -317,7 +317,8 @@ def update_compatibility_lists():
             print(" error parsing model list")
             return
         models = [x.strip().strip('"') for x in m.group(1).split(",")]
-        models = [m for m in models if not m.startswith("PSU ")]
+        skip_prefixes = ("PSU ", "ioSafe ", "Power Cord", "FAN ", "Disk Tray", "Drive Tray")
+        models = [m for m in models if not m.startswith(skip_prefixes)]
         PRODUCT_LIST.write_text(json.dumps(models, indent=2))
         print(f" {len(models)} models done")
     except Exception as e:

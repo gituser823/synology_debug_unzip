@@ -2341,41 +2341,53 @@ def open_in_editor(files: list):
 # ---------------------------------------------------------------------------
 
 def install_sublime_packages():
-    """Install Package Control and queue Log Highlight for Sublime Text."""
+    """Install Package Control, queue Log Highlight, and copy Log Highlight config."""
     import urllib.request, json as _json
 
     system = platform.system()
+
+    # Determine Sublime Text config base directory
     if system == "Windows":
-        return  # Skip on Windows/WSL
-
-    try:
-        with open("/proc/version") as _f:
-            if re.search(r"Microsoft|WSL", _f.read()):
-                return
-    except Exception:
-        pass
-
-    flatpak = shutil.which("flatpak")
-    is_flatpak = False
-    if flatpak:
+        appdata = os.environ.get("APPDATA", "")
+        base = None
+        for name in ("Sublime Text", "Sublime Text 4", "Sublime Text 3"):
+            candidate = Path(appdata) / name
+            if candidate.is_dir():
+                base = candidate
+                break
+        if base is None:
+            return  # Sublime Text not installed / never launched
+    else:
         try:
-            r = subprocess.run([flatpak, "info", "com.sublimehq.SublimeText"],
-                               capture_output=True, timeout=5)
-            is_flatpak = r.returncode == 0
+            with open("/proc/version") as _f:
+                if re.search(r"Microsoft|WSL", _f.read()):
+                    return  # Skip in WSL — Sublime runs on the Windows side
         except Exception:
             pass
 
-    if is_flatpak:
-        base = Path.home() / ".var/app/com.sublimehq.SublimeText/config/sublime-text"
-    elif shutil.which("subl") or shutil.which("sublime_text"):
-        base = Path.home() / ".config/sublime-text"
-    else:
-        return  # Sublime Text not installed
+        flatpak = shutil.which("flatpak")
+        is_flatpak = False
+        if flatpak:
+            try:
+                r = subprocess.run([flatpak, "info", "com.sublimehq.SublimeText"],
+                                   capture_output=True, timeout=5)
+                is_flatpak = r.returncode == 0
+            except Exception:
+                pass
+
+        if is_flatpak:
+            base = Path.home() / ".var/app/com.sublimehq.SublimeText/config/sublime-text"
+        elif shutil.which("subl") or shutil.which("sublime_text"):
+            base = Path.home() / ".config/sublime-text"
+        else:
+            return  # Sublime Text not installed
 
     pkg_ctrl_dir = base / "Installed Packages"
     pkg_ctrl_file = pkg_ctrl_dir / "Package Control.sublime-package"
-    settings_dir = base / "Packages/User"
+    settings_dir = base / "Packages" / "User"
     settings_file = settings_dir / "Package Control.sublime-settings"
+    lh_settings_src = SCRIPT_DIR / "sublime" / "Log Highlight.sublime-settings"
+    lh_settings_dst = settings_dir / "Log Highlight.sublime-settings"
 
     pkg_ctrl_dir.mkdir(parents=True, exist_ok=True)
     settings_dir.mkdir(parents=True, exist_ok=True)
@@ -2388,7 +2400,7 @@ def install_sublime_packages():
         except Exception as e:
             print(f"Package Control download failed: {e}")
 
-    # Merge Log Highlight into existing settings
+    # Merge Log Highlight into existing Package Control settings
     try:
         existing = _json.loads(settings_file.read_text()) if settings_file.exists() else {}
     except Exception:
@@ -2399,6 +2411,12 @@ def install_sublime_packages():
         existing["installed_packages"] = pkgs
         settings_file.write_text(_json.dumps(existing, indent=4) + "\n")
         print("Sublime: Log Highlight added to Package Control queue.")
+
+    # Copy Log Highlight config (always overwrite so updates are picked up)
+    if lh_settings_src.exists():
+        import shutil as _shutil
+        _shutil.copy2(str(lh_settings_src), str(lh_settings_dst))
+        print(f"Sublime: Log Highlight config installed to {lh_settings_dst}")
 
 
 # ---------------------------------------------------------------------------

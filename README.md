@@ -92,9 +92,11 @@ The script waits for `*.dat` files to appear in that directory. Download a debug
 ```bash
 # Start watching
 bash synology_debug_unzip.sh -d "$HOME/Downloads/synology"
+```
 
+```bash
 # Force-update all cached data from Synology's servers
-bash synology_debug_unzip.sh -d "$HOME/Downloads/synology" -u
+bash synology_debug_unzip.sh -u
 ```
 
 ## Cached data (downloaded automatically)

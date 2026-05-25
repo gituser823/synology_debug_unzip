@@ -174,7 +174,7 @@ def find_editor():
                 return "flatpak:com.sublimehq.SublimeText"
         except Exception:
             pass
-    for candidate in ["subl", "sublime_text", "gedit", "kate", "mousepad", "xed", "pluma", "xdg-open"]:
+    for candidate in ["subl", "sublime_text", "code", "gedit", "kate", "mousepad", "xed", "pluma", "xdg-open"]:
         if shutil.which(candidate):
             return candidate
     return None
@@ -2312,7 +2312,7 @@ def open_in_editor(files: list):
             subprocess.Popen([subl] + files_only)
         elif editor.startswith("flatpak:"):
             app_id = editor.split(":", 1)[1]
-            subprocess.Popen(["flatpak", "run", app_id] + existing)
+            subprocess.Popen(["flatpak", "run", "--filesystem=host", app_id] + existing)
         else:
             subprocess.Popen([editor] + existing)
     except Exception as e:
@@ -2464,21 +2464,50 @@ def process_file(filepath: Path, download_dir: Path):
     pics = (list(debug_dir.glob("*.jpg")) + list(debug_dir.glob("*.JPG")) +
             list(debug_dir.glob("*.png")) + list(debug_dir.glob("*.PNG")))
 
-    open_in_editor([
-        str(debug_dir),
-        str(sg),
-        ep("packages_onoff.list"),
-        ep("var/log/bash_history.log"),
-        str(hb),
-        ep("var/log/hibernation.log"),
-        ep("result/df.result"),
-        ep("space.xml"),
-        disk_log,
-        ep("var/log/kern.log"),
-        ep("var/log/synolog/synosystac.log"),
-        ep("var/log/messages.log"),
-        str(sm),
-    ] + [str(p) for p in pics])
+    editor = find_editor()
+    is_sublime = editor and ("subl" in editor or "sublime" in editor.lower() or editor.startswith("flatpak:") or editor == "code")
+
+    def ep_sublime(relpath):
+        p = dsm_dir / relpath
+        return f"{p}:100000" if p.exists() else None
+
+    if _is_wsl():
+        file_list = [str(debug_dir)]
+    else:
+        file_list = []
+
+    if is_sublime:
+        file_list += [
+            str(sg),
+            ep("packages_onoff.list"),
+            ep("var/log/bash_history.log"),
+            str(hb),
+            ep("var/log/hibernation.log"),
+            ep("result/df.result"),
+            ep_sublime("space.xml"),
+            disk_log,
+            ep_sublime("var/log/kern.log"),
+            ep_sublime("var/log/synolog/synosystac.log"),
+            ep_sublime("var/log/messages.log"),
+            str(sm),
+        ]
+    else:
+        file_list += [
+            str(sg),
+            ep("packages_onoff.list"),
+            ep("var/log/bash_history.log"),
+            str(hb),
+            ep("var/log/hibernation.log"),
+            ep("result/df.result"),
+            ep("space.xml"),
+            disk_log,
+            ep("var/log/kern.log"),
+            ep("var/log/synolog/synosystac.log"),
+            ep("var/log/messages.log"),
+            str(sm),
+        ]
+
+    open_in_editor(file_list + [str(p) for p in pics])
 
     print(f"Total time: {time.time() - t0:.2f}s")
 

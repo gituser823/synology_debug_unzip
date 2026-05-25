@@ -269,7 +269,7 @@ def update_package_versions_list():
     TMP_DIR.mkdir(parents=True, exist_ok=True)
     try:
         r = requests.get("https://archive.synology.com/download/Package/", timeout=(5, 15))
-        packages = re.findall(r'href="([A-Za-z][^/"]+)/"', r.text)
+        packages = re.findall(r'href="/download/Package/([A-Za-z][^/"]*)"', r.text)
         packages = [p for p in packages if not p.startswith(".")]
         AVAILABLE_PACKAGES.write_text("\n".join(packages) + "\n")
     except Exception as e:
@@ -282,7 +282,7 @@ def update_package_versions_list():
         url = f"https://archive.synology.com/download/Package/{pkg.replace('+', '%2B')}/"
         try:
             resp = requests.get(url, timeout=(5, 15))
-            versions = re.findall(r'href="([0-9][^/"]*)"', resp.text)
+            versions = re.findall(r'href="/download/Package/[^/]+/([0-9][^/"]*)"', resp.text)
             versions = [v for v in versions if re.match(r"^[0-9]", v)]
             if versions:
                 versions.sort(key=version_key, reverse=True)

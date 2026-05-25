@@ -413,7 +413,9 @@ updateCompatibilityLists() {
         IFS=","
         counter=0
         for v in $(< "$ProductList")
-        do  Models["${counter}"]="${v//\"}"
+        do  m="${v//\"}"
+            [[ "$m" == PSU\ * ]] && continue
+            Models["${counter}"]="$m"
             (( counter++ ))
         done
         IFS=$' \t\n'

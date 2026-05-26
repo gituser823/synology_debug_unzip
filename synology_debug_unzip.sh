@@ -21,6 +21,7 @@ for package in $required_packages; do
     }
 done
 
+
 #debugging with times:
 #N=`date +%s%N`
 #export PS4='+[$(((`date +%s%N`-$N)/1000000))ms][${BASH_SOURCE}:${LINENO}]: ${FUNCNAME[0]:+${FUNCNAME[0]}(): }'; set -x;
@@ -43,10 +44,33 @@ mkdir -p "${Script_dir}/tmp"
 mkdir -p "${Script_dir}/tmp/lftp"
 confpath="${Script_dir}/tmp/lftp"
 declare -a confs
-confs=( "${confpath}/lftp_no_"{00..8}.cfg ) #increase {00..X} X to increase number of simultaneous downloads for UpdateCompatibilityLists()
+confs=( "${confpath}/lftp_no_"{00..12}.cfg ) #increase {00..X} X to increase number of simultaneous downloads for UpdateCompatibilityLists()
 ProductList="${Script_dir}/tmp/ProductList.json"
 sleep_scan_dir_backup=$sleep_scan_dir
 
+# Extract as invoking user so extracted trees can be removed without root (archives often contain root-owned metadata).
+bsdtar_extract_as_user() {
+    bsdtar xf "$1" -C "$2" \
+        --no-same-owner --no-same-permissions \
+        --owner "$(id -un):$(id -u)" \
+        --group "$(id -gn):$(id -g)"
+}
+
+# Flatpak/GUI apps need DISPLAY (often unset in Cursor/SSH); infer from session or X socket.
+ensure_display() {
+    [[ -n "${DISPLAY}" ]] && return 0
+    local n=""
+    if command -v loginctl &>/dev/null; then
+        n=$(loginctl show-user "$(id -un)" -p Display --value 2>/dev/null)
+        [[ -n "$n" && "$n" != "none" ]] && DISPLAY=":${n#:}" && export DISPLAY && return 0
+    fi
+    local x
+    for x in 0 1; do
+        [[ -S "/tmp/.X11-unix/X${x}" ]] && DISPLAY=":${x}" && export DISPLAY && return 0
+    done
+    [[ -n "${WAYLAND_DISPLAY}" ]] && return 0
+    return 1
+}
 log() {
     [[ "$verbose" != 1 ]] && return
     if read -t0.01; then
@@ -486,15 +510,16 @@ install_sublime_packages() {
     # Skip on WSL or if Sublime Text is not installed
     if grep -qE "(Microsoft|WSL)" /proc/version 2>/dev/null; then return; fi
 
-    local base=""
+    local bases=()
     if flatpak info com.sublimehq.SublimeText &>/dev/null 2>&1; then
-        base="$HOME/.var/app/com.sublimehq.SublimeText/config/sublime-text"
-    elif command -v subl &>/dev/null || command -v sublime_text &>/dev/null; then
-        base="$HOME/.config/sublime-text"
-    else
-        return
+        bases+=("$HOME/.var/app/com.sublimehq.SublimeText/config/sublime-text")
     fi
+    if command -v subl &>/dev/null || command -v sublime_text &>/dev/null; then
+        bases+=("$HOME/.config/sublime-text")
+    fi
+    [[ ${#bases[@]} -gt 0 ]] || return
 
+    for base in "${bases[@]}"; do
     local pkg_dir="$base/Installed Packages"
     local pkg_file="$pkg_dir/Package Control.sublime-package"
     local settings_dir="$base/Packages/User"
@@ -528,6 +553,21 @@ if "Log Highlight" not in pkgs:
     print("Sublime: Log Highlight added to Package Control queue.")
 PYEOF
     fi
+
+    local lh_src="${Script_dir}/sublime/Log Highlight.sublime-settings"
+    local lh_dst="${settings_dir}/Log Highlight.sublime-settings"
+    local lh_gen="${Script_dir}/sublime/gen_loghighlight_syntax.py"
+    if [[ -f "$lh_src" ]]; then
+        cp -f "$lh_src" "$lh_dst"
+        echo "Sublime: Log Highlight config installed to ${lh_dst}"
+        if [[ -f "$lh_gen" ]] && command -v python3 &>/dev/null; then
+            python3 "$lh_gen" "$settings_dir" "$lh_src" \
+                || echo "Sublime: Log Highlight syntax generation failed."
+        else
+            echo "Sublime: python3 or ${lh_gen} missing — run 'Log Highlight: Generate Syntax & Theme' manually."
+        fi
+    fi
+    done
 }
 
 while getopts ":uhvd:" opt; do
@@ -613,7 +653,7 @@ process_dat_file() {
             if echo "$filetype" | grep "gzip";
             then
                 mkdir -p "$DOWNLOAD_DIR"/debug_"$DATE"
-                bsdtar xf "$file" -C "$DOWNLOAD_DIR"/debug_"$DATE"
+                bsdtar_extract_as_user "$file" "$DOWNLOAD_DIR/debug_$DATE"
             else
                 unzip -q "$file" -d "$DOWNLOAD_DIR"/debug_"$DATE" #remove?
             fi
@@ -1703,7 +1743,7 @@ process_dat_file() {
                             echo -e "(Data may be unreliable, because of old DSM Version)" >> "$_sm_raw"
                         fi
                         echo -en "Third Party packages:" >> "$_sm_raw"
-                        third_packages=$(grep -v "AntiVirus\|AudioStation\|Calendar\|CloudStation\|FileStation\|HyperBackup\|LogCenter\|MediaServer\|NoteStation\|PHP[0-9].[0-9]\|PhotoStation\|ProxyServer\|StorageAnalyzer\|SynoFinder\|SynologyApplicationService\|SynologyDrive\|TextEditor\|USBCopy\|VideoStation\|WebDAVServer\|CloudSync\|DownloadStation\|SurveillanceStation\|WebStation\|VPNCenter\|MariaDB\|Chat\|Git\|Node.js_4\|Perl\|ActiveBackup\|ActiveBackup-Office365\|ActiveDirectoryServer\|Apache[0-9].[0-9]\|CMS\|CardDAVServer\|DNSServer\|DiagnosisTool\|Docker\|MailClient\|MailPlus-Server\|OAuthService\|PetaSpace\|PrestoServer\|PythonModule\|SSOServer\|SnapshotReplication\|Spreadsheet\|SynologyMoments\|Virtualization\|iTunesServer\| enabled\|TimeBackup\|Java7\|Java8\|exFAT\|PDFViewer\|DocumentViewer\|HighAvailability\|MailServer\|MailStation\|phpMyAdmin\|synocli-disk\|synocli-file\|synocli-monitor\|synocli-net\|SynologyPhotos\|SynoOnlinePack_v2\|QuickConnect\|total [[:digit:]]\{,3\}" "$PACK")
+                        third_packages=$(grep -v "AntiVirus\|AudioStation\|Calendar\|CloudStation\|FileStation\|HyperBackup\|LogCenter\|MediaServer\|NoteStation\|PHP[0-9].[0-9]\|PhotoStation\|ProxyServer\|StorageAnalyzer\|SynoFinder\|SynologyApplicationService\|SynologyDrive\|TextEditor\|USBCopy\|VideoStation\|WebDAVServer\|CloudSync\|DownloadStation\|SurveillanceStation\|WebStation\|VPNCenter\|MariaDB\|Chat\|Git\|Node.js_4\|Perl\|ActiveBackup\|ActiveBackup-Office365\|ActiveDirectoryServer\|Apache[0-9].[0-9]\|CMS\|CardDAVServer\|DNSServer\|DiagnosisTool\|Docker\|MailClient\|MailPlus-Server\|OAuthService\|PetaSpace\|PrestoServer\|PythonModule\|SSOServer\|SnapshotReplication\|Spreadsheet\|SynologyMoments\|Virtualization\|iTunesServer\| enabled\|TimeBackup\|Java7\|Java8\|exFAT\|PDFViewer\|DocumentViewer\|HighAvailability\|MailServer\|MailStation\|phpMyAdmin\|synocli-disk\|synocli-file\|synocli-monitor\|synocli-net\|SynologyPhotos\|SynoOnlinePack_v2\|QuickConnect\|total [[:digit:]]\{,3\}\|ActiveInsight\|ContainerManager\|SMBService\|SupportService" "$PACK")
                         if [ -z "$third_packages" ]; then
                             echo -e "\tnone" >> "$_sm_raw"
                         else
@@ -2349,14 +2389,28 @@ process_dat_file() {
                 declare -a subl
 
                 _detect_editor() {
+                    for cmd in subl sublime_text; do
+                        command -v "$cmd" >/dev/null 2>&1 && echo "$cmd" && return
+                    done
                     if command -v flatpak >/dev/null 2>&1 && \
                        flatpak info com.sublimehq.SublimeText >/dev/null 2>&1; then
-                        echo "flatpak run com.sublimehq.SublimeText"; return
+                        echo "flatpak run --filesystem=host com.sublimehq.SublimeText"; return
                     fi
-                    for cmd in subl sublime_text gedit kate mousepad xed pluma; do
+                    for cmd in gedit kate mousepad xed pluma; do
                         command -v "$cmd" >/dev/null 2>&1 && echo "$cmd" && return
                     done
                     echo "xdg-open"
+                }
+
+                _launch_editor() {
+                    ensure_display || echo "Warning: DISPLAY not set — editor may not open (run from a desktop terminal or set DISPLAY=:0)." >&2
+                    [[ ${#OpenFiles[@]} -eq 0 ]] && return
+                    if [[ "${subl[0]}" == "flatpak" ]]; then
+                        nohup "${subl[@]}" "${OpenFiles[@]}" >/dev/null 2>&1 &
+                    else
+                        nohup "${subl[@]}" "${OpenFiles[@]}" >/dev/null 2>&1 &
+                    fi
+                    disown 2>/dev/null || true
                 }
 
                 _find_win_subl() {
@@ -2399,7 +2453,7 @@ process_dat_file() {
                     os=other
 
                     case "$_detected" in
-                        *SublimeText*|subl|sublime_text) editor_type=sublime ;;
+                        *SublimeText*|*sublime_text*|subl|flatpak*) editor_type=sublime ;;
                         *) editor_type=other ;;
                     esac
 
@@ -2427,10 +2481,15 @@ process_dat_file() {
                     "${subl[@]}" "${_win_paths[@]}" 2>/dev/null
                     unset _win_paths
                 else
-                    for i in "${OpenFiles[@]}"; do # open single files
-                        "${subl[@]}" "$i"
-                        sleep 0.1
-                    done
+                    if [[ "$editor_type" == "sublime" ]]; then
+                        _launch_editor
+                    else
+                        for i in "${OpenFiles[@]}"; do
+                            nohup "${subl[@]}" "$i" >/dev/null 2>&1 &
+                            disown 2>/dev/null || true
+                            sleep 0.1
+                        done
+                    fi
                 fi
 
                 echo -n "${subl[*]} "

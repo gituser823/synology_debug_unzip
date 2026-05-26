@@ -83,7 +83,9 @@
                         ["Low battery|On battery",          "[\\r\\n]"],
                         ["RECENT: < 7 days",                "[\\r\\n]"],
                         ["SMART self-test schedule: not configured","[\\r\\n]"],
-                        ["BTRFS scrub.*last finish=\\?",       "[\\r\\n]"]
+                        ["No Memory tests have been run\\.?",  "[\\r\\n]"],
+                        ["BTRFS scrub.*last finish=\\?",       "[\\r\\n]"],
+                        ["^\\s*Update for ",                   "[\\r\\n]"]
                     ],
                     "color": {
                         "base"  : ["#FD971F", ""],
@@ -98,7 +100,7 @@
                     "enable": true,
                     "pattern": [
                         ["\\(compatible\\)",                   "[\\r\\n]"],
-                        ["DSM Version is latest!",             "[\\r\\n]"],
+                        ["DSM Version is latest\\.",            "[\\r\\n]"],
                         ["Reallocated_Sector_Ct:\\s+0",         "[\\r\\n]"],
                         ["Current_Pending_Sector:\\s+0",        "[\\r\\n]"],
                         ["Offline_Uncorrectable:\\s+0",         "[\\r\\n]"],

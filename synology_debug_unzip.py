@@ -164,7 +164,11 @@ def find_editor():
     if _is_wsl():
         found = _find_win_subl()
         return found if found else "explorer.exe"
-    # Prefer Flatpak Sublime Text (carries user's Log Highlight settings)
+    # Prefer native/snap subl: supports :line syntax and single-instance IPC reliably.
+    # Fall back to Flatpak only when no subl/sublime_text wrapper is in PATH.
+    for candidate in ["subl", "sublime_text"]:
+        if shutil.which(candidate):
+            return candidate
     flatpak = shutil.which("flatpak")
     if flatpak:
         try:
@@ -174,7 +178,7 @@ def find_editor():
                 return "flatpak:com.sublimehq.SublimeText"
         except Exception:
             pass
-    for candidate in ["subl", "sublime_text", "code", "gedit", "kate", "mousepad", "xed", "pluma", "xdg-open"]:
+    for candidate in ["code", "gedit", "kate", "mousepad", "xed", "pluma", "xdg-open"]:
         if shutil.which(candidate):
             return candidate
     return None
@@ -1311,6 +1315,11 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
                       if re.search("error", line, re.I) and "Failed to send email" not in line]
     gen_errors = list(dict.fromkeys(gen_errors_all))
 
+    gen_warnings_all = [line for line in sysdb_text.splitlines()
+                        if re.match(r"^warning\t", line, re.I)
+                        and "Failed to send email" not in line]
+    gen_warnings = list(dict.fromkeys(gen_warnings_all))
+
     drdy_lines = list(dict.fromkeys(grep_lines("DRDY", messages_text)))
     db_malformed = grep_count("database disk image is malformed", messages_text)
     oom_kills = grep_count("out_of_memory", messages_text)
@@ -1585,6 +1594,7 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
         w(f"DSM was migrated from {upnp_etc} to {upnp_model}")
 
     # Mountpoints
+    w("")
     w("Volumes:")
     vol_mounts = [line.split(",")[0] for line in mounts_text.splitlines() if re.search("volume", line, re.I)]
     if vol_mounts:
@@ -1682,12 +1692,12 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
             w(f"Memory tests:               {passed_memtest} passed")
         if failed_memtest > 0:
             w(f"Memory tests:               {failed_memtest} FAILED")
-    # if both 0, the overview "Memory tests: keine" line is rendered later
+    # if both 0, the overview "Memory tests: none" line is rendered later
 
     # ─── UPDATES ────────────────────────────────────────────────
     set_section("updates")
     if latest_build_num and dsm_build_num and latest_build_num > dsm_build_num:
-        w("Neuere Version verfügbar:")
+        w("Newer version available:")
         for line in grep_lines(re.escape(ds_upnp_plus), rss_text):
             w(f"  {re.sub(r'<[^>]+>', '', line)}")
         w(f"  (current: {dsm_version} {dsm_build} {dsm_smallfix})")
@@ -1714,7 +1724,7 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
         w(f"  {eth}")
 
     dns_servers = re.findall(r"^nameserver .+", resolv_text, re.M)
-    w(f"DNS:     {', '.join(dns_servers) if dns_servers else '(nicht gefunden)'}")
+    w(f"DNS:     {', '.join(dns_servers) if dns_servers else '(not found)'}")
 
     # NTP
     ntp_text_local = read_file(dsm_dir / "etc" / "ntp.conf")
@@ -1763,14 +1773,16 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
         for u in pkg_updates:
             w(u)
     else:
-        w("Alle Pakete aktuell.")
+        w("All packages up to date.")
 
     if third_pkgs:
-        w(f"Drittanbieter: {len(third_pkgs)}")
+        w("")
+        w(f"Third-party packages: {len(third_pkgs)}")
         for p in third_pkgs:
             w(f"  {p}")
     else:
-        w("Drittanbieter: keine")
+        w("")
+        w("Third-party packages: none")
 
     # Samba shares
     if smb_conf.exists():
@@ -1812,6 +1824,7 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
     w(f"Degraded volumes            {_val(len(degraded_volumes))}")
     w(f"Ext4/Btrfs errors           {fs_error_ct}")
     w(f"Generic errors (SYSDB)      {_val(len(gen_errors))}")
+    w(f"Generic warnings (SYSDB)    {_val(len(gen_warnings))}")
     w(f"DRDY errors                 {_val(len(drdy_lines))}")
     w(f"Database malformed          {db_malformed}")
     w(f"Out of Memory kills         {oom_kills}")
@@ -1820,7 +1833,7 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
     w(f"Auth failures               {auth_failures['total']}")
     w(f"BTRFS qgroup warnings       {qgroup_warnings}")
     if passed_memtest == 0 and failed_memtest == 0:
-        w("Memory tests                keine")
+        w("Memory tests                none")
     if user_grp["users"]:
         w(f"Non-system users            {len(user_grp['users'])}")
     if enc_share_count >= 0:
@@ -1829,9 +1842,9 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
     # ─── DOCKER ─────────────────────────────────────────────────
     set_section("docker")
     if docker_count > 0:
-        w(f"Container gesehen:  {docker_count}")
+        w(f"Containers seen:  {docker_count}")
     else:
-        w("Container gesehen:  keine")
+        w("Containers seen:  none")
 
     # ─── EXTENDED DIAGNOSTICS ───────────────────────────────────
     set_section("extended")
@@ -1839,7 +1852,7 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
         for line in raid_rebuild:
             w(f"RAID rebuild:    {line}")
     else:
-        w("RAID rebuild:    keiner aktiv")
+        w("RAID rebuild:    none active")
 
     if volume_layout:
         w("Volume layout:")
@@ -1859,7 +1872,7 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
             elif t >= 50:
                 tag = " (warn)"
             parts.append(f"{ht['disk']}: {t}°C{tag}")
-        w(f"HDD-Temperaturen: {'  ·  '.join(parts)}")
+        w(f"HDD temperatures: {'  ·  '.join(parts)}")
 
     for sf in smart_files:
         s = parse_smart(sf)
@@ -1871,7 +1884,7 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
                 w(f"HDD age warning: {sf.name}: {hours}h (~{hours//8760}y)")
 
     if vendor_summary:
-        w(f"Hersteller: {vendor_summary}")
+        w(f"Vendor: {vendor_summary}")
 
     real_scrubs = {k: v for k, v in btrfs_scrub.items()
                    if k != "(scheduled round)" and (v.get("last_start") or v.get("last_finish") or v.get("errors"))}
@@ -1883,7 +1896,7 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
             w(f"BTRFS scrub ({vol}): last start={start}, last finish={finish}"
               f"{', ERRORS: ' + str(len(errs)) if errs else ''}")
     else:
-        w("BTRFS scrub:     kein Verlauf")
+        w("BTRFS scrub:     no history")
 
     if disk_health:
         for serial, info in disk_health.items():
@@ -1894,11 +1907,11 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
             w(f"Disk Health: {serial} ({info['model']}): {state}{info['temp']}{tag}")
 
     if dpkg_fails:
-        w(f"dpkg-Upgrades:   {len(dpkg_fails)} fehlgeschlagen (showing 3):")
+        w(f"dpkg-Upgrades:   {len(dpkg_fails)} failed (showing 3):")
         for f in dpkg_fails[:3]:
             w(f"  {f}")
     else:
-        w("dpkg-Upgrades:   keine fehlgeschlagen")
+        w("dpkg-Upgrades:   none failed")
 
     if upgrade_info:
         d = upgrade_info.get("days_ago", -1)
@@ -1965,23 +1978,33 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
 
     # SYSDB details (only non-empty)
     if improper_shutdowns:
+        w("")
         w("improper shutdowns:")
         for line in improper_shutdowns:
             w(f"  {line}")
 
     if volume_crashes:
+        w("")
         w("Volume crashes:")
         for line in volume_crashes:
             w(f"  {line}")
 
     if degraded_volumes:
+        w("")
         w("degraded volumes:")
         for line in degraded_volumes:
             w(f"  {line}")
 
     if gen_errors:
+        w("")
         w(f"{len(gen_errors)} generic errs:")
         for line in gen_errors:
+            w(f"  {line}")
+
+    if gen_warnings:
+        w("")
+        w(f"{len(gen_warnings)} generic warnings (SYSDB):")
+        for line in gen_warnings:
             w(f"  {line}")
 
     # Messages detail — each section capped at newest 20
@@ -1991,6 +2014,7 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
         hdr = f"{label}: {len(lines)} total — showing newest 20"
         if omitted > 0:
             hdr += f" ({omitted} omitted)"
+        w("")
         w(hdr + ":")
         for line in shown:
             w(f"  {line}")
@@ -2008,6 +2032,7 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
             _emit_capped("generic crashes",
                          grep_lines("crash", messages_text))
         if call_traces > 0:
+            w("")
             w(f"{call_traces} Call traces, showing last one:")
             all_lines = messages_text.splitlines()
             last_ct_idx = None
@@ -2024,7 +2049,7 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
     border = "═" * 80
 
     def _section_header(title):
-        return f"\n── {title} " + "─" * max(2, 79 - len(title) - 3)
+        return f"\n\n── {title} " + "─" * max(2, 79 - len(title) - 3)
 
     def _indent(line, prefix="  "):
         if line == "" or line.startswith("  "):
@@ -2106,12 +2131,12 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
             ("updates", "DSM UPDATES"),
             ("storage", "STORAGE"),
             ("smart", "SMART"),
-            ("net", "NETZWERK"),
-            ("pkgs", "PAKETE"),
+            ("net", "NETWORK"),
+            ("pkgs", "PACKAGES"),
             ("overview", "OVERVIEW"),
             ("docker", "DOCKER"),
             ("extended", "EXTENDED DIAGNOSTICS"),
-            ("issues", "PROBLEME & BEKANNTE FEHLER"),
+            ("issues", "PROBLEMS"),
         ]
         for key, title in section_order:
             write_sm(_section_header(title))
@@ -2291,7 +2316,10 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
 
 def open_in_editor(files: list):
     editor = find_editor()
-    existing = [str(f) for f in files if f and Path(str(f)).exists()]
+    def _exists(f):
+        base = re.sub(r":\d+$", "", str(f))
+        return Path(base).exists()
+    existing = [str(f) for f in files if f and _exists(str(f))]
     if not existing:
         return
     if not editor:

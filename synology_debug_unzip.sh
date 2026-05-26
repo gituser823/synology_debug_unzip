@@ -167,25 +167,25 @@ render_sm_log() {
                      l ~ /quickconnect/ || l ~ /^ddns / ||
                      l ~ /samba is|nfs is|afp is/ || l ~ /samba status|nfs status|afp status/ ||
                      l ~ /network bonding/) cur = "net"
-            else if (lower ~ /third party packages/ || l ~ /update for / ||
+            else if (lower ~ /third party packages/ || lower ~ /drittanbieterpakete/ || l ~ /update for / ||
                      l ~ /found samba-shares|no samba shares/ ||
                      l ~ /lun-config|found luns|combined lun|iscsi mapping|iscsi targets/) cur = "pkgs"
-            else if (lower ~ /^overview:/ || l ~ /^improper shutdowns:[\t ]+(none|[0-9])/ ||
-                     l ~ /^volume crashes:[\t ]+(none|[0-9])/ ||
-                     l ~ /^degraded volumes:[\t ]+(none|[0-9])/ ||
-                     l ~ /^generic errs:[\t ]+(none|[0-9])/ ||
-                     l ~ /^drdy:[\t ]+(none|[0-9])/ ||
-                     l ~ /^database is malformed:[\t ]+(none|[0-9])/ ||
-                     l ~ /^out of memory kills:[\t ]+(none|[0-9])/ ||
-                     l ~ /^generic crashes:[\t ]+(none|[0-9])/ ||
-                     l ~ /^call traces:[\t ]+(none|[0-9])/ ||
-                     l ~ /^authentication failures:[\t ]+/ ||
-                     l ~ /^btrfs qgroup warnings:[\t ]+/ ||
-                     l ~ /^non-system users:[\t ]+/ ||
-                     l ~ /^encrypted shares:[\t ]+/ ||
-                     l ~ /^memory tests/ || l ~ /memory tests have passed/ ||
-                     l ~ /no memory tests/ || l ~ /failed memtests/ ||
-                     l ~ /^ext4-\/btrfs-errs:[\t ]+(none|[0-9])/) cur = "overview"
+            else if (lower ~ /^improper shutdowns:[\t ]+(none|[0-9])/ ||
+                     lower ~ /^volume crashes:[\t ]+(none|[0-9])/ ||
+                     lower ~ /^degraded volumes:[\t ]+(none|[0-9])/ ||
+                     lower ~ /^generic errs:[\t ]+(none|[0-9])/ ||
+                     lower ~ /^drdy:[\t ]+(none|[0-9])/ ||
+                     lower ~ /^database is malformed:[\t ]+(none|[0-9])/ ||
+                     lower ~ /^out of memory kills:[\t ]+(none|[0-9])/ ||
+                     lower ~ /^generic crashes:[\t ]+(none|[0-9])/ ||
+                     lower ~ /^call traces:[\t ]+(none|[0-9])/ ||
+                     lower ~ /^authentication failures:[\t ]+/ ||
+                     lower ~ /^btrfs qgroup warnings:[\t ]+/ ||
+                     lower ~ /^non-system users:[\t ]+/ ||
+                     lower ~ /^encrypted shares:[\t ]+/ ||
+                     lower ~ /^memory tests/ || lower ~ /memory tests have passed/ ||
+                     lower ~ /no memory tests/ || lower ~ /failed memtests/ ||
+                     lower ~ /^ext4-\/btrfs-errs:[\t ]+(none|[0-9])/) cur = "overview"
             else if (lower ~ /^docker containers seen/) cur = "docker"
             else if (lower ~ /^extended diagnostics:/ ||
                      l ~ /raid (active )?rebuild/ ||
@@ -319,12 +319,19 @@ render_sm_log() {
         _emit_section "updates"  "DSM UPDATES"
         _emit_section "storage"  "STORAGE"
         _emit_section "smart"    "SMART"
-        _emit_section "net"      "NETZWERK"
-        _emit_section "pkgs"     "PAKETE"
-        _emit_section "overview" "OVERVIEW"
+        _emit_section "net"      "NETWORK"
+        _emit_section "pkgs"     "PACKAGES"
+        _ov=$(awk -v key="overview" '/^===SECTION:/ { in_sec = ($0 == "===SECTION:overview==="); next } in_sec { print }' <<< "$raw_sections")
+        if [[ -n "$_ov" ]]; then
+            echo ""
+            while IFS= read -r ln; do
+                [[ -z "$ln" ]] && { echo ""; continue; }
+                [[ "$ln" =~ ^[[:space:]]{2,} ]] && echo "$ln" || echo "  $ln"
+            done <<< "$_ov"
+        fi
         _emit_section "docker"   "DOCKER"
         _emit_section "extended" "EXTENDED DIAGNOSTICS"
-        _emit_section "issues"   "PROBLEME & BEKANNTE FEHLER"
+        _emit_section "issues"   "PROBLEMS"
         echo "$border"
     } > "$sm"
 }
@@ -782,7 +789,7 @@ process_dat_file() {
                 #most important variables should be set from here on
 
                 UpnpModel=$(grep -i "upnpmodelname" "$Synoinfo" | cut -d "\"" -f2)
-                UpnpModel_migrated_from=$(grep -i "upnpmodelname" "$debug_dsm/etc/synoinfo.conf" | cut -d "\"" -f2)
+                UpnpModel_migrated_from=$(grep -i "upnpmodelname" "$Synoinfo" | cut -d "\"" -f2)
                     for messagefile in "$debug_dsm/var/log/messages"*.xz
                         do
                             unxz "${messagefile}"
@@ -859,6 +866,7 @@ process_dat_file() {
                         echo -e "\nMountpoints:" >> "$sg"
                         cat "$MOUNTS" >> "$sg"
                         echo -e " \n"  >> "$sg"
+                        echo "" >> "$_sm_raw"
                         echo -e "Mountpoints:" >> "$_sm_raw"
                         grepmounts=$(grep -i "volume" "$MOUNTS" | cut -f1 -d",")
                         grepmounts_c=$(grep -i -c "volume" "$MOUNTS" | cut -f1 -d",")
@@ -1738,7 +1746,6 @@ process_dat_file() {
                             echo -e "\n" >> "$_sm_raw"
                         fi
 
-                        echo -e "Overview:" >> "$_sm_raw"
                         if [[ "$TemporaryWorkaround" = 1 ]]; then
                             echo -e "(Data may be unreliable, because of old DSM Version)" >> "$_sm_raw"
                         fi
@@ -1798,6 +1805,13 @@ process_dat_file() {
                             echo -e "generic errs:\t\t\tnone" >> "$_sm_raw"
                         else
                             echo -e "generic errs:\t\t\t$(grep -ia "error" "$SYSDB" | uniq -u | wc -l)" >> "$_sm_raw"
+                        fi
+
+                        genwarn=$(grep -iE "^warning\t" "$SYSDB" | grep -v "Failed to send email" | uniq -u | wc -l)
+                        if [[ "$genwarn" -eq 0 ]]; then
+                            echo -e "generic warnings (SYSDB):\tnone" >> "$_sm_raw"
+                        else
+                            echo -e "generic warnings (SYSDB):\t$genwarn" >> "$_sm_raw"
                         fi
 
                         DRDYErr=$(grep -ia "DRDY" "$MESSAGES" | uniq -u | wc -l)
@@ -2139,7 +2153,7 @@ process_dat_file() {
                         # ── End Extended Diagnostics ───────────────────────
 
                         echo -e "\n" >> "$_sm_raw"
-                        echo -en "Third Party packages:" >> "$_sm_raw"
+                        echo -en "Third-party packages:" >> "$_sm_raw"
                         if [ -z "$third_packages" ]; then
                             echo -e "\tnone" >> "$_sm_raw"
                         else
@@ -2204,6 +2218,15 @@ process_dat_file() {
                     else
                         echo -e "$(grep -ia "error" "$SYSDB" | grep -v "Failed to send email" | uniq -u | wc -l) generic errs:" >> "$_sm_raw"
                         echo "$(grep -ia "error" "$SYSDB" | grep -v "Failed to send email" | uniq -u)" >> "$_sm_raw"
+                        echo -e "\n" >> "$_sm_raw"
+                    fi
+
+                    genwarn=$(grep -iE "^warning\t" "$SYSDB" | grep -v "Failed to send email" | uniq -u | wc -l)
+                    if [[ "$genwarn" -eq 0 ]]; then
+                        echo -e "generic warnings (SYSDB):\tnone" >> "$_sm_raw"
+                    else
+                        echo -e "$genwarn generic warnings (SYSDB):" >> "$_sm_raw"
+                        grep -iE "^warning\t" "$SYSDB" | grep -v "Failed to send email" | uniq -u >> "$_sm_raw"
                         echo -e "\n" >> "$_sm_raw"
                     fi
 
@@ -2337,10 +2360,10 @@ process_dat_file() {
 
                 echo -n "Packages interfering with Hibernation:" >> "$hb_debug"
                         hb_packages=$(grep "ActiveDirectoryServer\|AudioStation\|CloudStation\|MediaServer\|SynologyDrive\|CloudSync\|DownloadStation\|SurveillanceStation\|CMS\|Docker\|MailClient\|MailPlus\|MailPlus-Server\|PetaSpace\|Virtualization\|MailStation" "$PACK")
-                        #to add: DocumentViewer?, CloudStation Server, CS ShareSync, CMS, DirectoryServer, MailServer?, Plex Media Server, Drittanbieterpakete
+                        #to add: DocumentViewer?, CloudStation Server, CS ShareSync, CMS, DirectoryServer, MailServer?, Plex Media Server, Third-party packages
                         #to add: AudioStation protokollierung, Directory server
                         #DownloadStation: emule, Docker-Discourse, Docker-GitLab, Docker-LXQt, Docker-Redmine, Docker-Spree, Document Viewer
-                        #Drittanbieterpakete, Asterisk, Bittorrent sync, Cloud Fleet, DVBLink-Server, Egnyte, ElephantDrive, Logitech® Medienserver, minimserver, Odoo8, OpenERP6, OpenERP7, OracleDBXE, PACS, Polkast, Symform Cloud Backup, VirtualHere, Webalizer, Wonderbox, xCloud, Zarafa, Andere Drittanbieter-Software oder Optware, z. B. SABnzbd
+                        #Third-party packages, Asterisk, Bittorrent sync, Cloud Fleet, DVBLink-Server, Egnyte, ElephantDrive, Logitech® Medienserver, minimserver, Odoo8, OpenERP6, OpenERP7, OracleDBXE, PACS, Polkast, Symform Cloud Backup, VirtualHere, Webalizer, Wonderbox, xCloud, Zarafa
                         #usb-geraet angeschlossen
                         if [ -z "$third_packages" ]; then
                             echo -e "\t\tnone." >> "$hb_debug"
@@ -2458,7 +2481,7 @@ process_dat_file() {
                     esac
 
                     if [[ "$editor_type" == "sublime" ]]; then
-                        OpenFiles=("${SMART_GREP}" "${PACK_ONOFF}" "${Bash_history}" "${hb_debug}" "${HB}" "${DF}" "${SPACE_FILES:+$SPACE_FILES:100000}" "${DiskLog:+$DiskLog:100000}" "${KERN:+$KERN:100000}" "${SYSDB:+$SYSDB:100000}" "${MESSAGES:+$MESSAGES:100000}" "${sm}" "${PicArray[@]}")
+                        OpenFiles=("${DEBUG_DIR}" "${SMART_GREP}" "${PACK_ONOFF}" "${Bash_history}" "${hb_debug}" "${HB}" "${DF}" "${SPACE_FILES:+$SPACE_FILES:100000}" "${DiskLog:+$DiskLog:100000}" "${KERN:+$KERN:100000}" "${SYSDB:+$SYSDB:100000}" "${MESSAGES:+$MESSAGES:100000}" "${sm}" "${PicArray[@]}")
                     else
                         OpenFiles=("${SMART_GREP}" "${PACK_ONOFF}" "${Bash_history}" "${hb_debug}" "${HB}" "${DF}" "${SPACE_FILES}" "${DiskLog}" "${KERN}" "${SYSDB}" "${MESSAGES}" "${sm}" "${PicArray[@]}")
                     fi

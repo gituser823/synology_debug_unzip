@@ -118,9 +118,32 @@ Run with `-u` to force an immediate refresh.
 - Router debug via USB share
 - Old DSM format (`volume1/@tmp/`)
 
+## Files opened after analysis
+
+All files are opened in the editor after processing. Missing files are silently skipped.
+
+| Variable | Path (relative to extracted folder) | Content |
+|----------|--------------------------------------|---------|
+| `DEBUG_DIR` | `debug_<timestamp>/` | The extracted folder root, opened as a directory |
+| `sm` | `dsm/sm.log` | Main analysis summary — DSM version, model, volumes, RAID, SMART overview, package updates, errors, warnings |
+| `hb_debug` | `dsm/hibernation_debug.log` | NAS hibernation log, extended with: NTP/DDNS config, Samba state, swap usage, power schedule, network interfaces |
+| `SMART_GREP` | `dsm/smartgrep` | Per-disk SMART attribute table extracted from all `smartctl` result files |
+| `SPACE_FILES` | `dsm/space.xml` | Storage pool/volume layout: space history XMLs with HDD list, device paths and serial numbers |
+| `DiskLog` | `dsm/var/log/disk_log.xml` or `disk.log` | Disk event log (errors, temperature alarms, reconnects) |
+| `KERN` | `dsm/var/log/kern.log` | Kernel log (call traces, driver messages, OOM events) |
+| `SYSDB` | `dsm/var/log/synolog/synosys.log` or `SYSDB.log` | Synology system event log (improper shutdowns, volume crashes, service events) |
+| `MESSAGES` | `dsm/var/log/messages.log` | General syslog messages |
+| `HB` | `dsm/var/log/hibernation.log` | Raw NAS hibernation log (disk spin-up/down events) |
+| `DF` | `dsm/result/df.result` | Disk space usage (`df -h` output) |
+| `IFCONFIG` | `dsm/result/ifconfig.result` | Network interface configuration |
+| `PACK_ONOFF` | `dsm/packages_onoff.list` | Package start/stop history from `synopkg.log` |
+| `Bash_history` | `dsm/var/log/bash_history.log` | Root bash history from the NAS |
+| `PicArray` | `debug_<timestamp>/*.jpg/png` | Any images found in the debug folder root (e.g. storage topology diagrams) |
+
 ## Notes
 
 - An absolute path is required for `-d`. Relative paths are rejected.
 - Firefox `.part` files are detected; the script waits for the download to complete before extracting.
 - Multiple HCL download jobs run in parallel to speed up the initial data fetch.
+- The original `.dat` file is moved into the extracted folder (`debug_<timestamp>/`) after successful extraction, so it stays together with its analyzed output.
 - LogHighlight configuration needs improvement.

@@ -167,10 +167,11 @@ render_sm_log() {
                      l ~ /quickconnect/ || l ~ /^ddns / ||
                      l ~ /samba is|nfs is|afp is/ || l ~ /samba status|nfs status|afp status/ ||
                      l ~ /network bonding/) cur = "net"
-            else if (lower ~ /third party packages/ || lower ~ /drittanbieterpakete/ || l ~ /update for / ||
+            else if (lower ~ /third.?party packages/ || lower ~ /drittanbieterpakete/ || l ~ /update for / ||
                      l ~ /found samba-shares|no samba shares/ ||
                      l ~ /lun-config|found luns|combined lun|iscsi mapping|iscsi targets/) cur = "pkgs"
-            else if (lower ~ /^improper shutdowns:[\t ]+(none|[0-9])/ ||
+            else if (lower ~ /^overview:/ ||
+                     lower ~ /^improper shutdowns:[\t ]+(none|[0-9])/ ||
                      lower ~ /^volume crashes:[\t ]+(none|[0-9])/ ||
                      lower ~ /^degraded volumes:[\t ]+(none|[0-9])/ ||
                      lower ~ /^generic errs:[\t ]+(none|[0-9])/ ||
@@ -321,14 +322,7 @@ render_sm_log() {
         _emit_section "smart"    "SMART"
         _emit_section "net"      "NETWORK"
         _emit_section "pkgs"     "PACKAGES"
-        _ov=$(awk -v key="overview" '/^===SECTION:/ { in_sec = ($0 == "===SECTION:overview==="); next } in_sec { print }' <<< "$raw_sections")
-        if [[ -n "$_ov" ]]; then
-            echo ""
-            while IFS= read -r ln; do
-                [[ -z "$ln" ]] && { echo ""; continue; }
-                [[ "$ln" =~ ^[[:space:]]{2,} ]] && echo "$ln" || echo "  $ln"
-            done <<< "$_ov"
-        fi
+        _emit_section "overview" "OVERVIEW"
         _emit_section "docker"   "DOCKER"
         _emit_section "extended" "EXTENDED DIAGNOSTICS"
         _emit_section "issues"   "PROBLEMS"
@@ -664,6 +658,7 @@ process_dat_file() {
             else
                 unzip -q "$file" -d "$DOWNLOAD_DIR"/debug_"$DATE" #remove?
             fi
+            chmod -R u+rX "$DOWNLOAD_DIR/debug_$DATE"
             )
             if [ $? -eq 0 ] # if successfully extracted
             then
@@ -789,7 +784,7 @@ process_dat_file() {
                 #most important variables should be set from here on
 
                 UpnpModel=$(grep -i "upnpmodelname" "$Synoinfo" | cut -d "\"" -f2)
-                UpnpModel_migrated_from=$(grep -i "upnpmodelname" "$Synoinfo" | cut -d "\"" -f2)
+                UpnpModel_migrated_from=$(grep -i "upnpmodelname" "$debug_dsm/etc/synoinfo.conf" | cut -d "\"" -f2)
                     for messagefile in "$debug_dsm/var/log/messages"*.xz
                         do
                             unxz "${messagefile}"
@@ -1286,10 +1281,9 @@ process_dat_file() {
                     [[ -e "$spaceFile" ]] || break #no space-files
                     {
                     echo "$(basename -- "$spaceFile")"
-                    CountHDDs1=$(awk -F '"' '/dev_path/ {print $4} /raid path/ {print $2} /raid>/ {print $5}' "$spaceFile" | grep -v "vg" | grep -v "volume" | tr '\n' ' '  | sed 's#  #\n\n#g' | wc -w)
-                    #CountHDDs2="$(($CountHDDs1-1))" //entfernen
-                    echo -en "############################################\t#HDDs: $(($CountHDDs1-1))\t"
-                    awk -F '"' '/dev_path/ {print $4} /raid path/ {print $2} /raid>/ {print $5}' "$spaceFile" | grep -v "vg" | grep -v "volume" | tr '\n' ' '  | sed 's#  #\n#g'
+                    CountHDDs1=$(awk -F '"' '/dev_path/ {print $4}' "$spaceFile" | grep -v "vg" | grep -v "volume" | grep -c .)
+                    echo -en "############################################\t#HDDs: $CountHDDs1\t"
+                    awk -F '"' '/dev_path/ {print $4}' "$spaceFile" | grep -v "vg" | grep -v "volume" | tr '\n' ' '
                     echo "SerialNumbers:"
                     awk -F '"' '/dev_path/ {print $8} /raid>/ {print $5}' "$spaceFile" | grep -v "vg" | grep -v "volume" | tr '\n' ' '  | sed 's#  #\n#g'
                     echo -e '\n'
@@ -1303,10 +1297,9 @@ process_dat_file() {
                     {
                     echo "$spaceHistoryFile"
                     cat "$spaceHistoryFile"
-                    CountHDDs1=$(awk -F '"' '/dev_path/ {print $4} /raid path/ {print $2} /raid>/ {print $5}' "$spaceHistoryFile" | grep -v "vg" | grep -v "volume" | tr '\n' ' '  | sed 's#  #\n\n#g' | wc -w)
-                    CountHDDs2="$(($CountHDDs1-1))"
-                    echo -e "#HDDs: $CountHDDs2"
-                    awk -F '"' '/dev_path/ {print $4} /raid path/ {print $2} /raid>/ {print $5}' "$spaceHistoryFile" | grep -v "vg" | grep -v "volume" | tr '\n' ' '  | sed 's#  #\n\n#g'
+                    CountHDDs1=$(awk -F '"' '/dev_path/ {print $4}' "$spaceHistoryFile" | grep -v "vg" | grep -v "volume" | grep -c .)
+                    echo -e "#HDDs: $CountHDDs1"
+                    awk -F '"' '/dev_path/ {print $4}' "$spaceHistoryFile" | grep -v "vg" | grep -v "volume" | tr '\n' ' '
                     #cat "$file" | awk -F '"' '/dev_path/ {print $4} /raid path/ {print $2} /raid>/ {print $5}' - | grep -v "vg" | tr '\n' ' '  | sed 's#  #\n\n#g'
                     echo -e "\n \n \n \n"
                     } >> "$debug_dsm/space.xml"
@@ -1702,15 +1695,6 @@ process_dat_file() {
                         awk '{for(i=NF;i>1;i=i-1) printf "%s ", $i; printf "%s\n", $1}' "${PACK}" | tail -n +2 | cut -d " " -f1 > "$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/packages_ver.list
 
                         #synopkgfile="$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/var/log/synopkg.log
-                        if [[ -f "$debug_dsm/var/log/synopkg.log" ]]; then
-                            synopkgfile="$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/var/log/synopkg.log
-                            if [[ $(stat -c%s "$debug_dsm/var/log/synopkg.log") -eq 0 ]]; then #if synopkg.log is empty
-                                if unxz "$debug_dsm/var/log/synopkg.log.1.xz"; then # if successfully extracted
-                                    synopkgfile="$DOWNLOAD_DIR"/debug_"$DATE"/"$DSM"/var/log/synopkg.log.1
-                                fi
-                            fi
-                        fi
-
                         cat "$debug_dsm/packages_ver.list" > "$debug_dsm/packages_onoff.list"
                         readarray -t "InstalledPackageArray" < "$debug_dsm/packages_ver.list"
                         counter=0
@@ -1721,7 +1705,35 @@ process_dat_file() {
                             PACK_ONOFF="$debug_dsm/packages_onoff.list"
                             aver=$(grep "^$i " "$package_versions")
                             PureVerAvailable=$(echo "${aver}" | rev | cut -d " " -f1 | rev | sed 's/\-/./g')
-                            PureVerInstalled=$(grep -a "$i " "$synopkgfile" | tail -n1 | grep -aoP '(?<='$i' )\S*' | sed 's/\-/./g')
+                            # 1. Try authoritative INFO file from package folder
+                            _info_file="$DOWNLOAD_DIR/debug_$DATE/$i/var/packages/$i/INFO"
+                            PureVerInstalled=""
+                            if [[ -f "$_info_file" ]]; then
+                                PureVerInstalled=$(grep "^version=" "$_info_file" | cut -d'"' -f2 | sed 's/\-/./g')
+                            fi
+                            # 2. Try per-package log (survives synopkg.log rotation)
+                            if [[ -z "$PureVerInstalled" ]]; then
+                                _pkg_log="$debug_dsm/var/log/packages/$i.log"
+                                if [[ -f "$_pkg_log" ]]; then
+                                    _match=$(grep -aoP "${i} \K[0-9][^ ]+" "$_pkg_log" | tail -n1)
+                                    [[ -n "$_match" ]] && PureVerInstalled=$(echo "$_match" | sed 's/\-/./g')
+                                fi
+                            fi
+                            # 3. Fallback: search synopkg.log then all .xz archives
+                            if [[ -z "$PureVerInstalled" ]]; then
+                                for _lf in "$debug_dsm/var/log/synopkg.log" "$debug_dsm/var/log/synopkg.log".*.xz; do
+                                    [[ -f "$_lf" ]] || continue
+                                    if [[ "$_lf" == *.xz ]]; then
+                                        _match=$(xzcat "$_lf" | grep -a "$i " | tail -n1 | grep -aoP "(?<=${i} )\\S*")
+                                    else
+                                        _match=$(grep -a "$i " "$_lf" | tail -n1 | grep -aoP "(?<=${i} )\\S*")
+                                    fi
+                                    if [[ -n "$_match" ]]; then
+                                        PureVerInstalled=$(echo "$_match" | sed 's/\-/./g')
+                                        break
+                                    fi
+                                done
+                            fi
                             log "${InstalledPackageArray[$counter]}: Installed: $PureVerInstalled vs. available: $PureVerAvailable"
 
                             if version_compare_gt "$PureVerAvailable" "$PureVerInstalled"; then
@@ -1746,6 +1758,7 @@ process_dat_file() {
                             echo -e "\n" >> "$_sm_raw"
                         fi
 
+                        echo -e "Overview:" >> "$_sm_raw"
                         if [[ "$TemporaryWorkaround" = 1 ]]; then
                             echo -e "(Data may be unreliable, because of old DSM Version)" >> "$_sm_raw"
                         fi
@@ -1804,10 +1817,10 @@ process_dat_file() {
                         if [[ "$generrors" -eq 0 ]]; then
                             echo -e "generic errs:\t\t\tnone" >> "$_sm_raw"
                         else
-                            echo -e "generic errs:\t\t\t$(grep -ia "error" "$SYSDB" | uniq -u | wc -l)" >> "$_sm_raw"
+                            echo -e "generic errs:\t\t\t$generrors" >> "$_sm_raw"
                         fi
 
-                        genwarn=$(grep -iE "^warning\t" "$SYSDB" | grep -v "Failed to send email" | uniq -u | wc -l)
+                        genwarn=$(grep -iE "^warning\t" "$SYSDB" | grep -v "Failed to send email" | sort -u | wc -l)
                         if [[ "$genwarn" -eq 0 ]]; then
                             echo -e "generic warnings (SYSDB):\tnone" >> "$_sm_raw"
                         else
@@ -2221,12 +2234,13 @@ process_dat_file() {
                         echo -e "\n" >> "$_sm_raw"
                     fi
 
-                    genwarn=$(grep -iE "^warning\t" "$SYSDB" | grep -v "Failed to send email" | uniq -u | wc -l)
+                    _genwarn_lines=$(grep -iE "^warning\t" "$SYSDB" | grep -v "Failed to send email" | sort -u)
+                    genwarn=$(echo "$_genwarn_lines" | grep -c .)
                     if [[ "$genwarn" -eq 0 ]]; then
                         echo -e "generic warnings (SYSDB):\tnone" >> "$_sm_raw"
                     else
                         echo -e "$genwarn generic warnings (SYSDB):" >> "$_sm_raw"
-                        grep -iE "^warning\t" "$SYSDB" | grep -v "Failed to send email" | uniq -u >> "$_sm_raw"
+                        echo "$_genwarn_lines" >> "$_sm_raw"
                         echo -e "\n" >> "$_sm_raw"
                     fi
 
@@ -2483,7 +2497,7 @@ process_dat_file() {
                     if [[ "$editor_type" == "sublime" ]]; then
                         OpenFiles=("${DEBUG_DIR}" "${SMART_GREP}" "${PACK_ONOFF}" "${Bash_history}" "${hb_debug}" "${HB}" "${DF}" "${SPACE_FILES:+$SPACE_FILES:100000}" "${DiskLog:+$DiskLog:100000}" "${KERN:+$KERN:100000}" "${SYSDB:+$SYSDB:100000}" "${MESSAGES:+$MESSAGES:100000}" "${sm}" "${PicArray[@]}")
                     else
-                        OpenFiles=("${SMART_GREP}" "${PACK_ONOFF}" "${Bash_history}" "${hb_debug}" "${HB}" "${DF}" "${SPACE_FILES}" "${DiskLog}" "${KERN}" "${SYSDB}" "${MESSAGES}" "${sm}" "${PicArray[@]}")
+                        OpenFiles=("${DEBUG_DIR}" "${SMART_GREP}" "${PACK_ONOFF}" "${Bash_history}" "${hb_debug}" "${HB}" "${DF}" "${SPACE_FILES}" "${DiskLog}" "${KERN}" "${SYSDB}" "${MESSAGES}" "${sm}" "${PicArray[@]}")
                     fi
                 fi
                 #log "Array before unsetting: ${OpenFiles[@]}"

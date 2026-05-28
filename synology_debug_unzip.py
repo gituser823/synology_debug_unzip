@@ -452,6 +452,15 @@ def extract_dat(filepath: Path, download_dir: Path):
         with tarfile.open(filepath, "r:*") as tf:
             _tar_extractall_safe(tf, dest)
 
+    # Archives may embed directories with mode 0644 (no execute bit) which
+    # would block access and deletion. Restore u+rX on the whole tree.
+    for dirpath, _dirs, _files in os.walk(dest):
+        try:
+            st = os.stat(dirpath)
+            os.chmod(dirpath, st.st_mode | 0o700)
+        except OSError:
+            pass
+
     return dest, date_str
 
 
@@ -1231,17 +1240,15 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
 
     synopkg_path = dsm_dir / "var" / "log" / "synopkg.log"
     synopkg_text = ""
-    if synopkg_path.exists():
-        if synopkg_path.stat().st_size == 0:
-            xz1 = synopkg_path.parent / "synopkg.log.1.xz"
-            if xz1.exists():
-                try:
-                    with lzma.open(xz1) as lf:
-                        synopkg_text = lf.read().decode(errors="replace")
-                except Exception:
-                    pass
-        else:
-            synopkg_text = read_file(synopkg_path)
+    if synopkg_path.exists() and synopkg_path.stat().st_size > 0:
+        synopkg_text = read_file(synopkg_path)
+    # Append all rotated .xz archives so old installs are still found
+    for xzf in sorted(synopkg_path.parent.glob("synopkg.log.*.xz")):
+        try:
+            with lzma.open(xzf) as lf:
+                synopkg_text += lf.read().decode(errors="replace")
+        except Exception:
+            pass
 
     # packages_onoff.list - seed with packages_ver.list, then grep syno_service.result
     if installed_pkgs:
@@ -1762,7 +1769,21 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
         for pkg in installed_pkgs:
             avail = re.sub(r"-", ".", pkg_versions.get(pkg, ""))
             inst = ""
-            if synopkg_text:
+            # Stage 1: authoritative INFO file from package folder
+            info_file = debug_dir / pkg / "var" / "packages" / pkg / "INFO"
+            if info_file.exists():
+                m = re.search(r'^version="([^"]+)"', read_file(info_file), re.M)
+                if m:
+                    inst = re.sub(r"-", ".", m.group(1))
+            # Stage 2: per-package log (survives synopkg.log rotation)
+            if not inst:
+                pkg_log = dsm_dir / "var" / "log" / "packages" / f"{pkg}.log"
+                if pkg_log.exists():
+                    ms = re.findall(rf"{re.escape(pkg)} ([0-9]\S*)", read_file(pkg_log))
+                    if ms:
+                        inst = re.sub(r"-", ".", ms[-1])
+            # Stage 3: synopkg.log + all .xz archives (already concatenated in synopkg_text)
+            if not inst and synopkg_text:
                 ms = re.findall(rf"{re.escape(pkg)} (\S+)", synopkg_text)
                 if ms:
                     inst = re.sub(r"-", ".", ms[-1])
@@ -2546,10 +2567,7 @@ def process_file(filepath: Path, download_dir: Path):
             return str(p)
         return f"{p}:100000"
 
-    if _is_wsl():
-        file_list = [str(debug_dir)]
-    else:
-        file_list = []
+    file_list = [str(debug_dir)]
 
     if is_sublime:
         file_list += [

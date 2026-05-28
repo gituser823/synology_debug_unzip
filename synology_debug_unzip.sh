@@ -1382,7 +1382,7 @@ process_dat_file() {
 
                 if [[ -f "$debug_dsm/var/log/messages.log" ]]
                 then
-                    echo -ne "\nMemory Tests: " >> "$_sm_raw"
+                    echo -ne "\nMemory Tests:\t" >> "$_sm_raw"
                     Passed_Memtest=$( grep -a "Memtest passed" "$MESSAGES" | sort -u | grep -c "")
                     Failed_Memtest=$( grep -a "Memtest failed" "$MESSAGES" | sort -u | grep -c "")
                     if [ "$Passed_Memtest" -gt 0 ]; then

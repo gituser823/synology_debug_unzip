@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 synology_debug_unzip.py - Synology debug file extractor and analyzer
-Python port of synology_debug_unzip.sh by Thomas Feldmann
+Python port of synology_debug_unzip.sh
 Runs on Windows, Linux, and macOS.
 
 Requirements: pip install requests
@@ -2680,7 +2680,7 @@ def main():
         print("\t-u : Update DSM-Updates, HDD-(in-)compatibility-lists, package updates")
         print("\t-v : Be Verbose")
         print("\t-d : Set Download directory to scan (use absolute path) [required]")
-        print('\t     example: synology_debug_unzip.py -d "/home/thomas/Downloads/neu"')
+        print('\t     example: synology_debug_unzip.py -d "$HOME/Downloads/neu"')
         print()
         sys.exit(0)
 

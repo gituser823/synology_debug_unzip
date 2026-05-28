@@ -178,6 +178,19 @@ def find_editor():
         if shutil.which("code"):
             return "code"
         return "explorer.exe"
+    if system == "Darwin":
+        subl_app = Path("/Applications/Sublime Text.app/Contents/SharedSupport/bin/subl")
+        if subl_app.exists():
+            return str(subl_app)
+        found = shutil.which("subl") or shutil.which("sublime_text")
+        if found:
+            return found
+        if Path("/Applications/Sublime Text.app").exists():
+            return "sublime_open"  # app exists but subl binary not in PATH
+        found = shutil.which("code")
+        if found:
+            return found
+        return None
     # Prefer native/snap subl: supports :line syntax and single-instance IPC reliably.
     # Fall back to Flatpak only when no subl/sublime_text wrapper is in PATH.
     for candidate in ["subl", "sublime_text"]:
@@ -2379,6 +2392,13 @@ def open_in_editor(files: list):
                     except Exception:
                         win_paths.append(f)
                 subprocess.Popen([editor] + win_paths)
+        elif platform.system() == "Darwin":
+            is_subl = "subl" in Path(editor).name or "sublime" in editor.lower() or editor == "sublime_open"
+            if is_subl:
+                # subl uses IPC to talk to the running Sublime instance — works from SSH too.
+                subprocess.Popen([editor] + existing)
+            else:
+                subprocess.Popen(["open"] + existing)
         elif platform.system() == "Windows":
             # subl.exe opens all files as tabs in one window.
             # Exclude directories — passing a folder creates a separate project window.

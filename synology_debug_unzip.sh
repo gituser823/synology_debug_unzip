@@ -389,7 +389,7 @@ print(f'done ({count} models)', file=sys.stderr)
 updateDSMUpdatesList() {
     	echo -en "Downloading latest genRSS.php..."
         curl "https://update.synology.com/autoupdate/genRSS.php" -s --output "$rss" #for progress add -#
-        if [ "$ThomasModus" -eq 1 ]; then
+        if [ "$DevMode" -eq 1 ]; then
         stat --printf=" Size: %s " "$rss"
     	fi
     	echo "done"
@@ -430,7 +430,7 @@ updateCompatibilityLists() {
 		echo -en "Getting available Models..."
         curl "https://www.synology.com/cgi/misc/?action=getProductList_withOEM" -s | grep -oP '(?<=\[).*(?=\])' > "$ProductList" #get all Models listed in Synology API
         echo "done"
-        if [ "$ThomasModus" -eq 1 ]; then
+        if [ "$DevMode" -eq 1 ]; then
         stat --printf="Size: %s" "$ProductList"
         fi
         IFS=","
@@ -443,7 +443,7 @@ updateCompatibilityLists() {
         done
         IFS=$' \t\n'
 
-        if [ "$ThomasModus" -eq 1 ]; then
+        if [ "$DevMode" -eq 1 ]; then
         echo -e "\nModels: ${Models[*]}"
     	fi
 
@@ -469,7 +469,7 @@ updateCompatibilityLists() {
                 done
             echo "bye" |tee -a "${confs[@]}" 1>/dev/null
                 for conf in "${confs[@]}";do
-                    if [ "$ThomasModus" -eq 1 ]; then
+                    if [ "$DevMode" -eq 1 ]; then
                         lftp -f "$conf" &
                     else
                         lftp -f "$conf" 1>/dev/null &
@@ -586,7 +586,7 @@ while getopts ":uhvd:" opt; do
         echo -e "\t-u : Update DSM-Updates, HDD-(in-)compatibility-lists, package updates"
         echo -e "\t-v : Be Verbose"
         echo -e "\t-d : Set Download directory to scan (use absolute path) [required]"
-        echo -e "\t     example: synology_debug_unzip.sh -d \"/home/thomas/Downloads/neu\""
+        echo -e "\t     example: synology_debug_unzip.sh -d \"/home/user/Downloads/neu\""
         echo -e "\t     alternatively set variable DOWNLOAD_DIR in $(basename -- "$0")"
         echo -e "\n"
         exit 1

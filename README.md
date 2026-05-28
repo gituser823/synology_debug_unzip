@@ -58,9 +58,9 @@ The script auto-detects an available editor in this priority order:
 
 | Platform | Detection order |
 |----------|----------------|
-| **Linux** | Flatpak Sublime Text → `subl` → `sublime_text` → `gedit` → `kate` → `mousepad` → `xed` → `pluma` → `xdg-open` |
-| **Windows** | `C:\Program Files\Sublime Text\` → `Sublime Text 4\` → `Sublime Text 3\` → `notepad.exe` |
-| **WSL** | Auto-searches Windows-side Sublime Text across common install paths and Windows PATH interop → `explorer.exe` fallback |
+| **Linux** | Flatpak Sublime Text → `subl` → `sublime_text` → `code` → `gedit` → `kate` → `mousepad` → `xed` → `pluma` → `xdg-open` |
+| **Windows** | `C:\Program Files\Sublime Text\` → `Sublime Text 4\` → `Sublime Text 3\` → `C:\Program Files\Microsoft VS Code\` → user AppData VS Code → `notepad.exe` |
+| **WSL** | Windows-side Sublime Text (common install paths + PATH interop) → native `code` (WSL Remote) → `explorer.exe` fallback |
 
 On WSL, file paths are automatically converted to Windows format (`wslpath -w`) and all result files are opened in a single editor call.
 

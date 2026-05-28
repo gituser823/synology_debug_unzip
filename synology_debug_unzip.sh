@@ -2433,6 +2433,7 @@ process_dat_file() {
                        flatpak info com.sublimehq.SublimeText >/dev/null 2>&1; then
                         echo "flatpak run --filesystem=host com.sublimehq.SublimeText"; return
                     fi
+                    command -v code >/dev/null 2>&1 && echo "code" && return
                     for cmd in gedit kate mousepad xed pluma; do
                         command -v "$cmd" >/dev/null 2>&1 && echo "$cmd" && return
                     done
@@ -2479,6 +2480,9 @@ process_dat_file() {
                     if [ -n "$_win_subl" ]; then
                         subl=("$_win_subl")
                         editor_type=sublime
+                    elif command -v code >/dev/null 2>&1; then
+                        subl=(code)
+                        editor_type=vscode
                     else
                         subl=(explorer.exe)
                         editor_type=other
@@ -2491,6 +2495,7 @@ process_dat_file() {
 
                     case "$_detected" in
                         *SublimeText*|*sublime_text*|subl|flatpak*) editor_type=sublime ;;
+                        code) editor_type=vscode ;;
                         *) editor_type=other ;;
                     esac
 
@@ -2510,15 +2515,21 @@ process_dat_file() {
                     fi
                 done
                 if [[ "$os" == "win" ]]; then
-                    # Convert all paths to Windows format and open in one Sublime call
-                    declare -a _win_paths
-                    for i in "${OpenFiles[@]}"; do
-                        _win_paths+=("$(wslpath -w "$i")")
-                    done
-                    "${subl[@]}" "${_win_paths[@]}" 2>/dev/null
-                    unset _win_paths
+                    if [[ "$editor_type" == "vscode" ]]; then
+                        # code on WSL is a native Linux binary — use Linux paths directly
+                        nohup code "${OpenFiles[@]}" >/dev/null 2>&1 &
+                        disown 2>/dev/null || true
+                    else
+                        # Windows exe (Sublime or explorer): convert paths to Windows format
+                        declare -a _win_paths
+                        for i in "${OpenFiles[@]}"; do
+                            _win_paths+=("$(wslpath -w "$i")")
+                        done
+                        "${subl[@]}" "${_win_paths[@]}" 2>/dev/null
+                        unset _win_paths
+                    fi
                 else
-                    if [[ "$editor_type" == "sublime" ]]; then
+                    if [[ "$editor_type" == "sublime" || "$editor_type" == "vscode" ]]; then
                         _launch_editor
                     else
                         for i in "${OpenFiles[@]}"; do

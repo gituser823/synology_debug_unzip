@@ -160,10 +160,24 @@ def find_editor():
         found = shutil.which("sublime_text") or shutil.which("subl")
         if found:
             return found
+        win_user = os.environ.get("USERNAME", "")
+        for c in [
+            r"C:\Program Files\Microsoft VS Code\Code.exe",
+            rf"C:\Users\{win_user}\AppData\Local\Programs\Microsoft VS Code\Code.exe",
+        ]:
+            if Path(c).exists():
+                return c
+        found = shutil.which("code")
+        if found:
+            return found
         return "notepad.exe"
     if _is_wsl():
         found = _find_win_subl()
-        return found if found else "explorer.exe"
+        if found:
+            return found
+        if shutil.which("code"):
+            return "code"
+        return "explorer.exe"
     # Prefer native/snap subl: supports :line syntax and single-instance IPC reliably.
     # Fall back to Flatpak only when no subl/sublime_text wrapper is in PATH.
     for candidate in ["subl", "sublime_text"]:
@@ -2352,15 +2366,19 @@ def open_in_editor(files: list):
     print(f"Opening editor: {editor}")
     try:
         if _is_wsl():
-            # Convert Linux paths to Windows paths and open all at once
-            win_paths = []
-            for f in existing:
-                try:
-                    r = subprocess.run(["wslpath", "-w", f], capture_output=True, text=True)
-                    win_paths.append(r.stdout.strip())
-                except Exception:
-                    win_paths.append(f)
-            subprocess.Popen([editor] + win_paths)
+            if "code" in Path(editor).name.lower():
+                # code on WSL is a native Linux binary — Linux paths work directly
+                subprocess.Popen([editor] + existing)
+            else:
+                # Windows exe (Sublime, explorer): convert to Windows paths
+                win_paths = []
+                for f in existing:
+                    try:
+                        r = subprocess.run(["wslpath", "-w", f], capture_output=True, text=True)
+                        win_paths.append(r.stdout.strip())
+                    except Exception:
+                        win_paths.append(f)
+                subprocess.Popen([editor] + win_paths)
         elif platform.system() == "Windows":
             # subl.exe opens all files as tabs in one window.
             # Exclude directories — passing a folder creates a separate project window.
@@ -2556,7 +2574,8 @@ def process_file(filepath: Path, download_dir: Path):
             list(debug_dir.glob("*.png")) + list(debug_dir.glob("*.PNG")))
 
     editor = find_editor()
-    is_sublime = editor and ("subl" in editor or "sublime" in editor.lower() or editor.startswith("flatpak:") or editor == "code")
+    is_sublime = editor and ("subl" in editor or "sublime" in editor.lower() or editor.startswith("flatpak:"))
+    is_vscode = editor and not is_sublime and ("code" in Path(editor).name.lower())
 
     def ep_sublime(relpath):
         p = dsm_dir / relpath
@@ -2569,6 +2588,20 @@ def process_file(filepath: Path, download_dir: Path):
 
     file_list = [str(debug_dir)]
 
+    _files_no_goto = [
+        str(sg),
+        ep("packages_onoff.list"),
+        ep("var/log/bash_history.log"),
+        str(hb),
+        ep("var/log/hibernation.log"),
+        ep("result/df.result"),
+        ep("space.xml"),
+        disk_log,
+        ep("var/log/kern.log"),
+        ep("var/log/synolog/synosystac.log"),
+        ep("var/log/messages.log"),
+        str(sm),
+    ]
     if is_sublime:
         file_list += [
             str(sg),
@@ -2585,20 +2618,7 @@ def process_file(filepath: Path, download_dir: Path):
             str(sm),
         ]
     else:
-        file_list += [
-            str(sg),
-            ep("packages_onoff.list"),
-            ep("var/log/bash_history.log"),
-            str(hb),
-            ep("var/log/hibernation.log"),
-            ep("result/df.result"),
-            ep("space.xml"),
-            disk_log,
-            ep("var/log/kern.log"),
-            ep("var/log/synolog/synosystac.log"),
-            ep("var/log/messages.log"),
-            str(sm),
-        ]
+        file_list += _files_no_goto
 
     open_in_editor(file_list + [str(p) for p in pics])
 

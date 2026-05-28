@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
-#by Thomas Feldmann
 
 #DOWNLOAD_DIR= #uncomment this and set path
 
-ThomasModus=0
-if [ "$ThomasModus" -eq 1 ]; then
- 	DOWNLOAD_DIR=/home/thomas/Downloads/neu #change this to the path of the download folder or use -d "/path"
+DevMode=0
+if [ "$DevMode" -eq 1 ]; then
+ 	DOWNLOAD_DIR=$HOME/Downloads/neu #change this to the path of the download folder or use -d "/path"
  	writeLastDebugToFile=1 	#write last debug to LastDebugFile? open with "bash ~/Dokumente/bash/last_debug.sh"
-    LastDebugFile=/home/thomas/Dokumente/bash/last_debug.sh
+    LastDebugFile=$HOME/Dokumente/bash/last_debug.sh
  	verbose=1
     trap "/usr/bin/env bash" SIGINT SIGTERM #catch CTRL+C and start bash
 fi

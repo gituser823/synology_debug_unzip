@@ -1854,19 +1854,19 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
     def _val(n):
         return n if n else 0
 
-    w(f"Improper shutdowns          {_val(len(improper_shutdowns))}")
-    w(f"Volume crashes              {_val(len(volume_crashes))}")
-    w(f"Degraded volumes            {_val(len(degraded_volumes))}")
-    w(f"Ext4/Btrfs errors           {fs_error_ct}")
-    w(f"Generic errors (SYSDB)      {_val(len(gen_errors))}")
-    w(f"Generic warnings (SYSDB)    {_val(len(gen_warnings))}")
-    w(f"DRDY errors                 {_val(len(drdy_lines))}")
-    w(f"Database malformed          {db_malformed}")
-    w(f"Out of Memory kills         {oom_kills}")
-    w(f"Kernel crashes              {crashes_ct}")
-    w(f"Call Traces                 {call_traces}")
-    w(f"Auth failures               {auth_failures['total']}")
-    w(f"BTRFS qgroup warnings       {qgroup_warnings}")
+    w(f"Improper shutdowns (synosys.log)  {_val(len(improper_shutdowns))}")
+    w(f"Volume crashes                    {_val(len(volume_crashes))}")
+    w(f"Degraded volumes                  {_val(len(degraded_volumes))}")
+    w(f"Ext4/Btrfs errors (kern/messages) {fs_error_ct}")
+    w(f"Generic errors (synosys.log)      {_val(len(gen_errors))}")
+    w(f"Generic warnings (synosys.log)    {_val(len(gen_warnings))}")
+    w(f"DRDY errors                       {_val(len(drdy_lines))}")
+    w(f"Database malformed                {db_malformed}")
+    w(f"Out of Memory kills               {oom_kills}")
+    w(f"Kernel crashes (messages.log)     {crashes_ct}")
+    w(f"Call Traces (messages.log)        {call_traces}")
+    w(f"Auth failures                     {auth_failures['total']}")
+    w(f"BTRFS qgroup warnings             {qgroup_warnings}")
     if passed_memtest == 0 and failed_memtest == 0:
         w("Memory tests                none")
     if user_grp["users"]:
@@ -2005,16 +2005,16 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
         shown = all_fs_uniq[-20:]
         hidden = len(all_fs_uniq) - len(shown)
         if hidden > 0:
-            w(f"Ext4-/Btrfs-Errors: {len(all_fs_uniq)} total — showing newest 20 ({hidden} omitted)")
+            w(f"Ext4-/Btrfs-Errors (kern.log/messages.log): {len(all_fs_uniq)} total — showing newest 20 ({hidden} omitted)")
         else:
-            w("Ext4-/Btrfs-Errors:")
+            w("Ext4-/Btrfs-Errors (kern.log/messages.log):")
         for line in shown:
             w(f"  {line}")
 
     # SYSDB details (only non-empty)
     if improper_shutdowns:
         w("")
-        w("improper shutdowns:")
+        w("improper shutdowns (synosys.log):")
         for line in improper_shutdowns:
             w(f"  {line}")
 
@@ -2038,7 +2038,7 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
 
     if gen_warnings:
         w("")
-        w(f"{len(gen_warnings)} generic warnings (SYSDB):")
+        w(f"{len(gen_warnings)} generic warnings (synosys.log):")
         for line in gen_warnings:
             w(f"  {line}")
 
@@ -2064,11 +2064,11 @@ def analyze(debug_dir: Path, download_dir: Path, sm_prefix: str = ""):
             _emit_capped("Out of Memory kills",
                          grep_lines("out_of_memory", messages_text))
         if crashes_ct > 0:
-            _emit_capped("generic crashes",
+            _emit_capped("generic crashes (messages.log)",
                          grep_lines("crash", messages_text))
         if call_traces > 0:
             w("")
-            w(f"{call_traces} Call traces, showing last one:")
+            w(f"{call_traces} Call traces (messages.log), showing last one:")
             all_lines = messages_text.splitlines()
             last_ct_idx = None
             for i, line in enumerate(all_lines):

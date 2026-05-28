@@ -171,22 +171,22 @@ render_sm_log() {
                      l ~ /found samba-shares|no samba shares/ ||
                      l ~ /lun-config|found luns|combined lun|iscsi mapping|iscsi targets/) cur = "pkgs"
             else if (lower ~ /^overview:/ ||
-                     lower ~ /^improper shutdowns:[\t ]+(none|[0-9])/ ||
+                     lower ~ /^improper shutdowns \(synosys\.log\):[\t ]+(none|[0-9])/ ||
                      lower ~ /^volume crashes:[\t ]+(none|[0-9])/ ||
                      lower ~ /^degraded volumes:[\t ]+(none|[0-9])/ ||
                      lower ~ /^generic errs:[\t ]+(none|[0-9])/ ||
                      lower ~ /^drdy:[\t ]+(none|[0-9])/ ||
                      lower ~ /^database is malformed:[\t ]+(none|[0-9])/ ||
                      lower ~ /^out of memory kills:[\t ]+(none|[0-9])/ ||
-                     lower ~ /^generic crashes:[\t ]+(none|[0-9])/ ||
-                     lower ~ /^call traces:[\t ]+(none|[0-9])/ ||
+                     lower ~ /^generic crashes \(messages\.log\):[\t ]+(none|[0-9])/ ||
+                     lower ~ /^call traces \(messages\.log\):[\t ]+(none|[0-9])/ ||
                      lower ~ /^authentication failures:[\t ]+/ ||
                      lower ~ /^btrfs qgroup warnings:[\t ]+/ ||
                      lower ~ /^non-system users:[\t ]+/ ||
                      lower ~ /^encrypted shares:[\t ]+/ ||
                      lower ~ /^memory tests/ || lower ~ /memory tests have passed/ ||
                      lower ~ /no memory tests/ || lower ~ /failed memtests/ ||
-                     lower ~ /^ext4-\/btrfs-errs:[\t ]+(none|[0-9])/) cur = "overview"
+                     lower ~ /^ext4-\/btrfs-errs \(kern\.log\/messages\.log\):[\t ]+(none|[0-9])/) cur = "overview"
             else if (lower ~ /^docker containers seen/) cur = "docker"
             else if (lower ~ /^extended diagnostics:/ ||
                      l ~ /raid (active )?rebuild/ ||
@@ -205,16 +205,16 @@ render_sm_log() {
                      l ~ /more ram installed|same ram installed/ ||
                      l ~ /uptime: |hostname: |bios:|hardware version|upnp model|^kernel:|cpu from logs|serialnumber:|associated tickets|swap:|installed ram-modules|ram, calced|ram free.result/) cur = "extended"
             else if (lower ~ /known issue|possible known issue|^cpu is overheating|^cpu or disk is overheating/ ||
-                     l ~ /^ext4-\/btrfs-errors:/ ||
-                     l ~ /^improper shutdowns:$/ ||
-                     l ~ /^volume crashes:$/ ||
-                     l ~ /^degraded volumes:$/ ||
-                     l ~ /generic errs:$/ ||
-                     l ~ /database is malformed:/ && l ~ /total/ ||
-                     l ~ /^drdy:/ && l ~ /total/ ||
-                     l ~ /^out of memory kills:/ && l ~ /total/ ||
-                     l ~ /^generic crashes:/ && l ~ /total/ ||
-                     l ~ /call traces, showing/) cur = "issues"
+                     lower ~ /^ext4-\/btrfs-err/ ||
+                     lower ~ /^improper shutdowns \(synosys\.log\):$/ ||
+                     lower ~ /^volume crashes:$/ ||
+                     lower ~ /^degraded volumes:$/ ||
+                     lower ~ /generic errs:$/ ||
+                     lower ~ /database is malformed:/ && lower ~ /total/ ||
+                     lower ~ /^drdy:/ && lower ~ /total/ ||
+                     lower ~ /^out of memory kills:/ && lower ~ /total/ ||
+                     lower ~ /^generic crashes \(messages\.log\):/ && lower ~ /total/ ||
+                     lower ~ /call traces, showing/) cur = "issues"
             flush()
         }
         END {
@@ -1770,7 +1770,7 @@ process_dat_file() {
                             third_packages_count=$(echo "$third_packages" | uniq -u | wc -l)
                             echo -e "\t$third_packages_count" >> "$_sm_raw"
                         fi
-                        echo -en "Ext4-/Btrfs-Errs:" >> "$_sm_raw"
+                        echo -en "Ext4-/Btrfs-Errs (kern.log/messages.log):" >> "$_sm_raw"
                         btrfserrckern=$(grep -ia "btrfs critical\|btrfs error\|btrfs warning\|btrfs.*failure\|btrfs.*failed\|BTRFS: superblock checksum mismatch" "$KERN" | wc -l)
                         ext4errckern=$(grep -ia "ext-3\|ext-4" "$KERN" | grep -v "scripts/ext-3.4" | wc -l)
                         btrfserrcmsg=$(grep -ia "btrfs critical\|btrfs error\|btrfs warning\|btrfs.*failure\|btrfs.*failed\|BTRFS: superblock checksum mismatch" "$MESSAGES" | wc -l)
@@ -1792,9 +1792,9 @@ process_dat_file() {
                         fi
                         impropershutdown=$(grep -ia "improper shutdown" "$SYSDB")
                         if [[ -z "$impropershutdown" ]]; then
-                            echo -e "improper shutdowns:\t\tnone" >> "$_sm_raw"
+                            echo -e "improper shutdowns (synosys.log):\t\tnone" >> "$_sm_raw"
                         else
-                            echo -ne "improper shutdowns:\t\t" >> "$_sm_raw"
+                            echo -ne "improper shutdowns (synosys.log):\t\t" >> "$_sm_raw"
                             grep -iac "improper shutdown" "$SYSDB" >> "$_sm_raw"
                         fi
                         volumecrash=$(grep -ia "was crashed" "$SYSDB") #volumecrash
@@ -1822,9 +1822,9 @@ process_dat_file() {
 
                         genwarn=$(grep -iE "^warning\t" "$SYSDB" | grep -v "Failed to send email" | sort -u | wc -l)
                         if [[ "$genwarn" -eq 0 ]]; then
-                            echo -e "generic warnings (SYSDB):\tnone" >> "$_sm_raw"
+                            echo -e "generic warnings (synosys.log):\tnone" >> "$_sm_raw"
                         else
-                            echo -e "generic warnings (SYSDB):\t$genwarn" >> "$_sm_raw"
+                            echo -e "generic warnings (synosys.log):\t$genwarn" >> "$_sm_raw"
                         fi
 
                         DRDYErr=$(grep -ia "DRDY" "$MESSAGES" | uniq -u | wc -l)
@@ -1849,15 +1849,15 @@ process_dat_file() {
 
                         crashes=$(grep -iac "crash" "$MESSAGES")
                         if [[ "$crashes" -eq 0 ]]; then
-                            echo -e "generic crashes:\t\tnone" >> "$_sm_raw"
+                            echo -e "generic crashes (messages.log):\t\tnone" >> "$_sm_raw"
                         else
-                            echo -e "generic crashes:\t\t$(grep -iac "crash" "$MESSAGES")" >> "$_sm_raw"
+                            echo -e "generic crashes (messages.log):\t\t$(grep -iac "crash" "$MESSAGES")" >> "$_sm_raw"
                         fi
                         CallTraces=$(grep -iac "Call Trace" "$MESSAGES")
                         if [[ "$CallTraces" -eq 0 ]]; then
-                            echo -e "Call Traces:\t\t\tnone" >> "$_sm_raw"
+                            echo -e "Call Traces (messages.log):\tnone" >> "$_sm_raw"
                         else
-                            echo -e "Call Traces:\t\t\t$(grep -iac "Call Trace" "$MESSAGES")" >> "$_sm_raw"
+                            echo -e "Call Traces (messages.log):\t$CallTraces" >> "$_sm_raw"
                         fi
 
                         # ── auth failures count ─────────────────────────────
@@ -2179,7 +2179,7 @@ process_dat_file() {
                 btrfserrmsg=$(grep -ia "btrfs critical\|btrfs error\|btrfs warning\|btrfs.*failure\|btrfs.*failed\|BTRFS: superblock checksum mismatch" "$MESSAGES")
                 ext4errmsg=$(grep -ia "ext-3\|ext-4" "$MESSAGES" | grep -v "scripts/ext-3.4" )
                 if [[ -z "$btrfserrkern" ]] && [[ -z "$ext4errkern" ]] && [[ -z "$btrfserrmsg" ]] && [[ -z "$ext4errmsg" ]]; then
-                    echo -e "Ext4-/Btrfs-Errs:\t\tnone" >> "$_sm_raw"
+                    echo -e "Ext4-/Btrfs-Errs (kern.log/messages.log):\t\tnone" >> "$_sm_raw"
                 else
                     # Combine, dedupe, sort by leading ISO timestamp, keep newest 20
                     all_fs=$(printf '%s\n%s\n%s\n%s\n' \
@@ -2189,9 +2189,9 @@ process_dat_file() {
                     shown=$(echo "$all_fs" | tail -n 20)
                     if [[ "$total" -gt 20 ]]; then
                         hidden=$((total - 20))
-                        echo -e "\nExt4-/Btrfs-Errors: $total total — showing newest 20 ($hidden omitted)" >> "$_sm_raw"
+                        echo -e "\nExt4-/Btrfs-Errors (kern.log/messages.log): $total total — showing newest 20 ($hidden omitted)" >> "$_sm_raw"
                     else
-                        echo -e "\nExt4-/Btrfs-Errors:" >> "$_sm_raw"
+                        echo -e "\nExt4-/Btrfs-Errors (kern.log/messages.log):" >> "$_sm_raw"
                     fi
                     echo "$shown" >> "$_sm_raw"
                 fi
@@ -2201,9 +2201,9 @@ process_dat_file() {
 
                     impropershutdown=$(grep -ia "improper shutdown" "$SYSDB") #improper shutdowns
                     if [[ -z "$impropershutdown" ]]; then
-                        echo -e "improper shutdowns:\t\tnone" >> "$_sm_raw"
+                        echo -e "improper shutdowns (synosys.log):\t\tnone" >> "$_sm_raw"
                     else
-                        echo -e "improper shutdowns:" >> "$_sm_raw"
+                        echo -e "improper shutdowns (synosys.log):" >> "$_sm_raw"
                         echo "$impropershutdown" >> "$_sm_raw"
                         echo -e "\n" >> "$_sm_raw"
                     fi
@@ -2237,9 +2237,9 @@ process_dat_file() {
                     _genwarn_lines=$(grep -iE "^warning\t" "$SYSDB" | grep -v "Failed to send email" | sort -u)
                     genwarn=$(echo "$_genwarn_lines" | grep -c .)
                     if [[ "$genwarn" -eq 0 ]]; then
-                        echo -e "generic warnings (SYSDB):\tnone" >> "$_sm_raw"
+                        echo -e "generic warnings (synosys.log):\tnone" >> "$_sm_raw"
                     else
-                        echo -e "$genwarn generic warnings (SYSDB):" >> "$_sm_raw"
+                        echo -e "$genwarn generic warnings (synosys.log):" >> "$_sm_raw"
                         echo "$_genwarn_lines" >> "$_sm_raw"
                         echo -e "\n" >> "$_sm_raw"
                     fi
@@ -2276,13 +2276,13 @@ process_dat_file() {
                             emit_capped "Database is malformed" "database disk image is malformed"
                             log "1655"
                             emit_capped "Out of Memory kills" "out_of_memory"
-                            emit_capped "generic crashes" "crash"
+                            emit_capped "generic crashes (messages.log)" "crash"
                             log "1672"
                             CallTraces=$(grep -iac "Call Trace" "$MESSAGES")
                             if [[ "$CallTraces" -eq 0 ]]; then
-                                echo -e "Call Traces:\t\t\tnone"
+                                echo -e "Call Traces (messages.log):\tnone"
                             else
-                                echo -e "$(grep -iac "Call Trace" "$MESSAGES") Call traces, showing last one:"
+                                echo -e "$CallTraces Call traces (messages.log), showing last one:"
                                 tac "$MESSAGES" | grep -ia -m1 "Call Trace" -B25 | tac
                             fi
                         } >>  "$_sm_raw"

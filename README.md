@@ -52,6 +52,8 @@ pip install requests
 
 ## Editor support
 
+**Recommended: [Sublime Text](https://www.sublimetext.com/)** — the script has first-class Sublime Text support: syntax highlighting via the bundled Log Highlight configuration, jump-to-line (`:100000`) to open large files at the end, and the extracted folder opened as a sidebar project. Other editors work but without these extras.
+
 The script auto-detects an available editor in this priority order:
 
 | Platform | Detection order |
